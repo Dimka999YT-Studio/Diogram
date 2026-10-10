@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Чат</title></head>
+<body style="font-family:sans-serif;padding:10px">
+<div id="messages" style="height:70vh;overflow-y:scroll;border:1px solid #ccc;padding:5px"></div>
+<input id="msg" placeholder="Сообщение..." style="width:70%;padding:8px">
+<button onclick="send()" style="padding:8px">→</button>
+<script>
+const ws = new WebSocket((location.protocol==="https:"?"wss://":"ws://") + location.host);
+const messages = document.getElementById("messages");
+ws.onmessage = (e) => {
+  const d = document.createElement("div");
+  d.textContent = e.data;
+  messages.appendChild(d);
+  messages.scrollTop = messages.scrollHeight;
+};
+function send() {
+  const i = document.getElementById("msg");
+  if (i.value.trim()) { ws.send(i.value); i.value = ""; }
+}
+document.getElementById("msg").addEventListener("keypress", e => { if(e.key==="Enter") send(); });
+</script>
+</body>
+</html>
