@@ -42,6 +42,7 @@ def create_user(email: str, password: str, username: str = None, first_name: str
         "role": "user",
         "verified": False,
         "profile_completed": False,
+        "banned": False,
         "last_seen": datetime.now(timezone.utc).isoformat(),
     }
     res = supabase.table("users").insert(data).execute()
@@ -72,7 +73,7 @@ def search_users(query: str, current_user_id: int, limit: int = 20) -> list:
         "id, username, first_name, last_name, verified, role, avatar_url"
     ).or_(
         f"username.ilike.%{query}%,first_name.ilike.%{query}%"
-    ).neq("id", current_user_id).limit(limit).execute()
+    ).neq("id", current_user_id).eq("banned", False).limit(limit).execute()
     return res.data or []
 
 
@@ -84,6 +85,17 @@ def update_user_profile(user_id: int, username: str, first_name: str, last_name:
         "profile_completed": True,
     }
     res = supabase.table("users").update(data).eq("id", user_id).execute()
+    return res.data[0] if res.data else None
+
+
+def update_user_name(user_id: int, first_name: str, last_name: str = None) -> dict:
+    data = {"first_name": first_name, "last_name": last_name}
+    res = supabase.table("users").update(data).eq("id", user_id).execute()
+    return res.data[0] if res.data else None
+
+
+def update_user_username(user_id: int, username: str) -> dict:
+    res = supabase.table("users").update({"username": username.lower()}).eq("id", user_id).execute()
     return res.data[0] if res.data else None
 
 
@@ -102,6 +114,20 @@ def update_user_bio(user_id: int, bio: str = None, birthday: str = None) -> dict
         return None
     res = supabase.table("users").update(data).eq("id", user_id).execute()
     return res.data[0] if res.data else None
+
+
+# ============ СМЕНЫ USERNAME ============
+
+def count_username_changes_24h(user_id: int) -> int:
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    res = supabase.table("username_changes").select("id").eq("user_id", user_id).gt(
+        "changed_at", cutoff
+    ).execute()
+    return len(res.data or [])
+
+
+def register_username_change(user_id: int) -> None:
+    supabase.table("username_changes").insert({"user_id": user_id}).execute()
 
 
 # ============ ОНЛАЙН И ПРОЧТЕНИЕ ============
@@ -178,7 +204,6 @@ def get_user_chats(user_id: int) -> list:
         ).limit(1).execute()
 
         last_msg = last.data[0] if last.data else None
-
         unread = get_unread_count(chat["id"], user_id)
 
         result.append({
@@ -194,6 +219,7 @@ def get_user_chats(user_id: int) -> list:
                 "avatar_url": other.get("avatar_url"),
                 "is_online": is_online(other),
                 "last_seen": other.get("last_seen"),
+                "banned": other.get("banned", False),
             },
             "last_message": last_msg["text"] if last_msg else None,
             "last_message_type": last_msg["type"] if last_msg else "text",
@@ -236,6 +262,15 @@ def get_messages(chat_id: int, limit: int = 50, offset: int = 0) -> list:
         "created_at", desc=False
     ).range(offset, offset + limit - 1).execute()
     return res.data or []
+
+
+def get_message_by_id(message_id: int) -> dict:
+    res = supabase.table("messages").select("*").eq("id", message_id).execute()
+    return res.data[0] if res.data else None
+
+
+def delete_message(message_id: int) -> None:
+    supabase.table("messages").delete().eq("id", message_id).execute()
 
 
 def search_messages(user_id: int, query: str, limit: int = 50) -> list:
@@ -311,7 +346,6 @@ def count_user_channels(user_id: int) -> int:
 
 
 def get_user_channels(user_id: int) -> list:
-    """Каналы, на которые подписан юзер ИЛИ которые он создал"""
     subs = supabase.table("channel_subscribers").select("channel_id").eq("user_id", user_id).execute()
     sub_ids = [s["channel_id"] for s in (subs.data or [])]
 
@@ -429,7 +463,6 @@ def get_secret_channels() -> list:
 
 
 def subscribe_new_user_to_secret_channels(user_id: int) -> int:
-    """Автоматически подписывает нового юзера на все секретные каналы"""
     secret = get_secret_channels()
     count = 0
     for ch in secret:
@@ -464,7 +497,7 @@ def delete_channel_message(message_id: int) -> None:
 
 def get_all_users_admin(limit: int = 100, offset: int = 0) -> list:
     res = supabase.table("users").select(
-        "id, email, username, first_name, last_name, role, verified, created_at, last_seen, avatar_url"
+        "id, email, username, first_name, last_name, role, verified, banned, created_at, last_seen, avatar_url"
     ).order("id", desc=False).range(offset, offset + limit - 1).execute()
     return res.data or []
 
@@ -477,3 +510,135 @@ def update_user_role(target_id: int, role: str) -> dict:
 def update_user_verified(target_id: int, verified: bool) -> dict:
     res = supabase.table("users").update({"verified": verified}).eq("id", target_id).execute()
     return res.data[0] if res.data else None
+
+
+# ============ ЖАЛОБЫ ============
+
+def count_reports_by_user_24h(reporter_id: int) -> int:
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    res = supabase.table("reports").select("id").eq("reporter_id", reporter_id).gt(
+        "created_at", cutoff
+    ).execute()
+    return len(res.data or [])
+
+
+def create_report(reporter_id: int, reason: str, comment: str = None,
+                  reported_user_id: int = None, reported_message_id: int = None,
+                  reported_channel_id: int = None) -> dict:
+    data = {
+        "reporter_id": reporter_id,
+        "reason": reason,
+        "comment": comment,
+        "status": "new",
+    }
+    if reported_user_id:
+        data["reported_user_id"] = reported_user_id
+    if reported_message_id:
+        data["reported_message_id"] = reported_message_id
+    if reported_channel_id:
+        data["reported_channel_id"] = reported_channel_id
+    res = supabase.table("reports").insert(data).execute()
+    return res.data[0] if res.data else None
+
+
+def get_reports(status_filter: str = None, limit: int = 100, offset: int = 0) -> list:
+    q = supabase.table("reports").select("*").order("created_at", desc=True)
+    if status_filter:
+        q = q.eq("status", status_filter)
+    res = q.range(offset, offset + limit - 1).execute()
+    reports = res.data or []
+
+    result = []
+    for r in reports:
+        reporter = get_user_by_id(r["reporter_id"]) if r.get("reporter_id") else None
+        reported_user = get_user_by_id(r["reported_user_id"]) if r.get("reported_user_id") else None
+
+        msg_text = None
+        if r.get("reported_message_id"):
+            msg = get_message_by_id(r["reported_message_id"])
+            if msg:
+                msg_text = msg.get("text")
+
+        ch_name = None
+        if r.get("reported_channel_id"):
+            ch = get_channel_by_id(r["reported_channel_id"])
+            if ch:
+                ch_name = ch.get("name")
+
+        result.append({
+            "id": r["id"],
+            "reporter": {
+                "id": reporter["id"] if reporter else None,
+                "username": reporter.get("username") if reporter else None,
+                "first_name": reporter.get("first_name") if reporter else None,
+            } if reporter else None,
+            "reported_user": {
+                "id": reported_user["id"] if reported_user else None,
+                "username": reported_user.get("username") if reported_user else None,
+                "first_name": reported_user.get("first_name") if reported_user else None,
+            } if reported_user else None,
+            "reported_message_id": r.get("reported_message_id"),
+            "reported_message_text": msg_text,
+            "reported_channel_id": r.get("reported_channel_id"),
+            "reported_channel_name": ch_name,
+            "reason": r["reason"],
+            "comment": r.get("comment"),
+            "status": r["status"],
+            "created_at": r["created_at"],
+        })
+
+    return result
+
+
+def update_report_status(report_id: int, status: str, reviewer_id: int) -> dict:
+    res = supabase.table("reports").update({
+        "status": status,
+        "reviewed_by": reviewer_id,
+        "reviewed_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", report_id).execute()
+    return res.data[0] if res.data else None
+
+
+def count_new_reports() -> int:
+    res = supabase.table("reports").select("id").eq("status", "new").execute()
+    return len(res.data or [])
+
+
+# ============ БАНЫ ============
+
+def ban_user(target_id: int, reason: str, admin_id: int, until: str = None) -> dict:
+    data = {
+        "banned": True,
+        "ban_reason": reason,
+        "banned_at": datetime.now(timezone.utc).isoformat(),
+        "banned_by": admin_id,
+        "ban_until": until,
+    }
+    res = supabase.table("users").update(data).eq("id", target_id).execute()
+    return res.data[0] if res.data else None
+
+
+def unban_user(target_id: int) -> dict:
+    data = {
+        "banned": False,
+        "ban_reason": None,
+        "banned_at": None,
+        "banned_by": None,
+        "ban_until": None,
+    }
+    res = supabase.table("users").update(data).eq("id", target_id).execute()
+    return res.data[0] if res.data else None
+
+
+def is_ban_expired(user: dict) -> bool:
+    """Проверяет, истёк ли временный бан"""
+    if not user or not user.get("banned"):
+        return False
+    until = user.get("ban_until")
+    if not until:
+        return False
+    try:
+        until_dt = datetime.fromisoformat(until.replace("Z", "+00:00"))
+        return datetime.now(timezone.utc) > until_dt
+    except Exception:
+        return False
