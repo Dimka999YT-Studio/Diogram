@@ -1,5 +1,4 @@
 import os
-import json
 import jwt
 from datetime import datetime, timedelta, timezone
 from flask import Flask, request, jsonify, send_from_directory
@@ -329,7 +328,8 @@ def worker_get_pending():
     if request.headers.get("X-Worker-Key") != WORKER_KEY:
         return jsonify({"error": "Unauthorized"}), 401
 
-    res = supabase.table("pending_codes").select("*").order("created_at").limit(1).execute()
+    # Берём только НЕотправленные коды
+    res = supabase.table("pending_codes").select("*").eq("sent", False).order("created_at").limit(1).execute()
     if not res.data:
         return jsonify({"email": None, "code": None})
 
@@ -345,7 +345,8 @@ def worker_task_done():
     data = request.get_json() or {}
     email = data.get("email")
     if email:
-        supabase.table("pending_codes").delete().eq("email", email.lower()).execute()
+        # НЕ удаляем — просто помечаем как отправленный
+        supabase.table("pending_codes").update({"sent": True}).eq("email", email.lower()).execute()
     return jsonify({"ok": True})
 
 
