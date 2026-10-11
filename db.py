@@ -8,15 +8,14 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "").strip()
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+
 # ============ ПОЛЬЗОВАТЕЛИ ============
 
 def hash_password(password: str) -> str:
-    """Хеширует пароль"""
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def check_password(password: str, password_hash: str) -> bool:
-    """Проверяет пароль"""
     try:
         return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
     except Exception:
@@ -24,19 +23,16 @@ def check_password(password: str, password_hash: str) -> bool:
 
 
 def email_exists(email: str) -> bool:
-    """Проверяет, есть ли email в базе"""
     res = supabase.table("users").select("id").eq("email", email.lower()).execute()
     return len(res.data) > 0
 
 
 def username_exists(username: str) -> bool:
-    """Проверяет, занят ли @username"""
     res = supabase.table("users").select("id").eq("username", username.lower()).execute()
     return len(res.data) > 0
 
 
 def create_user(email: str, password: str, username: str = None, first_name: str = None, last_name: str = None) -> dict:
-    """Создаёт нового юзера. ID начинается с 1000000."""
     data = {
         "email": email.lower(),
         "password_hash": hash_password(password),
@@ -52,25 +48,21 @@ def create_user(email: str, password: str, username: str = None, first_name: str
 
 
 def get_user_by_email(email: str) -> dict:
-    """Находит юзера по email"""
     res = supabase.table("users").select("*").eq("email", email.lower()).execute()
     return res.data[0] if res.data else None
 
 
 def get_user_by_id(user_id: int) -> dict:
-    """Находит юзера по ID"""
     res = supabase.table("users").select("*").eq("id", user_id).execute()
     return res.data[0] if res.data else None
 
 
 def get_user_by_username(username: str) -> dict:
-    """Находит юзера по @username"""
     res = supabase.table("users").select("*").eq("username", username.lower()).execute()
     return res.data[0] if res.data else None
 
 
 def search_users(query: str, current_user_id: int, limit: int = 20) -> list:
-    """Ищет юзеров по @username или имени"""
     query = query.lower().lstrip("@")
     res = supabase.table("users").select("id, username, first_name, last_name, verified, role").or_(
         f"username.ilike.%{query}%,first_name.ilike.%{query}%"
@@ -79,7 +71,6 @@ def search_users(query: str, current_user_id: int, limit: int = 20) -> list:
 
 
 def update_user_profile(user_id: int, username: str, first_name: str, last_name: str = None) -> dict:
-    """Обновляет профиль юзера"""
     data = {
         "username": username.lower(),
         "first_name": first_name,
@@ -90,17 +81,9 @@ def update_user_profile(user_id: int, username: str, first_name: str, last_name:
     return res.data[0] if res.data else None
 
 
-def username_change_count_today(user_id: int) -> int:
-    """Сколько раз юзер менял @username за 24 часа (для лимита 10)"""
-    # Пока просто возвращаем 0. Позже добавим таблицу username_changes
-    return 0
-
-
 # ============ ЧАТЫ ============
 
 def get_or_create_chat(user1_id: int, user2_id: int) -> dict:
-    """Находит существующий чат между двумя юзерами или создаёт новый"""
-    # Всегда меньшее ID первым для консистентности
     a, b = sorted([user1_id, user2_id])
     res = supabase.table("chats").select("*").eq("user1_id", a).eq("user2_id", b).execute()
     if res.data:
@@ -110,7 +93,6 @@ def get_or_create_chat(user1_id: int, user2_id: int) -> dict:
 
 
 def get_user_chats(user_id: int) -> list:
-    """Возвращает все чаты юзера с данными собеседников"""
     res = supabase.table("chats").select("*").or_(
         f"user1_id.eq.{user_id},user2_id.eq.{user_id}"
     ).execute()
@@ -123,7 +105,6 @@ def get_user_chats(user_id: int) -> list:
         if not other:
             continue
 
-        # Последнее сообщение
         last = supabase.table("messages").select("*").eq("chat_id", chat["id"]).order(
             "created_at", desc=True
         ).limit(1).execute()
@@ -149,7 +130,6 @@ def get_user_chats(user_id: int) -> list:
 
 
 def get_chat_by_id(chat_id: int) -> dict:
-    """Получает чат по ID"""
     res = supabase.table("chats").select("*").eq("id", chat_id).execute()
     return res.data[0] if res.data else None
 
@@ -157,7 +137,6 @@ def get_chat_by_id(chat_id: int) -> dict:
 # ============ СООБЩЕНИЯ ============
 
 def save_message(chat_id: int, sender_id: int, text: str) -> dict:
-    """Сохраняет сообщение в БД"""
     res = supabase.table("messages").insert({
         "chat_id": chat_id,
         "sender_id": sender_id,
@@ -167,7 +146,6 @@ def save_message(chat_id: int, sender_id: int, text: str) -> dict:
 
 
 def get_messages(chat_id: int, limit: int = 50, offset: int = 0) -> list:
-    """Возвращает историю сообщений чата"""
     res = supabase.table("messages").select("*").eq("chat_id", chat_id).order(
         "created_at", desc=False
     ).range(offset, offset + limit - 1).execute()
@@ -175,7 +153,6 @@ def get_messages(chat_id: int, limit: int = 50, offset: int = 0) -> list:
 
 
 def search_messages(user_id: int, query: str, limit: int = 50) -> list:
-    """Ищет сообщения по тексту во всех чатах юзера"""
     chats = supabase.table("chats").select("id").or_(
         f"user1_id.eq.{user_id},user2_id.eq.{user_id}"
     ).execute()
@@ -199,6 +176,7 @@ def save_pending_code(email: str, code: int, expires_minutes: int = 15) -> None:
         "email": email.lower(),
         "code": str(code),
         "expires_at": expires_at,
+        "sent": False,
     }).execute()
 
 
@@ -216,6 +194,5 @@ def verify_code(email: str, code: str) -> bool:
         supabase.table("pending_codes").delete().eq("email", email.lower()).execute()
         return False
 
-    # Удаляем использованный код
     supabase.table("pending_codes").delete().eq("email", email.lower()).execute()
     return True
