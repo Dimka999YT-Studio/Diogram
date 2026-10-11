@@ -1,8 +1,6 @@
 import os
 import json
-import asyncio
 import jwt
-import bcrypt
 from datetime import datetime, timedelta, timezone
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -12,13 +10,15 @@ from db import (
     get_user_by_id, get_user_by_username, search_users,
     update_user_profile, get_or_create_chat, get_user_chats,
     get_chat_by_id, save_message, get_messages, search_messages,
-    save_pending_code, verify_code, check_password
+    save_pending_code, verify_code, check_password, supabase
 )
-from email_service import generate_code, send_verification_code
+from email_service import generate_code
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "diogram-secret-key-change-me")
 JWT_ALGO = "HS256"
 JWT_EXP_DAYS = 30
+
+WORKER_KEY = "diogram-phone-worker-2026"
 
 ALLOWED_DOMAINS = ["gmail.com", "yandex.com", "yandex.ru", "mail.ru", "outlook.com", "list.ru", "bk.ru", "inbox.ru"]
 BLOCKED_KEYWORDS = ["temp", "10minute", "guerrilla", "throwaway", "yopmail", "mailinator"]
@@ -29,7 +29,7 @@ CORS(app)
 
 # ==================== HELPERS ====================
 
-def make_token(user_id: int) -> str:
+def make_token(user_id):
     payload = {
         "user_id": user_id,
         "exp": datetime.now(timezone.utc) + timedelta(days=JWT_EXP_DAYS),
@@ -49,20 +49,20 @@ def get_current_user():
         return None
 
 
-def is_valid_email(email: str) -> tuple:
+def is_valid_email(email):
     email = email.lower().strip()
     if "@" not in email:
         return False, "Неверный email"
     domain = email.split("@")[-1]
     if domain not in ALLOWED_DOMAINS:
-        return False, f"Разрешены только: {', '.join('@' + d for d in ALLOWED_DOMAINS)}"
+        return False, "Разрешены только: " + ", ".join("@" + d for d in ALLOWED_DOMAINS)
     for bad in BLOCKED_KEYWORDS:
         if bad in domain:
             return False, "Временные почты запрещены"
     return True, ""
 
 
-def user_to_dict(u: dict) -> dict:
+def user_to_dict(u):
     return {
         "id": u["id"],
         "email": u.get("email"),
@@ -106,11 +106,7 @@ def api_register():
     code = generate_code()
     save_pending_code(email, code, expires_minutes=15)
 
-    sent = send_verification_code(email, code)
-    if not sent:
-        return jsonify({"error": "Не удалось отправить письмо. Попробуй позже"}), 500
-
-    return jsonify({"ok": True, "message": "Код отправлен на почту"})
+    return jsonify({"ok": True, "message": "Код создан, ждёт отправки"})
 
 
 @app.route("/api/verify", methods=["POST"])
@@ -268,21 +264,6 @@ def api_chat_messages(chat_id):
     })
 
 
-@app.route("/api/messages/search")
-def api_messages_search():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    q = request.args.get("q", "").strip()
-    if len(q) < 2:
-        return jsonify({"messages": []})
-
-    messages = search_messages(user["id"], q)
-    return jsonify({"messages": messages})
-
-
-# ==================== WEBSOCKET (упрощённо, через polling) ====================
 @app.route("/api/send", methods=["POST"])
 def api_send():
     user = get_current_user()
@@ -303,9 +284,23 @@ def api_send():
     msg = save_message(chat_id, user["id"], text)
     return jsonify({"ok": True, "message": msg})
 
+
+@app.route("/api/messages/search")
+def api_messages_search():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+
+    q = request.args.get("q", "").strip()
+    if len(q) < 2:
+        return jsonify({"messages": []})
+
+    messages = search_messages(user["id"], q)
+    return jsonify({"messages": messages})
+
+
 @app.route("/api/poll")
 def api_poll():
-    """Простой polling для получения новых сообщений (замена WebSocket для MVP)"""
     user = get_current_user()
     if not user:
         return jsonify({"error": "Не авторизован"}), 401
@@ -320,18 +315,42 @@ def api_poll():
     if not chat or user["id"] not in (chat["user1_id"], chat["user2_id"]):
         return jsonify({"error": "Нет доступа"}), 403
 
-    from supabase import create_client
-    sb = create_client(os.environ.get("SUPABASE_URL", ""), os.environ.get("SUPABASE_KEY", ""))
-    res = sb.table("messages").select("*").eq("chat_id", int(chat_id)).gt(
+    res = supabase.table("messages").select("*").eq("chat_id", int(chat_id)).gt(
         "created_at", after
     ).order("created_at").execute()
 
     return jsonify({"messages": res.data or []})
 
 
+# ==================== WORKER (ТЕЛЕФОН-ПОЧТАЛЬОН) ====================
+
+@app.route("/api/worker/get_pending")
+def worker_get_pending():
+    if request.headers.get("X-Worker-Key") != WORKER_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    res = supabase.table("pending_codes").select("*").order("created_at").limit(1).execute()
+    if not res.data:
+        return jsonify({"email": None, "code": None})
+
+    task = res.data[0]
+    return jsonify({"email": task["email"], "code": task["code"]})
+
+
+@app.route("/api/worker/task_done", methods=["POST"])
+def worker_task_done():
+    if request.headers.get("X-Worker-Key") != WORKER_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json() or {}
+    email = data.get("email")
+    if email:
+        supabase.table("pending_codes").delete().eq("email", email.lower()).execute()
+    return jsonify({"ok": True})
+
+
 # ==================== RUN ====================
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    print(f"Server on {port}")
-    app.run(host="0.0.0.0", port=port, debug=False)
+port = int(os.environ.get("PORT", 8080))
+print("Server on " + str(port))
+app.run(host="0.0.0.0", port=port, debug=False)
