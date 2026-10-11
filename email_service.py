@@ -6,8 +6,8 @@ import os
 
 SMTP_HOST = "smtp.mail.ru"
 SMTP_PORT = 465
-SMTP_EMAIL = os.environ.get("SMTP_EMAIL", "diogram@list.ru")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_EMAIL = os.environ.get("SMTP_EMAIL", "diogram@list.ru").strip()
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "").strip()
 
 
 def generate_code():
