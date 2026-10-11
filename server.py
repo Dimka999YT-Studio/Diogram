@@ -283,6 +283,25 @@ def api_messages_search():
 
 
 # ==================== WEBSOCKET (упрощённо, через polling) ====================
+@app.route("/api/send", methods=["POST"])
+def api_send():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+
+    data = request.get_json() or {}
+    chat_id = data.get("chat_id")
+    text = (data.get("text") or "").strip()
+
+    if not chat_id or not text:
+        return jsonify({"error": "chat_id и text обязательны"}), 400
+
+    chat = get_chat_by_id(chat_id)
+    if not chat or user["id"] not in (chat["user1_id"], chat["user2_id"]):
+        return jsonify({"error": "Нет доступа"}), 403
+
+    msg = save_message(chat_id, user["id"], text)
+    return jsonify({"ok": True, "message": msg})
 
 @app.route("/api/poll")
 def api_poll():
