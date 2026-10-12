@@ -34,7 +34,7 @@
 
   .header { background: #17212b; padding: 14px 16px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #0e1621; flex-shrink: 0; min-height: 56px; }
   .header h1 { font-size: 17px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .header-info { flex: 1; min-width: 0; }
+  .header-info { flex: 1; min-width: 0; cursor: pointer; }
   .header-info .name { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .header-info .status { font-size: 12px; color: #7e8b99; }
   .header-info .status.online { color: #4dd964; }
@@ -50,8 +50,8 @@
   .list-item:active { background: #17212b; }
   .avatar { width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg, #5b8bff, #7b5bff); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; flex-shrink: 0; color: #fff; overflow: hidden; position: relative; }
   .avatar img { width: 100%; height: 100%; object-fit: cover; }
-  .avatar.channel { background: linear-gradient(135deg, #ffb800, #ff6b00); }
-  .avatar.secret-channel { background: linear-gradient(135deg, #4dd964, #2fa54a); }
+  .avatar.channel { background: linear-gradient(135deg, #ffb800, #ff6b00); border-radius: 14px; }
+  .avatar.secret-channel { background: linear-gradient(135deg, #4dd964, #2fa54a); border-radius: 14px; }
   .online-dot { position: absolute; right: 2px; bottom: 2px; width: 12px; height: 12px; border-radius: 50%; background: #4dd964; border: 2px solid #0e1621; }
   .list-info { flex: 1; min-width: 0; }
   .list-name { font-size: 15px; font-weight: 600; margin-bottom: 3px; display: flex; align-items: center; gap: 5px; }
@@ -117,6 +117,7 @@
   .profile-btn { display: block; width: calc(100% - 32px); margin: 12px 16px 0; padding: 14px; border-radius: 12px; border: none; font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; text-align: center; }
   .profile-btn.primary { background: linear-gradient(135deg, #5b8bff, #4a7aff); color: #fff; }
   .profile-btn.danger { background: #2a1f24; color: #ff5b5b; }
+  .profile-btn.secondary { background: #242f3d; color: #fff; }
   .profile-btn:active { transform: scale(0.98); }
 
   .doc-screen { flex: 1; overflow-y: auto; padding: 20px 16px 40px; line-height: 1.6; }
@@ -156,7 +157,7 @@
   .report-body { font-size: 14px; margin-bottom: 10px; }
   .report-actions { display: flex; gap: 8px; }
 
-  .ban-screen { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .ban-screen { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; overflow-y: auto; }
   .ban-content { max-width: 480px; width: 100%; }
   .ban-icon { font-size: 72px; text-align: center; margin-bottom: 20px; }
   .ban-title { font-size: 24px; font-weight: 800; text-align: center; margin-bottom: 8px; }
@@ -188,6 +189,17 @@
   .photo-viewer img { max-width: 100%; max-height: 100%; object-fit: contain; }
   .photo-viewer-close { position: absolute; top: 20px; right: 20px; width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.1); border: none; color: #fff; font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 
+  /* ====== CHANNEL INFO ====== */
+  .ch-info-screen { flex: 1; overflow-y: auto; padding-bottom: 20px; }
+  .ch-info-top { display: flex; flex-direction: column; align-items: center; padding: 30px 20px 20px; gap: 10px; }
+  .ch-info-avatar { width: 120px; height: 120px; border-radius: 24px; background: linear-gradient(135deg, #ffb800, #ff6b00); display: flex; align-items: center; justify-content: center; font-size: 56px; color: #fff; box-shadow: 0 8px 30px rgba(255,150,0,0.35); overflow: hidden; position: relative; }
+  .ch-info-avatar.secret { background: linear-gradient(135deg, #4dd964, #2fa54a); box-shadow: 0 8px 30px rgba(77,217,100,0.35); }
+  .ch-info-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .ch-info-name { font-size: 24px; font-weight: 700; text-align: center; }
+  .ch-info-username { font-size: 15px; color: #5b8bff; }
+  .ch-info-type { font-size: 13px; color: #7e8b99; background: #17212b; padding: 4px 12px; border-radius: 12px; }
+  .ch-info-subs { font-size: 14px; color: #7e8b99; margin-top: 4px; }
+
   .spinner { width: 40px; height: 40px; border: 3px solid #242f3d; border-top-color: #5b8bff; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 20px auto; }
   @keyframes spin { to { transform: rotate(360deg); } }
   ::-webkit-scrollbar { width: 4px; }
@@ -197,6 +209,7 @@
 <body>
 <div id="app">
 
+  <!-- AUTH -->
   <div class="screen active" id="screen-auth">
     <div class="auth-container">
       <div class="logo-big">D</div>
@@ -230,6 +243,7 @@
     </div>
   </div>
 
+  <!-- PROFILE SETUP -->
   <div class="screen" id="screen-profile-setup">
     <div class="auth-container">
       <div class="logo-big" style="width:70px;height:70px;font-size:36px;">D</div>
@@ -237,7 +251,7 @@
       <div class="logo-sub">Чтобы тебя могли найти</div>
       <div class="form">
         <div class="error" id="profile-error"></div>
-        <input type="text" id="profile-username" placeholder="@username (латиница, цифры, _)" autocomplete="off">
+        <input type="text" id="profile-username" placeholder="@username" autocomplete="off">
         <input type="text" id="profile-first" placeholder="Имя" autocomplete="given-name">
         <input type="text" id="profile-last" placeholder="Фамилия (необязательно)" autocomplete="family-name">
         <button class="btn" id="btn-save-profile">Сохранить</button>
@@ -245,6 +259,7 @@
     </div>
   </div>
 
+  <!-- LIST -->
   <div class="screen" id="screen-list">
     <div class="header">
       <button class="header-icon" id="btn-menu">☰</button>
@@ -260,10 +275,11 @@
     </div>
   </div>
 
+  <!-- CHAT -->
   <div class="screen" id="screen-chat">
     <div class="header">
       <button class="header-icon" id="btn-back-chat">←</button>
-      <div class="header-info" id="chat-header-info" style="cursor:pointer;">
+      <div class="header-info" id="chat-header-info">
         <div class="name" id="chat-title">Чат</div>
         <div class="status" id="chat-status">—</div>
       </div>
@@ -284,10 +300,11 @@
     <input type="file" id="photo-file-input" accept="image/*" style="display:none;">
   </div>
 
+  <!-- CHANNEL -->
   <div class="screen" id="screen-channel">
     <div class="header">
       <button class="header-icon" id="btn-back-channel">←</button>
-      <div class="header-info" id="channel-header-info" style="cursor:pointer;">
+      <div class="header-info" id="channel-header-info">
         <div class="name" id="channel-title">Канал</div>
         <div class="status" id="channel-status">—</div>
       </div>
@@ -300,6 +317,7 @@
     </div>
   </div>
 
+  <!-- PROFILE FULL (свой) -->
   <div class="screen" id="screen-profile-full">
     <div class="header">
       <button class="header-icon" id="btn-profile-back">←</button>
@@ -350,6 +368,7 @@
     </div>
   </div>
 
+  <!-- USER PROFILE (чужой) -->
   <div class="screen" id="screen-user-profile">
     <div class="header">
       <button class="header-icon" id="btn-user-back">←</button>
@@ -371,6 +390,28 @@
     </div>
   </div>
 
+  <!-- CHANNEL INFO -->
+  <div class="screen" id="screen-channel-info">
+    <div class="header">
+      <button class="header-icon" id="btn-ch-info-back">←</button>
+      <h1>Информация о канале</h1>
+    </div>
+    <div class="ch-info-screen">
+      <div class="ch-info-top">
+        <div class="ch-info-avatar" id="ch-info-avatar">📢</div>
+        <div class="ch-info-name" id="ch-info-name">Канал</div>
+        <div class="ch-info-username" id="ch-info-username">@username</div>
+        <div class="ch-info-type" id="ch-info-type">📢 Публичный</div>
+        <div class="ch-info-subs" id="ch-info-subs">0 подписчиков</div>
+      </div>
+      <button class="profile-btn primary" id="btn-ch-info-edit" style="display:none;">✏️ Редактировать канал</button>
+      <button class="profile-btn secondary" id="btn-ch-info-subscribe" style="display:none;">➕ Подписаться</button>
+      <button class="profile-btn secondary" id="btn-ch-info-unsubscribe" style="display:none;">🔕 Отписаться</button>
+      <button class="profile-btn danger" id="btn-ch-info-delete" style="display:none;">🗑️ Удалить канал</button>
+    </div>
+  </div>
+
+  <!-- ADMIN -->
   <div class="screen" id="screen-admin">
     <div class="header">
       <button class="header-icon" id="btn-admin-back">←</button>
@@ -392,6 +433,7 @@
     <div class="list" id="admin-list"><div class="spinner"></div></div>
   </div>
 
+  <!-- RULES -->
   <div class="screen" id="screen-rules">
     <div class="header">
       <button class="header-icon" id="btn-rules-back">←</button>
@@ -412,6 +454,7 @@
     </div>
   </div>
 
+  <!-- PRIVACY -->
   <div class="screen" id="screen-privacy">
     <div class="header">
       <button class="header-icon" id="btn-privacy-back">←</button>
@@ -434,6 +477,7 @@
     </div>
   </div>
 
+  <!-- BAN -->
   <div class="screen" id="screen-ban">
     <div class="ban-screen">
       <div class="ban-content">
@@ -489,7 +533,7 @@
   <div class="modal-bg" onclick="closeModal('modal-username')"></div>
   <div class="modal-content">
     <div class="modal-title">Изменить @username</div>
-    <input type="text" id="modal-username-input" placeholder="username (латиница, цифры, _)" maxlength="32">
+    <input type="text" id="modal-username-input" placeholder="username" maxlength="32">
     <div style="font-size:12px;color:#7e8b99;margin-top:8px;" id="username-limit-info">Проверка лимита...</div>
     <div class="error" id="modal-username-error" style="margin-top:8px;"></div>
     <div class="modal-actions">
@@ -548,6 +592,34 @@
   </div>
 </div>
 
+<div class="modal" id="modal-ch-edit">
+  <div class="modal-bg" onclick="closeModal('modal-ch-edit')"></div>
+  <div class="modal-content">
+    <div class="modal-title">✏️ Редактировать канал</div>
+    <div style="text-align:center;margin-bottom:16px;">
+      <div class="ch-info-avatar" id="ch-edit-avatar" style="width:80px;height:80px;font-size:36px;border-radius:20px;margin:0 auto;cursor:pointer;">📢</div>
+      <div style="font-size:12px;color:#7e8b99;margin-top:6px;">Нажми чтобы изменить аватарку</div>
+      <input type="file" id="ch-edit-avatar-file" accept="image/*" style="display:none;">
+    </div>
+    <div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">Название</div>
+    <input type="text" id="ch-edit-name" placeholder="Название" maxlength="64" style="margin-bottom:12px;">
+    <div id="ch-edit-username-row">
+      <div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">@username</div>
+      <input type="text" id="ch-edit-username" placeholder="username" maxlength="32" style="margin-bottom:12px;">
+    </div>
+    <div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">Тип канала</div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;">
+      <button class="reason-option" data-type="public" id="ch-edit-type-public" style="flex:1;text-align:center;margin:0;">📢 Публичный</button>
+      <button class="reason-option" data-type="secret" id="ch-edit-type-secret" style="flex:1;text-align:center;margin:0;">🔒 Секретный</button>
+    </div>
+    <div class="error" id="modal-ch-edit-error" style="margin-top:8px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-ch-edit')">Отмена</button>
+      <button class="btn" id="btn-ch-save">Сохранить</button>
+    </div>
+  </div>
+</div>
+
 <div class="photo-viewer" id="photo-viewer">
   <button class="photo-viewer-close" onclick="closePhotoViewer()">✕</button>
   <img id="photo-viewer-img">
@@ -560,6 +632,9 @@ let currentUser = null;
 let currentChat = null;
 let currentChannel = null;
 let currentUserProfile = null;
+let currentChInfo = null;
+let chEditType = "public";
+let newAvatarFile = null;
 let currentAdminTab = "users";
 let allAdminUsers = [];
 let allReports = [];
@@ -613,7 +688,7 @@ function showBanScreen(data) {
 
 document.getElementById("btn-copy-ban").onclick = () => {
   const text = "Я забанен в Diogram\nПричина: " + document.getElementById("ban-reason").textContent + "\nИмя: " + document.getElementById("ban-name").textContent + "\nID: " + document.getElementById("ban-id").textContent + "\n@username: " + document.getElementById("ban-username").textContent;
-  navigator.clipboard.writeText(text).then(() => alert("Скопировано!")).catch(() => alert("Не удалось скопировать"));
+  navigator.clipboard.writeText(text).then(() => alert("Скопировано!")).catch(() => alert("Не удалось"));
 };
 document.getElementById("btn-ban-logout").onclick = () => { localStorage.removeItem("diogram_token"); location.reload(); };
 
@@ -739,7 +814,8 @@ async function loadList() {
         el.onclick = () => openChat(item.chat_id, u);
       } else {
         const av = document.createElement("div"); av.className = "avatar " + (item.channel_type === "secret" ? "secret-channel" : "channel");
-        av.textContent = item.channel_type === "secret" ? "🔒" : "📢";
+        if (item.avatar_url) av.innerHTML = '<img src="' + item.avatar_url + '">';
+        else av.textContent = item.channel_type === "secret" ? "🔒" : "📢";
         el.innerHTML = ''; el.appendChild(av);
         const info = document.createElement("div"); info.className = "list-info";
         info.innerHTML = '<div class="list-name">' + escapeHtml(item.name) + '</div><div class="list-last">' + (item.subscribers_count || 0) + ' подписчиков</div>';
@@ -788,8 +864,17 @@ function appendMessage(m) {
   box.scrollTop = box.scrollHeight;
 }
 
-document.getElementById("send-btn").onclick = sendMessage;
-document.getElementById("msg-input").addEventListener("keypress", e => { if (e.key === "Enter") sendMessage(); });
+function openPhotoViewer(url) { document.getElementById("photo-viewer-img").src = url; document.getElementById("photo-viewer").classList.add("active"); }
+function closePhotoViewer() { document.getElementById("photo-viewer").classList.remove("active"); }
+
+document.getElementById("msg-input").addEventListener("keypress", e => { if (e.key === "Enter") handleSend(); });
+document.getElementById("send-btn").onclick = handleSend;
+
+function handleSend() {
+  if (pendingPhoto) return sendPhoto();
+  return sendMessage();
+}
+
 document.getElementById("msg-input").addEventListener("input", () => { if (!currentChat) return; if (typingTimer) return; typingTimer = setTimeout(() => typingTimer = null, 3000); api("/api/typing", { method: "POST", body: JSON.stringify({ chat_id: currentChat.id }) }).catch(() => {}); });
 
 async function sendMessage() {
@@ -803,23 +888,22 @@ async function sendMessage() {
   } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
 }
 
-function startChatPolling() {
-  if (chatPollInterval) clearInterval(chatPollInterval);
-  chatPollInterval = setInterval(async () => {
-    if (!currentChat) return;
-    try {
-      const data = await api("/api/poll?chat_id=" + currentChat.id + "&after=" + encodeURIComponent(lastMessageTime));
-      if (data.messages && data.messages.length) {
-        for (const m of data.messages) { if (m.sender_id !== currentUser.id) appendMessage(m); lastMessageTime = m.created_at; }
-        api("/api/chats/" + currentChat.id + "/read", { method: "POST" }).catch(() => {});
-      }
-      document.getElementById("typing").style.display = data.typing ? "block" : "none";
-    } catch (e) {}
-  }, 2000);
+async function sendPhoto() {
+  if (!pendingPhoto || !currentChat) return;
+  const input = document.getElementById("msg-input");
+  const caption = input.value.trim();
+  const fd = new FormData();
+  fd.append("file", pendingPhoto);
+  fd.append("chat_id", currentChat.id);
+  fd.append("caption", caption);
+  document.getElementById("photo-preview").classList.remove("active");
+  input.value = "";
+  pendingPhoto = null;
+  try {
+    const data = await api("/api/upload/photo", { method: "POST", body: fd });
+    if (data.message) appendMessage(data.message);
+  } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
 }
-
-document.getElementById("btn-back-chat").onclick = () => { if (chatPollInterval) clearInterval(chatPollInterval); currentChat = null; show("screen-list"); loadList(); };
-document.getElementById("chat-header-info").onclick = () => { if (currentChat && currentChat.other) openUserProfile(currentChat.other.id); };
 
 document.getElementById("btn-attach-photo").onclick = () => { if (!currentChat) return; document.getElementById("photo-file-input").click(); };
 document.getElementById("photo-file-input").onchange = (e) => {
@@ -839,34 +923,24 @@ document.getElementById("photo-file-input").onchange = (e) => {
 };
 document.getElementById("photo-preview-close").onclick = () => { pendingPhoto = null; document.getElementById("photo-preview").classList.remove("active"); };
 
-async function sendPhoto() {
-  if (!pendingPhoto || !currentChat) return;
-  const input = document.getElementById("msg-input");
-  const caption = input.value.trim();
-  const fd = new FormData();
-  fd.append("file", pendingPhoto);
-  fd.append("chat_id", currentChat.id);
-  fd.append("caption", caption);
-  document.getElementById("photo-preview").classList.remove("active");
-  input.value = "";
-  const photoName = pendingPhoto.name; pendingPhoto = null;
-  try {
-    const data = await api("/api/upload/photo", { method: "POST", body: fd });
-    if (data.message) appendMessage(data.message);
-  } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
+function startChatPolling() {
+  if (chatPollInterval) clearInterval(chatPollInterval);
+  chatPollInterval = setInterval(async () => {
+    if (!currentChat) return;
+    try {
+      const data = await api("/api/poll?chat_id=" + currentChat.id + "&after=" + encodeURIComponent(lastMessageTime));
+      if (data.messages && data.messages.length) {
+        for (const m of data.messages) { if (m.sender_id !== currentUser.id) appendMessage(m); lastMessageTime = m.created_at; }
+        api("/api/chats/" + currentChat.id + "/read", { method: "POST" }).catch(() => {});
+      }
+      document.getElementById("typing").style.display = data.typing ? "block" : "none";
+    } catch (e) {}
+  }, 2000);
 }
 
-const origSendMessage = sendMessage;
-sendMessage = async function() { if (pendingPhoto) return sendPhoto(); return origSendMessage(); };
-
-function openPhotoViewer(url) { document.getElementById("photo-viewer-img").src = url; document.getElementById("photo-viewer").classList.add("active"); }
-function closePhotoViewer() { document.getElementById("photo-viewer").classList.remove("active"); }
-
-document.getElementById("btn-chat-report").onclick = () => {
-  if (!currentChat) return;
-  reportTarget = { type: "user", user_id: currentChat.other.id, name: currentChat.other.first_name || currentChat.other.username };
-  openReportModal();
-};
+document.getElementById("btn-back-chat").onclick = () => { if (chatPollInterval) clearInterval(chatPollInterval); currentChat = null; show("screen-list"); loadList(); };
+document.getElementById("chat-header-info").onclick = () => { if (currentChat && currentChat.other) openUserProfile(currentChat.other.id); };
+document.getElementById("btn-chat-report").onclick = () => { if (!currentChat) return; reportTarget = { type: "user", user_id: currentChat.other.id, name: currentChat.other.first_name || currentChat.other.username }; openReportModal(); };
 
 async function openChannel(channelId) {
   currentChannel = { id: channelId };
@@ -906,12 +980,106 @@ function startChannelPolling() {
 }
 
 document.getElementById("btn-back-channel").onclick = () => { if (channelPollInterval) clearInterval(channelPollInterval); currentChannel = null; show("screen-list"); loadList(); };
-document.getElementById("channel-header-info").onclick = () => { if (currentChannel && currentChannel.is_owner) showChannelSubscribers(); };
+document.getElementById("channel-header-info").onclick = () => { if (currentChannel) openChannelInfo(currentChannel.id); };
 document.getElementById("btn-channel-report").onclick = () => { if (!currentChannel) return; reportTarget = { type: "channel", channel_id: currentChannel.id, name: currentChannel.name }; openReportModal(); };
 
-async function showChannelSubscribers() {
-  try { const data = await api("/api/channels/" + currentChannel.id + "/subscribers"); const subs = data.subscribers.map(s => "@" + (s.username || "?") + " — " + (s.first_name || "")).join("\n"); alert("Подписчики (" + data.subscribers.length + "):\n\n" + (subs || "Пусто")); } catch (e) { alert("Ошибка: " + e.message); }
+// CHANNEL INFO
+async function openChannelInfo(channelId) {
+  try {
+    const data = await api("/api/channels/" + channelId + "/info");
+    const ch = data.channel;
+    currentChInfo = ch;
+    const av = document.getElementById("ch-info-avatar");
+    av.className = "ch-info-avatar" + (ch.type === "secret" ? " secret" : "");
+    if (ch.avatar_url) av.innerHTML = '<img src="' + ch.avatar_url + '">';
+    else av.textContent = ch.type === "secret" ? "🔒" : "📢";
+    document.getElementById("ch-info-name").textContent = ch.name;
+    document.getElementById("ch-info-username").textContent = ch.username ? "@" + ch.username : "Секретный канал";
+    document.getElementById("ch-info-type").textContent = ch.type === "secret" ? "🔒 Секретный" : "📢 Публичный";
+    document.getElementById("ch-info-subs").textContent = (ch.subscribers_count || 0) + " подписчиков";
+    const isOwner = ch.is_owner; const isSub = ch.is_subscribed;
+    document.getElementById("btn-ch-info-edit").style.display = isOwner ? "block" : "none";
+    document.getElementById("btn-ch-info-delete").style.display = isOwner ? "block" : "none";
+    if (isOwner) { document.getElementById("btn-ch-info-subscribe").style.display = "none"; document.getElementById("btn-ch-info-unsubscribe").style.display = "none"; }
+    else if (isSub) { document.getElementById("btn-ch-info-subscribe").style.display = "none"; document.getElementById("btn-ch-info-unsubscribe").style.display = ch.type === "public" ? "block" : "none"; }
+    else { document.getElementById("btn-ch-info-subscribe").style.display = "block"; document.getElementById("btn-ch-info-unsubscribe").style.display = "none"; }
+    show("screen-channel-info");
+  } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
 }
+
+document.getElementById("btn-ch-info-back").onclick = () => { if (currentChannel) show("screen-channel"); else { show("screen-list"); loadList(); } };
+
+document.getElementById("btn-ch-info-edit").onclick = () => {
+  if (!currentChInfo) return;
+  newAvatarFile = null; chEditType = currentChInfo.type;
+  const av = document.getElementById("ch-edit-avatar");
+  av.className = "ch-info-avatar" + (currentChInfo.type === "secret" ? " secret" : "");
+  if (currentChInfo.avatar_url) av.innerHTML = '<img src="' + currentChInfo.avatar_url + '">';
+  else av.textContent = currentChInfo.type === "secret" ? "🔒" : "📢";
+  document.getElementById("ch-edit-name").value = currentChInfo.name || "";
+  document.getElementById("ch-edit-username").value = currentChInfo.username || "";
+  document.getElementById("ch-edit-username-row").style.display = currentChInfo.type === "public" ? "block" : "none";
+  document.getElementById("ch-edit-type-public").classList.toggle("selected", currentChInfo.type === "public");
+  document.getElementById("ch-edit-type-secret").classList.toggle("selected", currentChInfo.type === "secret");
+  setError("modal-ch-edit-error", "");
+  openModal("modal-ch-edit");
+};
+
+document.getElementById("ch-edit-avatar").onclick = () => document.getElementById("ch-edit-avatar-file").click();
+document.getElementById("ch-edit-avatar-file").onchange = (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { alert("Файл больше 5 МБ"); e.target.value = ""; return; }
+  if (!file.type.startsWith("image/")) { alert("Только изображения"); e.target.value = ""; return; }
+  newAvatarFile = file;
+  const reader = new FileReader();
+  reader.onload = (ev) => { document.getElementById("ch-edit-avatar").innerHTML = '<img src="' + ev.target.result + '">'; };
+  reader.readAsDataURL(file);
+  e.target.value = "";
+};
+
+document.getElementById("ch-edit-type-public").onclick = () => { chEditType = "public"; document.getElementById("ch-edit-type-public").classList.add("selected"); document.getElementById("ch-edit-type-secret").classList.remove("selected"); document.getElementById("ch-edit-username-row").style.display = "block"; };
+document.getElementById("ch-edit-type-secret").onclick = () => {
+  if (currentUser.role !== "owner" && currentUser.role !== "developer") return alert("Только разработчики могут делать канал секретным");
+  chEditType = "secret"; document.getElementById("ch-edit-type-secret").classList.add("selected"); document.getElementById("ch-edit-type-public").classList.remove("selected"); document.getElementById("ch-edit-username-row").style.display = "none";
+};
+
+document.getElementById("btn-ch-save").onclick = async () => {
+  if (!currentChInfo) return;
+  const name = document.getElementById("ch-edit-name").value.trim();
+  const username = document.getElementById("ch-edit-username").value.trim().replace("@", "");
+  if (!name) return setError("modal-ch-edit-error", "Название обязательно");
+  if (chEditType === "public" && !username) return setError("modal-ch-edit-error", "Для публичного нужен @username");
+  try {
+    await api("/api/channels/" + currentChInfo.id + "/update", { method: "POST", body: JSON.stringify({ name, username: chEditType === "public" ? username : null, type: chEditType }) });
+    if (newAvatarFile) {
+      const fd = new FormData(); fd.append("file", newAvatarFile);
+      try { await api("/api/channels/" + currentChInfo.id + "/avatar", { method: "POST", body: fd }); } catch (e) { alert("Аватар: " + e.message); }
+    }
+    closeModal("modal-ch-edit");
+    alert("Канал обновлён!");
+    newAvatarFile = null;
+    openChannelInfo(currentChInfo.id);
+    if (currentChannel) { currentChannel.name = name; document.getElementById("channel-title").textContent = name; }
+  } catch (e) { setError("modal-ch-edit-error", e.message); }
+};
+
+document.getElementById("btn-ch-info-subscribe").onclick = async () => {
+  if (!currentChInfo) return;
+  try { await api("/api/channels/" + currentChInfo.id + "/subscribe", { method: "POST" }); alert("Подписан!"); openChannelInfo(currentChInfo.id); loadList(); } catch (e) { alert("Ошибка: " + e.message); }
+};
+
+document.getElementById("btn-ch-info-unsubscribe").onclick = async () => {
+  if (!currentChInfo) return;
+  if (!confirm("Отписаться от канала?")) return;
+  try { await api("/api/channels/" + currentChInfo.id + "/unsubscribe", { method: "POST" }); show("screen-list"); loadList(); } catch (e) { alert("Ошибка: " + e.message); }
+};
+
+document.getElementById("btn-ch-info-delete").onclick = async () => {
+  if (!currentChInfo) return;
+  if (!confirm('Удалить канал "' + currentChInfo.name + '"?\n\nЭто НЕОБРАТИМО!')) return;
+  if (!confirm("Точно? Подтверди ещё раз.")) return;
+  try { await api("/api/channels/" + currentChInfo.id, { method: "DELETE" }); alert("Удалён"); currentChannel = null; currentChInfo = null; show("screen-list"); loadList(); } catch (e) { alert("Ошибка: " + e.message); }
+};
 
 document.getElementById("global-search").addEventListener("input", async (e) => {
   const q = e.target.value.trim();
@@ -926,6 +1094,7 @@ document.getElementById("global-search").addEventListener("input", async (e) => 
   } catch (e) {}
 });
 
+// MENU
 const overlay = document.getElementById("overlay");
 const menuSheet = document.getElementById("menu-sheet");
 function openMenu() { overlay.classList.add("active"); menuSheet.classList.add("active"); }
@@ -937,12 +1106,13 @@ document.getElementById("menu-logout").onclick = () => { if (!confirm("Выйт�
 document.getElementById("menu-admin").onclick = () => { closeMenu(); openAdmin(); };
 document.getElementById("menu-new-channel").onclick = () => { closeMenu(); createChannelDialog(); };
 
+// PROFILE
 function openProfile() {
   if (!currentUser) return;
   const name = ((currentUser.first_name || "") + " " + (currentUser.last_name || "")).trim() || "Без имени";
   const av = document.getElementById("profile-avatar");
   if (currentUser.avatar_url) av.innerHTML = '<img src="' + currentUser.avatar_url + '"><div class="avatar-edit-hint">📷</div>';
-  else { av.innerHTML = initial(name) + '<div class="avatar-edit-hint">📷</div>'; }
+  else av.innerHTML = initial(name) + '<div class="avatar-edit-hint">📷</div>';
   document.getElementById("profile-name").textContent = name;
   document.getElementById("profile-fullname").textContent = name;
   document.getElementById("profile-username-show").textContent = currentUser.username ? "@" + currentUser.username : "—";
@@ -986,7 +1156,7 @@ document.getElementById("edit-username").onclick = async () => {
   openModal("modal-username");
 };
 document.getElementById("btn-save-username").onclick = async () => {
-  const username = document.getElementById("modal-username-input").value.trim().replace("@", "").toLowerCase();
+  const username = document.getElementById("modal-username-input").value.trim().replace("@", "");
   if (!username) return setError("modal-username-error", "Username обязателен");
   try { const data = await api("/api/profile/username", { method: "POST", body: JSON.stringify({ username }) }); currentUser = data.user; closeModal("modal-username"); openProfile(); alert("Username изменён! Осталось смен: " + data.changes_left); } catch (e) { setError("modal-username-error", e.message); }
 };
@@ -997,6 +1167,7 @@ document.getElementById("btn-save-bio").onclick = async () => {
   try { const data = await api("/api/profile/bio", { method: "POST", body: JSON.stringify({ bio }) }); currentUser = data.user; closeModal("modal-bio"); openProfile(); } catch (e) { setError("modal-bio-error", e.message); }
 };
 
+// USER PROFILE (чужой)
 async function openUserProfile(userId) {
   try {
     const data = await api("/api/users/" + userId);
@@ -1019,9 +1190,9 @@ async function openUserProfile(userId) {
     show("screen-user-profile");
   } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
 }
-
 document.getElementById("btn-user-back").onclick = () => { show("screen-list"); loadList(); };
 
+// CREATE CHANNEL
 function createChannelDialog() {
   const name = prompt("Название канала:");
   if (!name || !name.trim()) return;
@@ -1035,6 +1206,7 @@ function createChannelDialog() {
 document.getElementById("btn-new-channel").onclick = createChannelDialog;
 document.getElementById("btn-new-chat").onclick = () => { const q = prompt("Найди @username:"); if (q) { document.getElementById("global-search").value = q; document.getElementById("global-search").dispatchEvent(new Event("input")); } };
 
+// REPORTS
 const REASON_NAMES = { spam: "Спам", abuse: "Оскорбления", scam: "Мошенничество", "18+": "18+ контент", fake: "Фейк", other: "Другое" };
 
 function openReportModal() {
@@ -1058,6 +1230,7 @@ document.getElementById("btn-send-report").onclick = async () => {
   try { await api("/api/reports", { method: "POST", body: JSON.stringify(payload) }); closeModal("modal-report"); alert("Жалоба отправлена!"); } catch (e) { setError("modal-report-error", e.message); }
 };
 
+// ADMIN
 async function openAdmin() {
   show("screen-admin");
   currentAdminTab = "users";
@@ -1070,12 +1243,7 @@ document.querySelectorAll(".admin-tab").forEach(tab => { tab.onclick = () => { d
 
 async function loadAdminUsers() {
   const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
-  try {
-    const data = await api("/api/admin/users?limit=100");
-    allAdminUsers = data.users;
-    const me = data.me;
-    renderAdminUsers(me, allAdminUsers);
-  } catch (e) { box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+  try { const data = await api("/api/admin/users?limit=100"); allAdminUsers = data.users; const me = data.me; renderAdminUsers(me, allAdminUsers); } catch (e) { box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
 }
 
 function renderAdminUsers(me, users) {
@@ -1099,7 +1267,7 @@ function renderAdminUsers(me, users) {
   }
 }
 
-document.getElementById("admin-search").addEventListener("input", () => { if (currentAdminTab === "users" && allAdminUsers.length) { const me = { role: currentUser.role, id: currentUser.id }; renderAdminUsers(me, allAdminUsers); } });
+document.getElementById("admin-search").addEventListener("input", () => { if (currentAdminTab === "users" && allAdminUsers.length) renderAdminUsers({ role: currentUser.role, id: currentUser.id }, allAdminUsers); });
 
 async function adminChangeRole(userId) { const role = prompt("Роль (user / moderator / developer):", "moderator"); if (!role) return; if (!["user", "moderator", "developer"].includes(role)) return alert("Неверная роль"); try { await api("/api/admin/set_role", { method: "POST", body: JSON.stringify({ user_id: userId, role }) }); loadAdminUsers(); } catch (e) { alert("Ошибка: " + e.message); } }
 async function adminToggleVerified(userId, verified) { try { await api("/api/admin/set_verified", { method: "POST", body: JSON.stringify({ user_id: userId, verified }) }); loadAdminUsers(); } catch (e) { alert("Ошибка: " + e.message); } }
@@ -1144,15 +1312,16 @@ async function loadAdminReports() {
 }
 
 async function reportAction(reportId, status) { try { await api("/api/admin/reports/" + reportId + "/review", { method: "POST", body: JSON.stringify({ status }) }); loadAdminReports(); } catch (e) { alert("Ошибка: " + e.message); } }
-
 document.getElementById("btn-admin-back").onclick = () => { show("screen-list"); loadList(); };
 
+// DOCS
 function openDoc(type) { if (type === "rules") show("screen-rules"); else show("screen-privacy"); }
 document.getElementById("open-rules").onclick = () => openDoc("rules");
 document.getElementById("open-privacy").onclick = () => openDoc("privacy");
 document.getElementById("btn-rules-back").onclick = () => { if (currentUser && currentUser.profile_completed) show("screen-profile-full"); else show("screen-auth"); };
 document.getElementById("btn-privacy-back").onclick = () => { if (currentUser && currentUser.profile_completed) show("screen-profile-full"); else show("screen-auth"); };
 
+// INIT
 (async function init() {
   if (token) {
     try { const data = await api("/api/me"); currentUser = data.user; afterLogin(); return; } catch (e) { if (e.message !== "banned") { localStorage.removeItem("diogram_token"); token = null; } }
@@ -1161,4 +1330,4 @@ document.getElementById("btn-privacy-back").onclick = () => { if (currentUser &&
 })();
 </script>
 </body>
-       </html>
+ </html> 
