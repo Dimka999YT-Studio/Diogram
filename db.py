@@ -28,7 +28,7 @@ def email_exists(email: str) -> bool:
 
 
 def username_exists(username: str) -> bool:
-    res = supabase.table("users").select("id").eq("username", username.lower()).execute()
+    res = supabase.table("users").select("id").ilike("username", username).execute()
     return len(res.data) > 0
 
 
@@ -36,7 +36,7 @@ def create_user(email: str, password: str, username: str = None, first_name: str
     data = {
         "email": email.lower(),
         "password_hash": hash_password(password),
-        "username": username.lower() if username else None,
+        "username": username if username else None,
         "first_name": first_name,
         "last_name": last_name,
         "role": "user",
@@ -60,7 +60,7 @@ def get_user_by_id(user_id: int) -> dict:
 
 
 def get_user_by_username(username: str) -> dict:
-    res = supabase.table("users").select("*").eq("username", username.lower()).execute()
+    res = supabase.table("users").select("*").ilike("username", username).execute()
     return res.data[0] if res.data else None
 
 
@@ -79,7 +79,7 @@ def search_users(query: str, current_user_id: int, limit: int = 20) -> list:
 
 def update_user_profile(user_id: int, username: str, first_name: str, last_name: str = None) -> dict:
     data = {
-        "username": username.lower(),
+        "username": username,
         "first_name": first_name,
         "last_name": last_name,
         "profile_completed": True,
@@ -95,7 +95,7 @@ def update_user_name(user_id: int, first_name: str, last_name: str = None) -> di
 
 
 def update_user_username(user_id: int, username: str) -> dict:
-    res = supabase.table("users").update({"username": username.lower()}).eq("id", user_id).execute()
+    res = supabase.table("users").update({"username": username}).eq("id", user_id).execute()
     return res.data[0] if res.data else None
 
 
@@ -322,7 +322,7 @@ def create_channel(owner_id: int, name: str, username: str = None, description: 
     data = {
         "owner_id": owner_id,
         "name": name,
-        "username": username.lower() if username else None,
+        "username": username if username else None,
         "description": description,
         "type": ch_type,
     }
@@ -336,7 +336,7 @@ def get_channel_by_id(channel_id: int) -> dict:
 
 
 def get_channel_by_username(username: str) -> dict:
-    res = supabase.table("channels").select("*").eq("username", username.lower()).execute()
+    res = supabase.table("channels").select("*").ilike("username", username).execute()
     return res.data[0] if res.data else None
 
 
@@ -375,6 +375,7 @@ def get_user_channels(user_id: int) -> list:
             "name": ch["name"],
             "username": ch.get("username"),
             "description": ch.get("description"),
+            "avatar_url": ch.get("avatar_url"),
             "is_owner": ch["owner_id"] == user_id,
             "owner": {
                 "id": owner["id"] if owner else None,
@@ -450,6 +451,28 @@ def update_channel(channel_id: int, name: str = None, description: str = None) -
     if not data:
         return None
     res = supabase.table("channels").update(data).eq("id", channel_id).execute()
+    return res.data[0] if res.data else None
+
+
+def update_channel_full(channel_id: int, name: str = None, username: str = None,
+                        ch_type: str = None, description: str = None) -> dict:
+    data = {}
+    if name is not None:
+        data["name"] = name.strip()
+    if username is not None:
+        data["username"] = username.strip() if username.strip() else None
+    if ch_type is not None:
+        data["type"] = ch_type
+    if description is not None:
+        data["description"] = description.strip() or None
+    if not data:
+        return None
+    res = supabase.table("channels").update(data).eq("id", channel_id).execute()
+    return res.data[0] if res.data else None
+
+
+def update_channel_avatar(channel_id: int, avatar_url: str) -> dict:
+    res = supabase.table("channels").update({"avatar_url": avatar_url}).eq("id", channel_id).execute()
     return res.data[0] if res.data else None
 
 
@@ -631,7 +654,6 @@ def unban_user(target_id: int) -> dict:
 
 
 def is_ban_expired(user: dict) -> bool:
-    """Проверяет, истёк ли временный бан"""
     if not user or not user.get("banned"):
         return False
     until = user.get("ban_until")
