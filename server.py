@@ -24,7 +24,8 @@ from db import (
     create_channel, get_channel_by_id, get_channel_by_username,
     count_user_channels, get_user_channels, search_public_channels,
     subscribe_to_channel, unsubscribe_from_channel, is_subscribed,
-    get_channel_subscribers, update_channel, delete_channel,
+    get_channel_subscribers, update_channel, update_channel_full,
+    update_channel_avatar, delete_channel,
     save_channel_message, get_channel_messages, delete_channel_message,
     get_all_users_admin, update_user_role, update_user_verified,
     subscribe_new_user_to_secret_channels,
@@ -84,7 +85,7 @@ def get_current_user():
         return None
 
 
-def check_rate_limit(key: str, max_attempts: int, window_sec: int) -> bool:
+def check_rate_limit(key, max_attempts, window_sec):
     now = time.time()
     rate_limit_store[key] = [t for t in rate_limit_store[key] if now - t < window_sec]
     if len(rate_limit_store[key]) >= max_attempts:
@@ -128,7 +129,6 @@ def user_to_dict(u):
 
 
 def user_public_dict(u):
-    """Публичный профиль (для чужих)"""
     from db import is_online
     if not u:
         return None
@@ -148,7 +148,6 @@ def user_public_dict(u):
 
 
 def check_banned(user):
-    """Проверяет, забанен ли юзер. Если временный бан истёк — разбанивает."""
     if not user:
         return False, None
     if not user.get("banned"):
@@ -157,6 +156,30 @@ def check_banned(user):
         unban_user(user["id"])
         return False, None
     return True, user.get("ban_reason") or "Нарушение правил"
+
+
+def validate_username(username, role):
+    """Проверяет username по правилам TG.
+    Owner/Developer: минимум 1 символ.
+    Остальные: минимум 4 символа.
+    Не начинается с цифры или _.
+    """
+    if not username:
+        return False, "Username обязателен"
+    min_len = 1 if role in ("owner", "developer") else 4
+    if len(username) < min_len:
+        return False, f"Username от {min_len} до 32 символов"
+    if len(username) > 32:
+        return False, "Username до 32 символов"
+    if not re.match(r"^[a-zA-Z][a-zA-Z0-9_]*$", username):
+        return False, "Username: начинается с буквы, только латиница, цифры, _"
+    return True, ""
+
+
+def username_format_msg(role):
+    if role in ("owner", "developer"):
+        return "Username от 1 символа, начинается с буквы"
+    return "Username от 4 символов, начинается с буквы"
 
 
 # ==================== STATIC ====================
@@ -305,18 +328,16 @@ def api_profile():
         return jsonify({"error": "Не авторизован"}), 401
 
     data = request.get_json() or {}
-    username = (data.get("username") or "").lower().strip().lstrip("@")
+    username = (data.get("username") or "").strip().lstrip("@")
     first_name = (data.get("first_name") or "").strip()
     last_name = (data.get("last_name") or "").strip() or None
 
-    if not username or not first_name:
-        return jsonify({"error": "Username и имя обязательны"}), 400
+    if not first_name:
+        return jsonify({"error": "Имя обязательно"}), 400
 
-    if len(username) < 3 or len(username) > 32:
-        return jsonify({"error": "Username от 3 до 32 символов"}), 400
-
-    if not re.match(r"^[a-z0-9_]+$", username):
-        return jsonify({"error": "Username: только латиница, цифры, _"}), 400
+    ok, err = validate_username(username, user.get("role", "user"))
+    if not ok:
+        return jsonify({"error": err}), 400
 
     existing = get_user_by_username(username)
     if existing and existing["id"] != user["id"]:
@@ -360,15 +381,13 @@ def api_profile_username():
         }), 429
 
     data = request.get_json() or {}
-    username = (data.get("username") or "").lower().strip().lstrip("@")
+    username = (data.get("username") or "").strip().lstrip("@")
 
-    if not username:
-        return jsonify({"error": "Username обязателен"}), 400
-    if len(username) < 3 or len(username) > 32:
-        return jsonify({"error": "Username от 3 до 32 символов"}), 400
-    if not re.match(r"^[a-z0-9_]+$", username):
-        return jsonify({"error": "Username: только латиница, цифры, _"}), 400
-    if username == user.get("username"):
+    ok, err = validate_username(username, user.get("role", "user"))
+    if not ok:
+        return jsonify({"error": err}), 400
+
+    if username.lower() == (user.get("username") or "").lower():
         return jsonify({"error": "Это твой текущий @username"}), 400
 
     existing = get_user_by_username(username)
@@ -799,7 +818,7 @@ def api_channels_create():
 
     data = request.get_json() or {}
     name = (data.get("name") or "").strip()
-    username = (data.get("username") or "").lower().strip().lstrip("@")
+    username = (data.get("username") or "").strip().lstrip("@")
     description = (data.get("description") or "").strip() or None
     ch_type = data.get("type", "public")
 
@@ -816,10 +835,9 @@ def api_channels_create():
         ch_type = "public"
         if not username:
             return jsonify({"error": "Для публичного канала нужен @username"}), 400
-        if len(username) < 3 or len(username) > 32:
-            return jsonify({"error": "Username от 3 до 32 символов"}), 400
-        if not re.match(r"^[a-z0-9_]+$", username):
-            return jsonify({"error": "Username: только латиница, цифры, _"}), 400
+        ok, err = validate_username(username, "user")  # для каналов всегда минимум 4
+        if not ok:
+            return jsonify({"error": err}), 400
         existing = get_channel_by_username(username)
         if existing:
             return jsonify({"error": "Этот @username канала занят"}), 400
@@ -858,11 +876,141 @@ def api_channels_search():
             "name": ch["name"],
             "username": ch.get("username"),
             "description": ch.get("description"),
+            "avatar_url": ch.get("avatar_url"),
             "subscribers_count": len(subs.data or []),
             "is_subscribed": is_subscribed(ch["id"], user["id"]),
             "owner_name": owner.get("first_name") if owner else None,
         })
     return jsonify({"channels": result})
+
+
+@app.route("/api/channels/<int:channel_id>/info")
+def api_channel_info(channel_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+
+    ch = get_channel_by_id(channel_id)
+    if not ch:
+        return jsonify({"error": "Канал не найден"}), 404
+
+    subs = supabase.table("channel_subscribers").select("id").eq("channel_id", channel_id).execute()
+    owner = get_user_by_id(ch["owner_id"])
+
+    return jsonify({
+        "channel": {
+            "id": ch["id"],
+            "name": ch["name"],
+            "username": ch.get("username"),
+            "description": ch.get("description"),
+            "type": ch["type"],
+            "avatar_url": ch.get("avatar_url"),
+            "subscribers_count": len(subs.data or []),
+            "is_owner": ch["owner_id"] == user["id"],
+            "is_subscribed": is_subscribed(channel_id, user["id"]),
+            "created_at": ch.get("created_at"),
+            "owner": user_public_dict(owner) if owner else None,
+        },
+    })
+
+
+@app.route("/api/channels/<int:channel_id>/update", methods=["POST"])
+def api_channel_update(channel_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+
+    ch = get_channel_by_id(channel_id)
+    if not ch or ch["owner_id"] != user["id"]:
+        return jsonify({"error": "Нет доступа"}), 403
+
+    data = request.get_json() or {}
+    name = data.get("name")
+    username = data.get("username")
+    ch_type = data.get("type")
+
+    if name is not None:
+        name = name.strip()
+        if not name:
+            return jsonify({"error": "Название не может быть пустым"}), 400
+        if len(name) > 64:
+            return jsonify({"error": "Название максимум 64 символа"}), 400
+
+    if ch_type is not None and ch_type not in ("public", "secret"):
+        return jsonify({"error": "Тип: public или secret"}), 400
+
+    if ch_type is not None and ch_type != ch["type"]:
+        if user.get("role") not in ("owner", "developer"):
+            return jsonify({"error": "Только разработчики могут менять тип"}), 403
+
+    final_type = ch_type if ch_type is not None else ch["type"]
+
+    if final_type == "public":
+        if username is None:
+            username = ch.get("username")
+        if not username or not username.strip():
+            return jsonify({"error": "Для публичного канала нужен @username"}), 400
+        username = username.strip().lstrip("@")
+        ok, err = validate_username(username, "user")
+        if not ok:
+            return jsonify({"error": err}), 400
+        if username.lower() != (ch.get("username") or "").lower():
+            existing = get_channel_by_username(username)
+            if existing and existing["id"] != channel_id:
+                return jsonify({"error": "Этот @username канала занят"}), 400
+    else:
+        username = None
+
+    updated = update_channel_full(
+        channel_id,
+        name=name if name is not None else ch["name"],
+        username=username,
+        ch_type=final_type,
+    )
+
+    if final_type == "public":
+        subscribe_to_channel(channel_id, user["id"])
+
+    return jsonify({"ok": True, "channel": updated})
+
+
+@app.route("/api/channels/<int:channel_id>/avatar", methods=["POST"])
+def api_channel_avatar(channel_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+
+    ch = get_channel_by_id(channel_id)
+    if not ch or ch["owner_id"] != user["id"]:
+        return jsonify({"error": "Нет доступа"}), 403
+
+    if "file" not in request.files:
+        return jsonify({"error": "Файл не передан"}), 400
+
+    file = request.files["file"]
+    mime = file.mimetype or ""
+    if mime not in ALLOWED_MIME:
+        return jsonify({"error": "Только JPG, PNG, WEBP, GIF"}), 400
+
+    try:
+        file_bytes = file.read()
+        processed, ext = _process_image(file_bytes, mime)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    filename = f"ch_{channel_id}_{int(time.time())}.{ext}"
+
+    try:
+        supabase.storage.from_("avatars").upload(
+            filename, processed,
+            file_options={"content-type": f"image/{ext if ext != 'jpg' else 'jpeg'}"}
+        )
+        public_url = supabase.storage.from_("avatars").get_public_url(filename)
+    except Exception as e:
+        return jsonify({"error": f"Ошибка загрузки: {str(e)}"}), 500
+
+    updated = update_channel_avatar(channel_id, public_url)
+    return jsonify({"ok": True, "avatar_url": public_url, "channel": updated})
 
 
 @app.route("/api/channels/<int:channel_id>/subscribe", methods=["POST"])
@@ -927,6 +1075,7 @@ def api_channel_messages(channel_id):
             "username": ch.get("username"),
             "description": ch.get("description"),
             "type": ch["type"],
+            "avatar_url": ch.get("avatar_url"),
             "subscribers_count": len(subs.data or []),
             "is_owner": ch["owner_id"] == user["id"],
             "owner": user_public_dict(owner) if owner else None,
@@ -1147,8 +1296,6 @@ def api_admin_set_verified():
     return jsonify({"ok": True})
 
 
-# ==================== ADMIN: REPORTS ====================
-
 @app.route("/api/admin/reports")
 def api_admin_reports():
     admin = require_admin()
@@ -1178,10 +1325,7 @@ def api_admin_report_review(report_id):
     return jsonify({"ok": True})
 
 
-# ==================== ADMIN: BANS ====================
-
 def can_ban(admin, target):
-    """Кто кого может банить"""
     if not admin or not target:
         return False
     if target["id"] == admin["id"]:
@@ -1206,7 +1350,7 @@ def api_admin_ban():
     data = request.get_json() or {}
     target_id = data.get("user_id")
     reason = (data.get("reason") or "").strip()
-    duration_days = data.get("duration_days")  # None = навсегда
+    duration_days = data.get("duration_days")
 
     if not target_id or not reason:
         return jsonify({"error": "user_id и reason обязательны"}), 400
