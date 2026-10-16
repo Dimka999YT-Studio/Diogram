@@ -20,7 +20,12 @@ from db import (
     get_message_by_id, delete_message,
     save_pending_code, verify_code, check_password,
     update_last_seen, mark_messages_read,
+    can_change_avatar, can_upload_photo,
     count_photo_uploads_last_15_days, register_photo_upload,
+    get_balance, spend_balance, add_balance, get_user_transactions,
+    activate_premium, activate_file_plus, add_file_quota,
+    check_premium, check_file_plus,
+    get_file_quota_used, register_file_upload,
     create_channel, get_channel_by_id, get_channel_by_username,
     count_user_channels, get_user_channels, search_public_channels,
     subscribe_to_channel, unsubscribe_from_channel, is_subscribed,
@@ -54,7 +59,53 @@ MAX_DIMENSION = 1600
 COMPRESS_THRESHOLD = 4 * 1024 * 1024
 ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
+# ===== FILE PLUS =====
+MAX_FILE_SIZE = 3 * 1024 * 1024  # 3 МБ
+FILE_QUOTA_BASE = 42 * 1024 * 1024  # 42 МБ / месяц
+ALLOWED_FILE_MIME = {
+    # Документы
+    "application/pdf": "pdf",
+    "application/msword": "doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-excel": "xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/vnd.ms-powerpoint": "ppt",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "text/plain": "txt",
+    # Музыка
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/wave": "wav",
+    "audio/mp4": "m4a",
+    "audio/x-m4a": "m4a",
+    "audio/m4a": "m4a",
+}
+
 REPORT_REASONS = ["spam", "abuse", "scam", "18+", "fake", "other"]
+
+# ===== МАГАЗИН =====
+SHOP_ITEMS = {
+    # PDG
+    "pdg_1d": {"category": "pdg", "name": "PDG 1 день", "price": 4.30, "days": 1},
+    "pdg_30d": {"category": "pdg", "name": "PDG 30 дней", "price": 99, "days": 30},
+    "pdg_3m": {"category": "pdg", "name": "PDG 3 месяца", "price": 290, "days": 90},
+    "pdg_6m": {"category": "pdg", "name": "PDG 6 месяцев", "price": 585, "days": 180},
+    "pdg_9m": {"category": "pdg", "name": "PDG 9 месяцев", "price": 875, "days": 270},
+    "pdg_12m": {"category": "pdg", "name": "PDG 12 месяцев", "price": 1152, "days": 365},
+
+    # File Plus
+    "fp_1m": {"category": "file_plus", "name": "File Plus 1 месяц", "price": 100, "days": 30},
+    "fp_3m": {"category": "file_plus", "name": "File Plus 3 месяца", "price": 280, "days": 90},
+    "fp_6m": {"category": "file_plus", "name": "File Plus 6 месяцев", "price": 550, "days": 180},
+    "fp_12m": {"category": "file_plus", "name": "File Plus 12 месяцев", "price": 1125, "days": 365},
+
+    # Докупка МБ
+    "mb_10": {"category": "mb", "name": "10 МБ", "price": 50, "mb": 10},
+    "mb_50": {"category": "mb", "name": "50 МБ", "price": 232, "mb": 50},
+    "mb_100": {"category": "mb", "name": "100 МБ", "price": 464, "mb": 100},
+}
 
 app = Flask(__name__, static_folder=".")
 CORS(app)
@@ -98,6 +149,12 @@ def is_valid_email(email):
     email = email.lower().strip()
     if "@" not in email:
         return False, "Неверный email"
+    try:
+        email.encode("ascii")
+    except UnicodeEncodeError:
+        return False, "Email только латиницей"
+    if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", email):
+        return False, "Неверный формат email"
     domain = email.split("@")[-1]
     if domain not in ALLOWED_DOMAINS:
         return False, "Разрешены только: " + ", ".join("@" + d for d in ALLOWED_DOMAINS)
@@ -125,6 +182,12 @@ def user_to_dict(u):
         "last_seen": u.get("last_seen"),
         "is_online": is_online(u),
         "banned": u.get("banned", False),
+        "balance": u.get("balance", 0) or 0,
+        "premium": check_premium(u),
+        "premium_until": u.get("premium_until"),
+        "file_plus": check_file_plus(u),
+        "file_plus_until": u.get("file_plus_until"),
+        "file_quota_extra": u.get("file_quota_bytes", 0) or 0,
     }
 
 
@@ -159,11 +222,6 @@ def check_banned(user):
 
 
 def validate_username(username, role):
-    """Проверяет username по правилам TG.
-    Owner/Developer: минимум 1 символ.
-    Остальные: минимум 4 символа.
-    Не начинается с цифры или _.
-    """
     if not username:
         return False, "Username обязателен"
     min_len = 1 if role in ("owner", "developer") else 4
@@ -174,12 +232,6 @@ def validate_username(username, role):
     if not re.match(r"^[a-zA-Z][a-zA-Z0-9_]*$", username):
         return False, "Username: начинается с буквы, только латиница, цифры, _"
     return True, ""
-
-
-def username_format_msg(role):
-    if role in ("owner", "developer"):
-        return "Username от 1 символа, начинается с буквы"
-    return "Username от 4 символов, начинается с буквы"
 
 
 # ==================== STATIC ====================
@@ -453,6 +505,26 @@ def api_users_search():
     return jsonify({"users": [user_public_dict(u) for u in users]})
 
 
+@app.route("/api/users/by_username/<username>")
+def api_user_by_username(username):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+
+    username = username.strip().lstrip("@")
+    if not username:
+        return jsonify({"error": "Username не указан"}), 400
+
+    target = get_user_by_username(username)
+    if not target:
+        return jsonify({"exists": False, "username": username}), 404
+
+    if target.get("banned"):
+        return jsonify({"exists": False, "username": username, "banned": True}), 404
+
+    return jsonify({"exists": True, "user": user_public_dict(target)})
+
+
 @app.route("/api/users/<int:user_id>")
 def api_user_profile(user_id):
     user = get_current_user()
@@ -464,6 +536,78 @@ def api_user_profile(user_id):
         return jsonify({"error": "Юзер не найден"}), 404
 
     return jsonify({"user": user_public_dict(target)})
+
+
+# ==================== SHOP ====================
+
+@app.route("/api/shop/items")
+def api_shop_items():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+
+    items = []
+    for item_id, item in SHOP_ITEMS.items():
+        items.append({
+            "id": item_id,
+            "category": item["category"],
+            "name": item["name"],
+            "price": item["price"],
+            "days": item.get("days"),
+            "mb": item.get("mb"),
+        })
+    return jsonify({"items": items, "balance": get_balance(user["id"])})
+
+
+@app.route("/api/shop/buy", methods=["POST"])
+def api_shop_buy():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+
+    data = request.get_json() or {}
+    item_id = data.get("item_id")
+
+    if item_id not in SHOP_ITEMS:
+        return jsonify({"error": "Товар не найден"}), 404
+
+    item = SHOP_ITEMS[item_id]
+    category = item["category"]
+    price = item["price"]
+
+    if category == "pdg":
+        success, err = activate_premium(user["id"], item["days"], int(price), f"Покупка {item['name']}")
+        if not success:
+            return jsonify({"error": err}), 400
+        updated = get_user_by_id(user["id"])
+        return jsonify({"ok": True, "user": user_to_dict(updated)})
+
+    elif category == "file_plus":
+        success, err = activate_file_plus(user["id"], item["days"], int(price), f"Покупка {item['name']}")
+        if not success:
+            return jsonify({"error": err}), 400
+        updated = get_user_by_id(user["id"])
+        return jsonify({"ok": True, "user": user_to_dict(updated)})
+
+    elif category == "mb":
+        success, err = spend_balance(user["id"], int(price), f"Покупка {item['name']}")
+        if not success:
+            return jsonify({"error": err}), 400
+        mb_bytes = item["mb"] * 1024 * 1024
+        add_file_quota(user["id"], mb_bytes)
+        updated = get_user_by_id(user["id"])
+        return jsonify({"ok": True, "user": user_to_dict(updated)})
+
+    return jsonify({"error": "Неизвестная категория"}), 400
+
+
+@app.route("/api/transactions")
+def api_transactions():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+    transactions = get_user_transactions(user["id"], limit=50)
+    return jsonify({"transactions": transactions})
 
 
 # ==================== CHATS ====================
@@ -670,7 +814,7 @@ def api_typing():
     return jsonify({"ok": True})
 
 
-# ==================== UPLOAD ====================
+# ==================== UPLOAD: ФОТО ====================
 
 def _process_image(file_bytes, mime):
     if len(file_bytes) > MAX_PHOTO_SIZE:
@@ -707,6 +851,13 @@ def api_upload_avatar():
     user = get_current_user()
     if not user:
         return jsonify({"error": "Не авторизован"}), 401
+
+    can, next_date = can_change_avatar(user["id"])
+    if not can:
+        return jsonify({
+            "error": "Аватарку можно менять раз в 7 дней (или с PDG)",
+            "next_date": next_date.isoformat() if next_date else None
+        }), 429
 
     if "file" not in request.files:
         return jsonify({"error": "Файл не передан"}), 400
@@ -746,9 +897,12 @@ def api_upload_photo():
     if not user:
         return jsonify({"error": "Не авторизован"}), 401
 
-    used = count_photo_uploads_last_15_days(user["id"])
-    if used >= PHOTO_LIMIT_15_DAYS:
-        return jsonify({"error": f"Лимит {PHOTO_LIMIT_15_DAYS} фото за 15 дней"}), 429
+    can, next_date = can_upload_photo(user["id"])
+    if not can:
+        return jsonify({
+            "error": "Бесплатно можно 1 фото раз в 7 дней. Купи PDG для безлимита!",
+            "next_date": next_date.isoformat() if next_date else None
+        }), 429
 
     chat_id = request.form.get("chat_id")
     if not chat_id:
@@ -796,13 +950,109 @@ def api_upload_photo():
     return jsonify({"ok": True, "message": msg})
 
 
+# ==================== UPLOAD: ФАЙЛЫ (FILE PLUS) ====================
+
+@app.route("/api/upload/file", methods=["POST"])
+def api_upload_file():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+
+    if not check_file_plus(user):
+        return jsonify({"error": "Нужна подписка File Plus"}), 403
+
+    chat_id = request.form.get("chat_id")
+    if not chat_id:
+        return jsonify({"error": "chat_id обязателен"}), 400
+
+    chat = get_chat_by_id(int(chat_id))
+    if not chat or user["id"] not in (chat["user1_id"], chat["user2_id"]):
+        return jsonify({"error": "Нет доступа"}), 403
+
+    if "file" not in request.files:
+        return jsonify({"error": "Файл не передан"}), 400
+
+    file = request.files["file"]
+    mime = file.mimetype or ""
+
+    if mime not in ALLOWED_FILE_MIME:
+        return jsonify({"error": "Такой формат не поддерживается"}), 400
+
+    file_bytes = file.read()
+    size = len(file_bytes)
+
+    if size > MAX_FILE_SIZE:
+        return jsonify({"error": "Файл больше 3 МБ"}), 400
+
+    # Проверка квоты
+    base_quota = FILE_QUOTA_BASE
+    extra_quota = user.get("file_quota_bytes", 0) or 0
+    total_quota = base_quota + extra_quota
+    used = get_file_quota_used(user["id"])
+
+    if used + size > total_quota:
+        left_mb = max(0, (total_quota - used) // (1024 * 1024))
+        return jsonify({
+            "error": f"Лимит исчерпан. Осталось {left_mb} МБ. Докупи в магазине!",
+            "used": used,
+            "total": total_quota,
+        }), 429
+
+    ext = ALLOWED_FILE_MIME[mime]
+    safe_name = re.sub(r"[^\w\-_.]", "_", file.filename or f"file.{ext}")
+    filename = f"file_{user['id']}_{int(time.time())}.{ext}"
+
+    try:
+        supabase.storage.from_("chat-photos").upload(
+            filename, file_bytes,
+            file_options={"content-type": mime}
+        )
+        public_url = supabase.storage.from_("chat-photos").get_public_url(filename)
+    except Exception as e:
+        return jsonify({"error": f"Ошибка загрузки: {str(e)}"}), 500
+
+    file_category = "audio" if mime.startswith("audio/") else "document"
+    msg = save_message(
+        int(chat_id), user["id"], "", "file",
+        public_url, size, safe_name,
+        file_type=file_category,
+        file_mime=mime
+    )
+    register_file_upload(user["id"], size)
+
+    return jsonify({"ok": True, "message": msg})
+
+
+@app.route("/api/file-quota")
+def api_file_quota():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+
+    base_quota = FILE_QUOTA_BASE
+    extra_quota = user.get("file_quota_bytes", 0) or 0
+    total = base_quota + extra_quota
+    used = get_file_quota_used(user["id"])
+
+    return jsonify({
+        "used": used,
+        "total": total,
+        "left": max(0, total - used),
+        "has_file_plus": check_file_plus(user),
+    })
+
+
 @app.route("/api/photo-limit")
 def api_photo_limit():
     user = get_current_user()
     if not user:
         return jsonify({"error": "Не авторизован"}), 401
-    used = count_photo_uploads_last_15_days(user["id"])
-    return jsonify({"used": used, "limit": PHOTO_LIMIT_15_DAYS, "left": max(0, PHOTO_LIMIT_15_DAYS - used)})
+    can, next_date = can_upload_photo(user["id"])
+    return jsonify({
+        "can": can,
+        "next_date": next_date.isoformat() if next_date else None,
+        "has_pdg": check_premium(user),
+    })
 
 
 # ==================== CHANNELS ====================
@@ -829,13 +1079,13 @@ def api_channels_create():
 
     if ch_type == "secret":
         if user.get("role") not in ("owner", "developer"):
-            return jsonify({"error": "Только разработчики могут создавать секретные каналы"}), 403
+            return jsonify({"error": "Только разработчики могут создавать глобальные каналы"}), 403
         username = None
     else:
         ch_type = "public"
         if not username:
             return jsonify({"error": "Для публичного канала нужен @username"}), 400
-        ok, err = validate_username(username, "user")  # для каналов всегда минимум 4
+        ok, err = validate_username(username, "user")
         if not ok:
             return jsonify({"error": err}), 400
         existing = get_channel_by_username(username)
@@ -1024,7 +1274,7 @@ def api_channels_subscribe(channel_id):
         return jsonify({"error": "Канал не найден"}), 404
 
     if ch["type"] == "secret":
-        return jsonify({"error": "На секретный канал нельзя подписаться вручную"}), 403
+        return jsonify({"error": "На глобальный канал нельзя подписаться вручную"}), 403
 
     subscribe_to_channel(channel_id, user["id"])
     return jsonify({"ok": True})
@@ -1041,7 +1291,7 @@ def api_channels_unsubscribe(channel_id):
         return jsonify({"error": "Канал не найден"}), 404
 
     if ch["type"] == "secret":
-        return jsonify({"error": "От секретного канала нельзя отписаться"}), 403
+        return jsonify({"error": "От глобального канала нельзя отписаться"}), 403
 
     unsubscribe_from_channel(channel_id, user["id"])
     return jsonify({"ok": True})
@@ -1296,6 +1546,35 @@ def api_admin_set_verified():
     return jsonify({"ok": True})
 
 
+@app.route("/api/admin/add_balance", methods=["POST"])
+def api_admin_add_balance():
+    admin = require_owner()
+    if not admin:
+        return jsonify({"error": "Только владелец"}), 403
+
+    data = request.get_json() or {}
+    target_id = data.get("user_id")
+    amount = data.get("amount")
+    description = (data.get("description") or "Пополнение от админа").strip()
+
+    try:
+        amount = int(amount)
+    except Exception:
+        return jsonify({"error": "Неверная сумма"}), 400
+
+    if amount <= 0 or amount > 1000000:
+        return jsonify({"error": "Сумма: 1 - 1 000 000"}), 400
+
+    target = get_user_by_id(target_id)
+    if not target:
+        return jsonify({"error": "Юзер не найден"}), 404
+
+    if not add_balance(target_id, amount, description, admin["id"]):
+        return jsonify({"error": "Ошибка начисления"}), 500
+
+    return jsonify({"ok": True})
+
+
 @app.route("/api/admin/reports")
 def api_admin_reports():
     admin = require_admin()
@@ -1397,6 +1676,9 @@ def api_admin_unban():
 def worker_get_pending():
     if request.headers.get("X-Worker-Key") != WORKER_KEY:
         return jsonify({"error": "Unauthorized"}), 401
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    supabase.table("pending_codes").delete().lt("created_at", cutoff).execute()
 
     res = supabase.table("pending_codes").select("*").eq("sent", False).order("created_at").limit(1).execute()
     if not res.data:
