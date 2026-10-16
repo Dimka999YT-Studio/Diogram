@@ -43,6 +43,9 @@ def create_user(email: str, password: str, username: str = None, first_name: str
         "verified": False,
         "profile_completed": False,
         "banned": False,
+        "balance": 0,
+        "premium": False,
+        "file_plus": False,
         "last_seen": datetime.now(timezone.utc).isoformat(),
     }
     res = supabase.table("users").insert(data).execute()
@@ -100,7 +103,11 @@ def update_user_username(user_id: int, username: str) -> dict:
 
 
 def update_user_avatar(user_id: int, avatar_url: str) -> dict:
-    res = supabase.table("users").update({"avatar_url": avatar_url}).eq("id", user_id).execute()
+    data = {
+        "avatar_url": avatar_url,
+        "avatar_changed_at": datetime.now(timezone.utc).isoformat()
+    }
+    res = supabase.table("users").update(data).eq("id", user_id).execute()
     return res.data[0] if res.data else None
 
 
@@ -114,6 +121,253 @@ def update_user_bio(user_id: int, bio: str = None, birthday: str = None) -> dict
         return None
     res = supabase.table("users").update(data).eq("id", user_id).execute()
     return res.data[0] if res.data else None
+
+
+# ============ ЭКОНОМИКА: БАЛАНС И ТРАНЗАКЦИИ ============
+
+def get_balance(user_id: int) -> int:
+    user = get_user_by_id(user_id)
+    return user.get("balance", 0) if user else 0
+
+
+def spend_balance(user_id: int, amount: int, description: str) -> tuple:
+    """Атомарно списывает баланс. Возвращает (success, error)."""
+    if amount <= 0:
+        return False, "Неверная сумма"
+    
+    try:
+        result = supabase.rpc("spend_balance_atomic", {
+            "p_user_id": user_id,
+            "p_amount": amount
+        }).execute()
+        
+        if result.data and result.data[0].get("success"):
+            supabase.table("transactions").insert({
+                "user_id": user_id,
+                "amount": -amount,
+                "type": "purchase",
+                "description": description
+            }).execute()
+            return True, None
+        return False, "Недостаточно средств"
+    except Exception as e:
+        return False, str(e)
+
+
+def add_balance(user_id: int, amount: int, description: str, admin_id: int = None) -> bool:
+    """Начисляет баланс."""
+    if amount <= 0:
+        return False
+    
+    try:
+        supabase.rpc("add_balance_atomic", {
+            "p_user_id": user_id,
+            "p_amount": amount
+        }).execute()
+        
+        supabase.table("transactions").insert({
+            "user_id": user_id,
+            "amount": amount,
+            "type": "deposit",
+            "description": description,
+            "admin_id": admin_id
+        }).execute()
+        return True
+    except Exception:
+        return False
+
+
+def get_user_transactions(user_id: int, limit: int = 50) -> list:
+    res = supabase.table("transactions").select("*").eq("user_id", user_id).order(
+        "created_at", desc=True
+    ).limit(limit).execute()
+    return res.data or []
+
+
+# ============ ПОДПИСКИ ============
+
+def activate_premium(user_id: int, days: int, cost: int, description: str) -> tuple:
+    """Активирует PDG на N дней. Списывает balance."""
+    success, err = spend_balance(user_id, cost, description)
+    if not success:
+        return False, err
+    
+    user = get_user_by_id(user_id)
+    now = datetime.now(timezone.utc)
+    
+    # Если уже есть активная подписка — продлеваем
+    current_until = user.get("premium_until")
+    if current_until:
+        try:
+            until_dt = datetime.fromisoformat(current_until.replace("Z", "+00:00"))
+            if until_dt > now:
+                new_until = until_dt + timedelta(days=days)
+            else:
+                new_until = now + timedelta(days=days)
+        except Exception:
+            new_until = now + timedelta(days=days)
+    else:
+        new_until = now + timedelta(days=days)
+    
+    supabase.table("users").update({
+        "premium": True,
+        "premium_until": new_until.isoformat()
+    }).eq("id", user_id).execute()
+    
+    return True, None
+
+
+def activate_file_plus(user_id: int, days: int, cost: int, description: str) -> tuple:
+    """Активирует File Plus на N дней."""
+    success, err = spend_balance(user_id, cost, description)
+    if not success:
+        return False, err
+    
+    user = get_user_by_id(user_id)
+    now = datetime.now(timezone.utc)
+    
+    current_until = user.get("file_plus_until")
+    if current_until:
+        try:
+            until_dt = datetime.fromisoformat(current_until.replace("Z", "+00:00"))
+            if until_dt > now:
+                new_until = until_dt + timedelta(days=days)
+            else:
+                new_until = now + timedelta(days=days)
+        except Exception:
+            new_until = now + timedelta(days=days)
+    else:
+        new_until = now + timedelta(days=days)
+    
+    # Добавляем квоту 42 МБ × месяцев
+    months = max(1, days // 30)
+    extra_quota = 42 * 1024 * 1024 * months
+    
+    supabase.table("users").update({
+        "file_plus": True,
+        "file_plus_until": new_until.isoformat()
+    }).eq("id", user_id).execute()
+    
+    return True, None
+
+
+def add_file_quota(user_id: int, bytes_amount: int) -> bool:
+    """Добавляет квоту байтов к file_quota_bytes"""
+    try:
+        user = get_user_by_id(user_id)
+        current = user.get("file_quota_bytes", 0) or 0
+        supabase.table("users").update({
+            "file_quota_bytes": current + bytes_amount
+        }).eq("id", user_id).execute()
+        return True
+    except Exception:
+        return False
+
+
+def check_premium(user: dict) -> bool:
+    """Проверяет активна ли PDG подписка"""
+    if not user or not user.get("premium"):
+        return False
+    until = user.get("premium_until")
+    if not until:
+        return False
+    try:
+        until_dt = datetime.fromisoformat(until.replace("Z", "+00:00"))
+        return until_dt > datetime.now(timezone.utc)
+    except Exception:
+        return False
+
+
+def check_file_plus(user: dict) -> bool:
+    """Проверяет активна ли File Plus"""
+    if not user or not user.get("file_plus"):
+        return False
+    until = user.get("file_plus_until")
+    if not until:
+        return False
+    try:
+        until_dt = datetime.fromisoformat(until.replace("Z", "+00:00"))
+        return until_dt > datetime.now(timezone.utc)
+    except Exception:
+        return False
+
+
+# ============ ЛИМИТЫ ФОТО И АВАТАРОК ============
+
+def can_change_avatar(user_id: int) -> tuple:
+    """Может ли юзер сменить аватарку. Возвращает (can, next_date_or_none)"""
+    user = get_user_by_id(user_id)
+    if not user:
+        return False, None
+    if check_premium(user):
+        return True, None
+    
+    last = user.get("avatar_changed_at")
+    if not last:
+        return True, None
+    try:
+        last_dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
+        next_dt = last_dt + timedelta(days=7)
+        if datetime.now(timezone.utc) >= next_dt:
+            return True, None
+        return False, next_dt
+    except Exception:
+        return True, None
+
+
+def can_upload_photo(user_id: int) -> tuple:
+    """Может ли юзер отправить фото. (can, next_date_or_none)"""
+    user = get_user_by_id(user_id)
+    if not user:
+        return False, None
+    if check_premium(user):
+        return True, None
+    
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    res = supabase.table("photo_uploads").select("*").eq("user_id", user_id).gt(
+        "uploaded_at", cutoff
+    ).order("uploaded_at", desc=True).limit(1).execute()
+    
+    if not res.data:
+        return True, None
+    
+    last = res.data[0]
+    try:
+        last_dt = datetime.fromisoformat(last["uploaded_at"].replace("Z", "+00:00"))
+        next_dt = last_dt + timedelta(days=7)
+        return False, next_dt
+    except Exception:
+        return True, None
+
+
+def count_photo_uploads_last_15_days(user_id: int) -> int:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=15)).isoformat()
+    res = supabase.table("photo_uploads").select("id").eq("user_id", user_id).gt(
+        "uploaded_at", cutoff
+    ).execute()
+    return len(res.data or [])
+
+
+def register_photo_upload(user_id: int) -> None:
+    supabase.table("photo_uploads").insert({"user_id": user_id}).execute()
+
+
+# ============ ФАЙЛЫ ============
+
+def get_file_quota_used(user_id: int) -> int:
+    """Сколько байт истрачено за последний месяц"""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    res = supabase.table("file_uploads").select("size_bytes").eq("user_id", user_id).gt(
+        "uploaded_at", cutoff
+    ).execute()
+    return sum(row["size_bytes"] for row in (res.data or []))
+
+
+def register_file_upload(user_id: int, size_bytes: int) -> None:
+    supabase.table("file_uploads").insert({
+        "user_id": user_id,
+        "size_bytes": size_bytes
+    }).execute()
 
 
 # ============ СМЕНЫ USERNAME ============
@@ -159,20 +413,6 @@ def get_unread_count(chat_id: int, user_id: int) -> int:
         "sender_id", user_id
     ).is_("read_at", "null").execute()
     return len(res.data or [])
-
-
-# ============ ФОТО-ЛИМИТ ============
-
-def count_photo_uploads_last_15_days(user_id: int) -> int:
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=15)).isoformat()
-    res = supabase.table("photo_uploads").select("id").eq("user_id", user_id).gt(
-        "uploaded_at", cutoff
-    ).execute()
-    return len(res.data or [])
-
-
-def register_photo_upload(user_id: int) -> None:
-    supabase.table("photo_uploads").insert({"user_id": user_id}).execute()
 
 
 # ============ ЧАТЫ ============
@@ -240,7 +480,8 @@ def get_chat_by_id(chat_id: int) -> dict:
 
 def save_message(chat_id: int, sender_id: int, text: str, msg_type: str = "text",
                  attachment_url: str = None, attachment_size: int = None,
-                 attachment_name: str = None) -> dict:
+                 attachment_name: str = None, file_type: str = None,
+                 file_mime: str = None) -> dict:
     data = {
         "chat_id": chat_id,
         "sender_id": sender_id,
@@ -253,6 +494,14 @@ def save_message(chat_id: int, sender_id: int, text: str, msg_type: str = "text"
         data["attachment_size"] = attachment_size
     if attachment_name:
         data["attachment_name"] = attachment_name
+    if file_type:
+        data["file_type"] = file_type
+    if file_size := attachment_size:
+        data["file_size"] = file_size
+    if attachment_name:
+        data["file_name"] = attachment_name
+    if file_mime:
+        data["file_mime"] = file_mime
     res = supabase.table("messages").insert(data).execute()
     return res.data[0] if res.data else None
 
@@ -520,7 +769,7 @@ def delete_channel_message(message_id: int) -> None:
 
 def get_all_users_admin(limit: int = 100, offset: int = 0) -> list:
     res = supabase.table("users").select(
-        "id, email, username, first_name, last_name, role, verified, banned, created_at, last_seen, avatar_url"
+        "id, email, username, first_name, last_name, role, verified, banned, created_at, last_seen, avatar_url, balance, premium, file_plus"
     ).order("id", desc=False).range(offset, offset + limit - 1).execute()
     return res.data or []
 
