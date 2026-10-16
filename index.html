@@ -16,10 +16,10 @@
   .logo-title { font-size: 32px; font-weight: 700; margin-bottom: 6px; }
   .logo-sub { color: #7e8b99; margin-bottom: 40px; font-size: 14px; }
   .form { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; }
-  input, textarea { background: #17212b; border: 1.5px solid #242f3d; outline: none; color: #fff; font-size: 15px; padding: 14px 16px; border-radius: 12px; font-family: inherit; transition: border 0.15s; width: 100%; }
+  input, textarea { background: #17212b; border: 1.5px solid #242f3d; outline: none; color: #fff; font-size: 15px; padding: 14px 16px; border-radius: 12px; font-family: inherit; width: 100%; }
   input:focus, textarea:focus { border-color: #5b8bff; }
   input::placeholder, textarea::placeholder { color: #6d7883; }
-  .btn { background: linear-gradient(135deg, #5b8bff, #4a7aff); border: none; color: #fff; font-size: 15px; font-weight: 600; padding: 14px; border-radius: 12px; cursor: pointer; font-family: inherit; transition: transform 0.1s, opacity 0.15s; width: 100%; }
+  .btn { background: linear-gradient(135deg, #5b8bff, #4a7aff); border: none; color: #fff; font-size: 15px; font-weight: 600; padding: 14px; border-radius: 12px; cursor: pointer; font-family: inherit; width: 100%; }
   .btn:active { transform: scale(0.98); }
   .btn:disabled { opacity: 0.5; }
   .btn-secondary { background: #242f3d; }
@@ -61,6 +61,7 @@
   .badge-unread { background: #5b8bff; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; min-width: 20px; text-align: center; }
   .verified { color: #5b8bff; font-size: 14px; }
   .role-icon { font-size: 13px; }
+  .premium-icon { font-size: 12px; }
   .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #4a5568; text-align: center; padding: 40px; font-size: 14px; line-height: 1.6; }
 
   .messages { flex: 1; overflow-y: auto; padding: 16px 12px; display: flex; flex-direction: column; gap: 6px; background: #0e1621; }
@@ -72,7 +73,19 @@
   .msg .checks { font-size: 12px; margin-left: 4px; opacity: 0.85; }
   .msg .checks.read { color: #b3d4ff; }
   .msg-photo { max-width: 100%; border-radius: 8px; display: block; margin-bottom: 6px; cursor: pointer; }
+  .mention { color: #5b8bff; cursor: pointer; font-weight: 600; }
+  .mention:active { opacity: 0.7; }
+  .msg.own .mention { color: #c5d9ff; }
   .typing-indicator { padding: 6px 16px; font-size: 13px; color: #7e8b99; font-style: italic; }
+
+  .file-block { background: rgba(0,0,0,0.2); border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; }
+  .file-row { display: flex; align-items: center; gap: 10px; }
+  .file-icon { font-size: 28px; flex-shrink: 0; }
+  .file-info { flex: 1; min-width: 0; }
+  .file-name { font-size: 13px; font-weight: 600; word-break: break-all; margin-bottom: 2px; }
+  .file-size { font-size: 11px; opacity: 0.7; }
+  .file-dl { background: rgba(255,255,255,0.15); border: none; color: #fff; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; font-family: inherit; text-decoration: none; display: inline-block; }
+  .audio-player { width: 100%; margin-top: 6px; }
 
   .input-area { display: flex; gap: 8px; padding: 10px 12px; background: #17212b; border-top: 1px solid #0e1621; flex-shrink: 0; padding-bottom: calc(10px + env(safe-area-inset-bottom)); align-items: center; }
   .input-area input { flex: 1; background: #242f3d; border: none; outline: none; color: #fff; font-size: 15px; padding: 11px 16px; border-radius: 22px; font-family: inherit; }
@@ -110,7 +123,7 @@
   .profile-row + .profile-row { border-top: 1px solid #242f3d; }
   .profile-row-icon { font-size: 20px; width: 24px; text-align: center; color: #5b8bff; }
   .profile-row-content { flex: 1; min-width: 0; }
-  .profile-row-label { font-size: 12px; color: #7e8b99; margin-bottom: 2px; display: flex; align-items: center; gap: 6px; }
+  .profile-row-label { font-size: 12px; color: #7e8b99; margin-bottom: 2px; }
   .profile-row-value { font-size: 15px; word-break: break-word; }
   .profile-row-edit { cursor: pointer; font-size: 14px; color: #7e8b99; padding: 4px 8px; border-radius: 6px; }
   .profile-row-edit:active { background: #242f3d; }
@@ -119,6 +132,24 @@
   .profile-btn.danger { background: #2a1f24; color: #ff5b5b; }
   .profile-btn.secondary { background: #242f3d; color: #fff; }
   .profile-btn:active { transform: scale(0.98); }
+
+  .balance-block { background: linear-gradient(135deg, #5b8bff, #7b5bff); margin: 12px 16px; border-radius: 14px; padding: 18px; text-align: center; }
+  .balance-label { font-size: 12px; opacity: 0.85; margin-bottom: 4px; }
+  .balance-value { font-size: 32px; font-weight: 800; }
+  .balance-sub { font-size: 12px; opacity: 0.85; margin-top: 4px; }
+
+  .shop-tabs { display: flex; gap: 6px; padding: 12px; background: #17212b; overflow-x: auto; }
+  .shop-tab { padding: 8px 16px; border-radius: 20px; font-size: 13px; white-space: nowrap; cursor: pointer; background: #242f3d; color: #fff; border: none; font-family: inherit; }
+  .shop-tab.active { background: #5b8bff; }
+
+  .shop-item { background: #17212b; margin: 8px 12px; border-radius: 14px; padding: 16px; display: flex; align-items: center; gap: 12px; }
+  .shop-item-info { flex: 1; }
+  .shop-item-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .shop-item-meta { font-size: 12px; color: #7e8b99; }
+  .shop-item-price { font-size: 18px; font-weight: 800; color: #5b8bff; margin-right: 10px; }
+  .shop-buy { background: linear-gradient(135deg, #5b8bff, #4a7aff); border: none; color: #fff; padding: 8px 16px; border-radius: 10px; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; }
+  .shop-buy:disabled { background: #242f3d; cursor: not-allowed; opacity: 0.6; }
+  .shop-buy:active:not(:disabled) { transform: scale(0.97); }
 
   .doc-screen { flex: 1; overflow-y: auto; padding: 20px 16px 40px; line-height: 1.6; }
   .doc-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; color: #fff; }
@@ -135,11 +166,9 @@
   .stat-value { font-size: 28px; font-weight: 700; color: #5b8bff; }
   .stat-label { font-size: 12px; color: #7e8b99; margin-top: 4px; }
   .stat-badge { position: absolute; top: 8px; right: 8px; background: #ff5b5b; color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 8px; }
-
   .admin-tabs { display: flex; gap: 4px; padding: 8px 12px; background: #17212b; overflow-x: auto; }
   .admin-tab { padding: 8px 14px; border-radius: 18px; font-size: 13px; white-space: nowrap; cursor: pointer; background: #242f3d; color: #fff; border: none; font-family: inherit; }
   .admin-tab.active { background: #5b8bff; }
-
   .admin-row { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #17212b; }
   .admin-info { flex: 1; min-width: 0; }
   .admin-name { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 4px; }
@@ -189,11 +218,10 @@
   .photo-viewer img { max-width: 100%; max-height: 100%; object-fit: contain; }
   .photo-viewer-close { position: absolute; top: 20px; right: 20px; width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.1); border: none; color: #fff; font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 
-  /* ====== CHANNEL INFO ====== */
   .ch-info-screen { flex: 1; overflow-y: auto; padding-bottom: 20px; }
   .ch-info-top { display: flex; flex-direction: column; align-items: center; padding: 30px 20px 20px; gap: 10px; }
-  .ch-info-avatar { width: 120px; height: 120px; border-radius: 24px; background: linear-gradient(135deg, #ffb800, #ff6b00); display: flex; align-items: center; justify-content: center; font-size: 56px; color: #fff; box-shadow: 0 8px 30px rgba(255,150,0,0.35); overflow: hidden; position: relative; }
-  .ch-info-avatar.secret { background: linear-gradient(135deg, #4dd964, #2fa54a); box-shadow: 0 8px 30px rgba(77,217,100,0.35); }
+  .ch-info-avatar { width: 120px; height: 120px; border-radius: 24px; background: linear-gradient(135deg, #ffb800, #ff6b00); display: flex; align-items: center; justify-content: center; font-size: 56px; color: #fff; overflow: hidden; position: relative; }
+  .ch-info-avatar.secret { background: linear-gradient(135deg, #4dd964, #2fa54a); }
   .ch-info-avatar img { width: 100%; height: 100%; object-fit: cover; }
   .ch-info-name { font-size: 24px; font-weight: 700; text-align: center; }
   .ch-info-username { font-size: 15px; color: #5b8bff; }
@@ -264,6 +292,7 @@
     <div class="header">
       <button class="header-icon" id="btn-menu">☰</button>
       <h1>Diogram</h1>
+      <button class="header-icon" id="btn-shop" title="Магазин">🛒</button>
       <button class="header-icon" id="btn-new-channel" title="Новый канал">📢</button>
       <button class="header-icon" id="btn-new-chat" title="Найти людей">➕</button>
     </div>
@@ -317,7 +346,7 @@
     </div>
   </div>
 
-  <!-- PROFILE FULL (свой) -->
+  <!-- PROFILE -->
   <div class="screen" id="screen-profile-full">
     <div class="header">
       <button class="header-icon" id="btn-profile-back">←</button>
@@ -329,29 +358,26 @@
         <div class="profile-name"><span id="profile-name">Имя</span></div>
         <div class="profile-status" id="profile-status">@username</div>
       </div>
+      <div class="balance-block">
+        <div class="balance-label">Баланс</div>
+        <div class="balance-value" id="profile-balance">0 Di</div>
+        <div class="balance-sub" id="profile-balance-rub">~0₽</div>
+      </div>
+      <div id="profile-subs-block"></div>
       <div class="profile-block">
         <div class="profile-row">
           <div class="profile-row-icon">👤</div>
-          <div class="profile-row-content">
-            <div class="profile-row-label">Имя</div>
-            <div class="profile-row-value" id="profile-fullname">—</div>
-          </div>
+          <div class="profile-row-content"><div class="profile-row-label">Имя</div><div class="profile-row-value" id="profile-fullname">—</div></div>
           <div class="profile-row-edit" id="edit-name">✏️</div>
         </div>
         <div class="profile-row">
           <div class="profile-row-icon">@</div>
-          <div class="profile-row-content">
-            <div class="profile-row-label">Username</div>
-            <div class="profile-row-value" id="profile-username-show">—</div>
-          </div>
+          <div class="profile-row-content"><div class="profile-row-label">Username</div><div class="profile-row-value" id="profile-username-show">—</div></div>
           <div class="profile-row-edit" id="edit-username">✏️</div>
         </div>
         <div class="profile-row">
           <div class="profile-row-icon">📝</div>
-          <div class="profile-row-content">
-            <div class="profile-row-label">О себе</div>
-            <div class="profile-row-value" id="profile-bio">Не указано</div>
-          </div>
+          <div class="profile-row-content"><div class="profile-row-label">О себе</div><div class="profile-row-value" id="profile-bio">Не указано</div></div>
           <div class="profile-row-edit" id="edit-bio">✏️</div>
         </div>
       </div>
@@ -368,7 +394,7 @@
     </div>
   </div>
 
-  <!-- USER PROFILE (чужой) -->
+  <!-- USER PROFILE -->
   <div class="screen" id="screen-user-profile">
     <div class="header">
       <button class="header-icon" id="btn-user-back">←</button>
@@ -411,6 +437,26 @@
     </div>
   </div>
 
+  <!-- SHOP -->
+  <div class="screen" id="screen-shop">
+    <div class="header">
+      <button class="header-icon" id="btn-shop-back">←</button>
+      <h1>🛒 Магазин</h1>
+    </div>
+    <div class="balance-block">
+      <div class="balance-label">Твой баланс</div>
+      <div class="balance-value" id="shop-balance">0 Di</div>
+      <div class="balance-sub" id="shop-balance-rub">~0₽</div>
+    </div>
+    <div class="shop-tabs">
+      <button class="shop-tab active" data-cat="pdg">💎 PDG</button>
+      <button class="shop-tab" data-cat="file_plus">📎 File Plus</button>
+      <button class="shop-tab" data-cat="mb">📦 МБ</button>
+      <button class="shop-tab" data-cat="history">📜 История</button>
+    </div>
+    <div class="list" id="shop-list"><div class="spinner"></div></div>
+  </div>
+
   <!-- ADMIN -->
   <div class="screen" id="screen-admin">
     <div class="header">
@@ -435,45 +481,27 @@
 
   <!-- RULES -->
   <div class="screen" id="screen-rules">
-    <div class="header">
-      <button class="header-icon" id="btn-rules-back">←</button>
-      <h1>📋 Правила</h1>
-    </div>
+    <div class="header"><button class="header-icon" id="btn-rules-back">←</button><h1>📋 Правила</h1></div>
     <div class="doc-screen">
       <div class="doc-title">Правила мессенджера Diogram</div>
       <div class="doc-date">Дата последнего обновления: 11.10.2026</div>
-      <div class="doc-section"><h3>1. О чём это</h3><p>Это правила использования Diogram. Они существуют, чтобы мессенджер был безопасным и удобным для всех. Используя Diogram, ты соглашаешься с этими правилами.</p></div>
-      <div class="doc-section"><h3>2. Кто может пользоваться</h3><p>Diogram доступен с 12 лет. Если ты младше — нужно разрешение родителей.</p></div>
-      <div class="doc-section"><h3>3. Что можно</h3><ul><li>Общаться с друзьями в личных чатах</li><li>Создавать свои каналы</li><li>Делиться фото и мыслями</li><li>Находить новых людей по @username</li><li>Выражать своё мнение (уважительно)</li></ul></div>
-      <div class="doc-section"><h3>4. Что запрещено</h3><p><b>4.1. Незаконный контент:</b></p><ul><li>Мошенничество и скам</li><li>Фишинг и кража данных</li><li>Продажа запрещённых товаров</li><li>Экстремизм и терроризм</li><li>Детская опасность</li><li>Пиратство</li></ul><p><b>4.2. Вред другим:</b></p><ul><li>Оскорбления и травля</li><li>Угрозы и запугивание</li><li>Разжигание ненависти</li><li>Спам и массовые рассылки</li><li>Реклама без разрешения</li></ul><p><b>4.3. Обман:</b></p><ul><li>Фейковые аккаунты</li><li>Выдача себя за других</li><li>Поддельные фото/документы</li></ul><p><b>4.4. Другое:</b></p><ul><li>18+ контент без пометки</li><li>Вирусы и вредоносные ссылки</li><li>Попытки взломать Diogram</li><li>Любое другое незаконное действие</li></ul></div>
-      <div class="doc-section"><h3>5. Что за нарушение</h3><p><b>⚠️ 1. Предупреждение</b> — за мелкие нарушения.</p><p><b>🔒 2. Временный бан</b> — за повторное нарушение.</p><p><b>🚫 3. Бан навсегда</b> — за серьёзные нарушения.</p></div>
-      <div class="doc-section"><h3>6. Как пожаловаться</h3><p>1. Открой профиль/сообщение/канал</p><p>2. Нажми "Пожаловаться"</p><p>3. Выбери причину и опиши ситуацию</p><p>Жалоба попадёт к модераторам. Рассмотрим в течение 24-48 часов.</p><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a></div></div>
-      <div class="doc-section"><h3>7. Удаление аккаунта</h3><p>Напиши владельцу:</p><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a></div></div>
-      <div class="doc-section"><h3>8. Контакты</h3><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a></div></div>
-      <div class="doc-section" style="text-align:center;padding-top:20px;color:#7e8b99;">Спасибо, что ты с нами 💙</div>
+      <div class="doc-section"><h3>1. О чём это</h3><p>Это правила использования Diogram. Используя Diogram, ты соглашаешься с этими правилами.</p></div>
+      <div class="doc-section"><h3>2. Кто может пользоваться</h3><p>Diogram доступен с 12 лет.</p></div>
+      <div class="doc-section"><h3>3. Что запрещено</h3><p><b>Незаконный контент:</b> мошенничество, фишинг, экстремизм, детская опасность, пиратство.</p><p><b>Вред другим:</b> оскорбления, травля, спам, реклама без разрешения.</p><p><b>Обман:</b> фейковые аккаунты, выдача себя за других.</p></div>
+      <div class="doc-section"><h3>4. Что за нарушение</h3><p>⚠️ Предупреждение → 🔒 Временный бан → 🚫 Бан навсегда.</p></div>
+      <div class="doc-section"><h3>5. Контакты</h3><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a></div></div>
     </div>
   </div>
 
   <!-- PRIVACY -->
   <div class="screen" id="screen-privacy">
-    <div class="header">
-      <button class="header-icon" id="btn-privacy-back">←</button>
-      <h1>📄 Политика</h1>
-    </div>
+    <div class="header"><button class="header-icon" id="btn-privacy-back">←</button><h1>📄 Политика</h1></div>
     <div class="doc-screen">
       <div class="doc-title">Политика конфиденциальности</div>
       <div class="doc-date">Дата последнего обновления: 11.10.2026</div>
-      <div class="doc-section"><h3>1. О чём это</h3><p>Эта политика объясняет, какие данные Diogram собирает, зачем, где хранит и как защищает.</p></div>
-      <div class="doc-section"><h3>2. Какие данные собираем</h3><p><b>При регистрации:</b> email, пароль (зашифрован).</p><p><b>В профиле:</b> имя, фамилия, @username, bio, аватарка.</p><p><b>В процессе:</b> сообщения, фото, дата входа.</p><p><b>НЕ собираем:</b> IP, устройство, геолокацию, контакты.</p></div>
-      <div class="doc-section"><h3>3. Зачем</h3><ul><li>Email — для входа</li><li>Профиль — чтобы тебя нашли</li><li>Сообщения — чтобы работал мессенджер</li><li>Дата входа — "был(а) недавно"</li></ul></div>
-      <div class="doc-section"><h3>4. Кто имеет доступ</h3><p><b>Ты</b> — видишь свои данные в профиле.</p><p><b>Владелец</b> (<a href="https://t.me/Dipxex" style="color:#5b8bff;">@Dipxex</a>) — видит email, ID, дату регистрации, роль. Использует только для модерации.</p><p><b>Другие юзеры</b> — видят только публичный профиль (имя, @username, bio, аватарку).</p></div>
-      <div class="doc-section"><h3>5. Кому передаём</h3><ul><li><b>Supabase</b> — БД</li><li><b>Railway</b> — хостинг</li><li><b>Mail.ru</b> — отправка кодов</li></ul><p>НЕ продаём и НЕ передаём третьим лицам.</p></div>
-      <div class="doc-section"><h3>6. Срок хранения</h3><p>Бессрочно, пока работает Diogram. Хочешь удалить — напиши владельцу.</p></div>
-      <div class="doc-section"><h3>7. Безопасность</h3><ul><li>Пароли в bcrypt-хешах</li><li>HTTPS</li><li>JWT-токены</li></ul></div>
-      <div class="doc-section"><h3>8. Твои права</h3><ul><li>Посмотреть свои данные</li><li>Изменить имя, @username, bio</li><li>Запросить удаление</li></ul></div>
-      <div class="doc-section"><h3>9. Контакты</h3><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a></div></div>
-      <div class="doc-section"><h3>10. Возраст</h3><p>Diogram с 12 лет. Младше — нужно согласие родителей.</p></div>
-      <div class="doc-section"><h3>11. Изменения</h3><p>Можем обновлять политику. О серьёзных изменениях сообщим в мессенджере.</p></div>
+      <div class="doc-section"><h3>1. Какие данные собираем</h3><p>При регистрации: email, пароль. В профиле: имя, @username, bio, аватарку. В процессе: сообщения, фото, дата входа.</p><p><b>НЕ собираем:</b> IP, устройство, геолокацию.</p></div>
+      <div class="doc-section"><h3>2. Кому передаём</h3><p>Supabase (БД), Railway (хостинг), Mail.ru (отправка кодов). НЕ продаём третьим лицам.</p></div>
+      <div class="doc-section"><h3>3. Контакты</h3><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a></div></div>
     </div>
   </div>
 
@@ -484,10 +512,7 @@
         <div class="ban-icon">🚫</div>
         <div class="ban-title">Вы были заблокированы</div>
         <div class="ban-subtitle">в мессенджере Diogram</div>
-        <div class="ban-reason-block">
-          <div class="ban-reason-label">ПРИЧИНА:</div>
-          <div class="ban-reason-text" id="ban-reason">—</div>
-        </div>
+        <div class="ban-reason-block"><div class="ban-reason-label">ПРИЧИНА:</div><div class="ban-reason-text" id="ban-reason">—</div></div>
         <div class="ban-info-block">
           <div class="ban-info-row"><span class="ban-info-label">Ваше имя:</span><span class="ban-info-value" id="ban-name">—</span></div>
           <div class="ban-info-row"><span class="ban-info-label">Ваш ID:</span><span class="ban-info-value" id="ban-id">—</span></div>
@@ -495,11 +520,7 @@
         </div>
         <button class="btn btn-secondary" id="btn-copy-ban" style="margin-bottom:12px;">📋 Скопировать для апелляции</button>
         <button class="btn" id="btn-ban-logout">Выйти</button>
-        <div class="ban-contact">
-          Для подачи апелляции свяжитесь с разработчиком:<br>
-          📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>
-          📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a>
-        </div>
+        <div class="ban-contact">Для подачи апелляции:<br>📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a></div>
       </div>
     </div>
   </div>
@@ -510,115 +531,29 @@
 <div class="sheet" id="menu-sheet">
   <div class="menu-title">Меню</div>
   <div class="menu-item" id="menu-profile"><span class="icon">👤</span> Профиль</div>
+  <div class="menu-item" id="menu-shop"><span class="icon">🛒</span> Магазин</div>
   <div class="menu-item" id="menu-new-channel"><span class="icon">📢</span> Новый канал</div>
   <div class="menu-item" id="menu-admin" style="display:none;"><span class="icon">👑</span> Админка <span id="menu-admin-badge" style="display:none;background:#ff5b5b;color:#fff;font-size:10px;padding:2px 6px;border-radius:8px;margin-left:auto;">0</span></div>
   <div class="menu-item" id="menu-logout"><span class="icon">🚪</span> Выйти</div>
 </div>
 
-<div class="modal" id="modal-name">
-  <div class="modal-bg" onclick="closeModal('modal-name')"></div>
-  <div class="modal-content">
-    <div class="modal-title">Изменить имя</div>
-    <input type="text" id="modal-name-first" placeholder="Имя" maxlength="32" style="margin-bottom:10px;">
-    <input type="text" id="modal-name-last" placeholder="Фамилия (необязательно)" maxlength="32">
-    <div class="error" id="modal-name-error" style="margin-top:8px;"></div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeModal('modal-name')">Отмена</button>
-      <button class="btn" id="btn-save-name">Сохранить</button>
-    </div>
-  </div>
-</div>
+<div class="modal" id="modal-name"><div class="modal-bg" onclick="closeModal('modal-name')"></div><div class="modal-content"><div class="modal-title">Изменить имя</div><input type="text" id="modal-name-first" placeholder="Имя" maxlength="32" style="margin-bottom:10px;"><input type="text" id="modal-name-last" placeholder="Фамилия (необязательно)" maxlength="32"><div class="error" id="modal-name-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-name')">Отмена</button><button class="btn" id="btn-save-name">Сохранить</button></div></div></div>
 
-<div class="modal" id="modal-username">
-  <div class="modal-bg" onclick="closeModal('modal-username')"></div>
-  <div class="modal-content">
-    <div class="modal-title">Изменить @username</div>
-    <input type="text" id="modal-username-input" placeholder="username" maxlength="32">
-    <div style="font-size:12px;color:#7e8b99;margin-top:8px;" id="username-limit-info">Проверка лимита...</div>
-    <div class="error" id="modal-username-error" style="margin-top:8px;"></div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeModal('modal-username')">Отмена</button>
-      <button class="btn" id="btn-save-username">Сохранить</button>
-    </div>
-  </div>
-</div>
+<div class="modal" id="modal-username"><div class="modal-bg" onclick="closeModal('modal-username')"></div><div class="modal-content"><div class="modal-title">Изменить @username</div><input type="text" id="modal-username-input" placeholder="username" maxlength="32"><div style="font-size:12px;color:#7e8b99;margin-top:8px;" id="username-limit-info"></div><div class="error" id="modal-username-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-username')">Отмена</button><button class="btn" id="btn-save-username">Сохранить</button></div></div></div>
 
-<div class="modal" id="modal-bio">
-  <div class="modal-bg" onclick="closeModal('modal-bio')"></div>
-  <div class="modal-content">
-    <div class="modal-title">О себе</div>
-    <textarea id="modal-bio-input" placeholder="Расскажи о себе..." maxlength="200" rows="4" style="resize:none;"></textarea>
-    <div class="error" id="modal-bio-error" style="margin-top:8px;"></div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeModal('modal-bio')">Отмена</button>
-      <button class="btn" id="btn-save-bio">Сохранить</button>
-    </div>
-  </div>
-</div>
+<div class="modal" id="modal-bio"><div class="modal-bg" onclick="closeModal('modal-bio')"></div><div class="modal-content"><div class="modal-title">О себе</div><textarea id="modal-bio-input" placeholder="Расскажи о себе..." maxlength="200" rows="4" style="resize:none;"></textarea><div class="error" id="modal-bio-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-bio')">Отмена</button><button class="btn" id="btn-save-bio">Сохранить</button></div></div></div>
 
-<div class="modal" id="modal-report">
-  <div class="modal-bg" onclick="closeModal('modal-report')"></div>
-  <div class="modal-content">
-    <div class="modal-title">⚠️ Жалоба</div>
-    <div id="report-target-info" style="font-size:13px;color:#7e8b99;margin-bottom:12px;text-align:center;"></div>
-    <div id="report-reasons-list"></div>
-    <textarea id="report-comment" placeholder="Опиши ситуацию (необязательно)" maxlength="500" rows="3" style="resize:none;margin-top:8px;"></textarea>
-    <div class="error" id="modal-report-error" style="margin-top:8px;"></div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeModal('modal-report')">Отмена</button>
-      <button class="btn" id="btn-send-report">Отправить</button>
-    </div>
-  </div>
-</div>
+<div class="modal" id="modal-report"><div class="modal-bg" onclick="closeModal('modal-report')"></div><div class="modal-content"><div class="modal-title">⚠️ Жалоба</div><div id="report-target-info" style="font-size:13px;color:#7e8b99;margin-bottom:12px;text-align:center;"></div><div id="report-reasons-list"></div><textarea id="report-comment" placeholder="Опиши ситуацию (необязательно)" maxlength="500" rows="3" style="resize:none;margin-top:8px;"></textarea><div class="error" id="modal-report-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-report')">Отмена</button><button class="btn" id="btn-send-report">Отправить</button></div></div></div>
 
-<div class="modal" id="modal-ban">
-  <div class="modal-bg" onclick="closeModal('modal-ban')"></div>
-  <div class="modal-content">
-    <div class="modal-title">🚫 Забанить юзера</div>
-    <div id="ban-target-info" style="font-size:13px;color:#7e8b99;margin-bottom:12px;text-align:center;"></div>
-    <textarea id="ban-reason-input" placeholder="Причина бана (обязательно)" maxlength="500" rows="3" style="resize:none;"></textarea>
-    <div style="margin-top:12px;font-size:13px;color:#7e8b99;">Срок:</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;" id="ban-duration-list">
-      <button class="reason-option" data-days="" style="flex:1;min-width:80px;text-align:center;margin:0;">Навсегда</button>
-      <button class="reason-option" data-days="1" style="flex:1;min-width:80px;text-align:center;margin:0;">1 день</button>
-      <button class="reason-option" data-days="7" style="flex:1;min-width:80px;text-align:center;margin:0;">7 дней</button>
-      <button class="reason-option" data-days="30" style="flex:1;min-width:80px;text-align:center;margin:0;">30 дней</button>
-    </div>
-    <div class="error" id="modal-ban-error" style="margin-top:8px;"></div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeModal('modal-ban')">Отмена</button>
-      <button class="btn" id="btn-confirm-ban" style="background:#a52a2a;">Забанить</button>
-    </div>
-  </div>
-</div>
+<div class="modal" id="modal-ban"><div class="modal-bg" onclick="closeModal('modal-ban')"></div><div class="modal-content"><div class="modal-title">🚫 Забанить</div><div id="ban-target-info" style="font-size:13px;color:#7e8b99;margin-bottom:12px;text-align:center;"></div><textarea id="ban-reason-input" placeholder="Причина бана" maxlength="500" rows="3" style="resize:none;"></textarea><div style="margin-top:12px;font-size:13px;color:#7e8b99;">Срок:</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;" id="ban-duration-list">
+<button class="reason-option" data-days="" style="flex:1;min-width:80px;text-align:center;margin:0;">Навсегда</button>
+<button class="reason-option" data-days="1" style="flex:1;min-width:80px;text-align:center;margin:0;">1 день</button>
+<button class="reason-option" data-days="7" style="flex:1;min-width:80px;text-align:center;margin:0;">7 дней</button>
+<button class="reason-option" data-days="30" style="flex:1;min-width:80px;text-align:center;margin:0;">30 дней</button></div><div class="error" id="modal-ban-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-ban')">Отмена</button><button class="btn" id="btn-confirm-ban" style="background:#a52a2a;">Забанить</button></div></div></div>
 
-<div class="modal" id="modal-ch-edit">
-  <div class="modal-bg" onclick="closeModal('modal-ch-edit')"></div>
-  <div class="modal-content">
-    <div class="modal-title">✏️ Редактировать канал</div>
-    <div style="text-align:center;margin-bottom:16px;">
-      <div class="ch-info-avatar" id="ch-edit-avatar" style="width:80px;height:80px;font-size:36px;border-radius:20px;margin:0 auto;cursor:pointer;">📢</div>
-      <div style="font-size:12px;color:#7e8b99;margin-top:6px;">Нажми чтобы изменить аватарку</div>
-      <input type="file" id="ch-edit-avatar-file" accept="image/*" style="display:none;">
-    </div>
-    <div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">Название</div>
-    <input type="text" id="ch-edit-name" placeholder="Название" maxlength="64" style="margin-bottom:12px;">
-    <div id="ch-edit-username-row">
-      <div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">@username</div>
-      <input type="text" id="ch-edit-username" placeholder="username" maxlength="32" style="margin-bottom:12px;">
-    </div>
-    <div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">Тип канала</div>
-    <div style="display:flex;gap:6px;margin-bottom:12px;">
-      <button class="reason-option" data-type="public" id="ch-edit-type-public" style="flex:1;text-align:center;margin:0;">📢 Публичный</button>
-      <button class="reason-option" data-type="secret" id="ch-edit-type-secret" style="flex:1;text-align:center;margin:0;">🔒 Секретный</button>
-    </div>
-    <div class="error" id="modal-ch-edit-error" style="margin-top:8px;"></div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeModal('modal-ch-edit')">Отмена</button>
-      <button class="btn" id="btn-ch-save">Сохранить</button>
-    </div>
-  </div>
-</div>
+<div class="modal" id="modal-balance"><div class="modal-bg" onclick="closeModal('modal-balance')"></div><div class="modal-content"><div class="modal-title">💰 Пополнить баланс</div><div id="balance-target-info" style="font-size:13px;color:#7e8b99;margin-bottom:12px;text-align:center;"></div><input type="number" id="balance-amount" placeholder="Сколько Di (1-1000000)" min="1" max="1000000" style="margin-bottom:10px;"><input type="text" id="balance-description" placeholder="Описание (необязательно)" maxlength="200"><div class="error" id="modal-balance-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-balance')">Отмена</button><button class="btn" id="btn-confirm-balance">Начислить</button></div></div></div>
+
+<div class="modal" id="modal-ch-edit"><div class="modal-bg" onclick="closeModal('modal-ch-edit')"></div><div class="modal-content"><div class="modal-title">✏️ Редактировать канал</div><div style="text-align:center;margin-bottom:16px;"><div class="ch-info-avatar" id="ch-edit-avatar" style="width:80px;height:80px;font-size:36px;border-radius:20px;margin:0 auto;cursor:pointer;">📢</div><div style="font-size:12px;color:#7e8b99;margin-top:6px;">Нажми чтобы изменить аватарку</div><input type="file" id="ch-edit-avatar-file" accept="image/*" style="display:none;"></div><div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">Название</div><input type="text" id="ch-edit-name" placeholder="Название" maxlength="64" style="margin-bottom:12px;"><div id="ch-edit-username-row"><div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">@username</div><input type="text" id="ch-edit-username" placeholder="username" maxlength="32" style="margin-bottom:12px;"></div><div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">Тип канала</div><div style="display:flex;gap:6px;margin-bottom:12px;"><button class="reason-option" data-type="public" id="ch-edit-type-public" style="flex:1;text-align:center;margin:0;">📢 Публичный</button><button class="reason-option" data-type="secret" id="ch-edit-type-secret" style="flex:1;text-align:center;margin:0;">🌍 Глобальный</button></div><div class="error" id="modal-ch-edit-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-ch-edit')">Отмена</button><button class="btn" id="btn-ch-save">Сохранить</button></div></div></div>
 
 <div class="photo-viewer" id="photo-viewer">
   <button class="photo-viewer-close" onclick="closePhotoViewer()">✕</button>
@@ -627,6 +562,7 @@
 
 <script>
 const API = location.origin;
+const RATE = 1.59;
 let token = localStorage.getItem("diogram_token") || null;
 let currentUser = null;
 let currentChat = null;
@@ -635,6 +571,8 @@ let currentUserProfile = null;
 let currentChInfo = null;
 let chEditType = "public";
 let newAvatarFile = null;
+let currentShopCategory = "pdg";
+let shopItems = [];
 let currentAdminTab = "users";
 let allAdminUsers = [];
 let allReports = [];
@@ -647,10 +585,12 @@ let typingTimer = null;
 let lastMessageTime = "1970-01-01T00:00:00+00:00";
 let lastChannelMessageTime = "1970-01-01T00:00:00+00:00";
 let pendingPhoto = null;
+let pendingFile = null;
 let selectedReportReason = null;
 let reportTarget = null;
 let banTarget = null;
 let banDuration = null;
+let balanceTarget = null;
 
 async function api(path, opts = {}) {
   const headers = { ...(opts.headers || {}) };
@@ -674,6 +614,33 @@ function statusText(u) { if (!u) return "—"; if (u.is_online) return "онла
 function fmtSize(bytes) { if (bytes < 1024) return bytes + " Б"; if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " КБ"; return (bytes / 1048576).toFixed(2) + " МБ"; }
 function openModal(id) { document.getElementById(id).classList.add("active"); }
 function closeModal(id) { document.getElementById(id).classList.remove("active"); }
+
+function linkify(text) {
+  const escaped = escapeHtml(text || "");
+  return escaped.replace(/@([a-zA-Z][a-zA-Z0-9_]{0,31})/g, function(match, username) {
+    return '<span class="mention" data-username="' + username + '">' + match + '</span>';
+  });
+}
+
+async function openUserByUsername(username) {
+  try {
+    const data = await api("/api/users/by_username/" + encodeURIComponent(username));
+    if (data.exists && data.user) openUserProfile(data.user.id);
+    else alert("Аккаунт не найден, юзернейм @" + username + " свободен");
+  } catch (e) {
+    if (e.message !== "banned") alert("Аккаунт не найден, юзернейм @" + username + " свободен");
+  }
+}
+
+document.addEventListener("click", function(e) {
+  const el = e.target.closest(".mention");
+  if (el) {
+    e.preventDefault();
+    e.stopPropagation();
+    const uname = el.getAttribute("data-username");
+    if (uname) openUserByUsername(uname);
+  }
+});
 
 function showBanScreen(data) {
   document.getElementById("ban-reason").textContent = data.ban_reason || "Нарушение правил";
@@ -803,7 +770,7 @@ async function loadList() {
         if (u.avatar_url) av.innerHTML = '<img src="' + u.avatar_url + '">';
         else av.textContent = initial(name);
         if (u.is_online) { const dot = document.createElement("div"); dot.className = "online-dot"; av.appendChild(dot); }
-        const last = item.last_message_type === "photo" ? "📷 Фото" : (item.last_message || "Нет сообщений");
+        const last = item.last_message_type === "photo" ? "📷 Фото" : item.last_message_type === "file" ? "📎 Файл" : (item.last_message || "Нет сообщений");
         el.innerHTML = ''; el.appendChild(av);
         const info = document.createElement("div"); info.className = "list-info";
         info.innerHTML = '<div class="list-name">' + escapeHtml(name) + roleIcon(u.role) + verifiedMark(u.verified) + '</div><div class="list-last">' + escapeHtml(last) + '</div>';
@@ -815,7 +782,7 @@ async function loadList() {
       } else {
         const av = document.createElement("div"); av.className = "avatar " + (item.channel_type === "secret" ? "secret-channel" : "channel");
         if (item.avatar_url) av.innerHTML = '<img src="' + item.avatar_url + '">';
-        else av.textContent = item.channel_type === "secret" ? "🔒" : "📢";
+        else av.textContent = item.channel_type === "secret" ? "🌍" : "📢";
         el.innerHTML = ''; el.appendChild(av);
         const info = document.createElement("div"); info.className = "list-info";
         info.innerHTML = '<div class="list-name">' + escapeHtml(item.name) + '</div><div class="list-last">' + (item.subscribers_count || 0) + ' подписчиков</div>';
@@ -852,11 +819,25 @@ function appendMessage(m) {
   const box = document.getElementById("messages");
   const empty = box.querySelector(".empty-state"); if (empty) empty.remove();
   const isOwn = m.sender_id === currentUser.id;
-  const d = document.createElement("div"); d.className = "msg " + (isOwn ? "own" : "other"); d.dataset.msgId = m.id;
+  const d = document.createElement("div"); d.className = "msg " + (isOwn ? "own" : "other");
   const time = fmtTime(m.created_at);
   let content = "";
-  if (m.type === "photo" && m.attachment_url) content = '<img src="' + m.attachment_url + '" class="msg-photo" onclick="openPhotoViewer(\'' + m.attachment_url + '\')">';
-  content += escapeHtml(m.text || "");
+
+  if (m.type === "photo" && m.attachment_url) {
+    content = '<img src="' + m.attachment_url + '" class="msg-photo" onclick="openPhotoViewer(\'' + m.attachment_url + '\')">';
+  } else if (m.type === "file" && m.attachment_url) {
+    const isAudio = m.file_type === "audio" || (m.file_mime && m.file_mime.startsWith("audio/"));
+    const fname = escapeHtml(m.file_name || m.attachment_name || "file");
+    const fsize = fmtSize(m.attachment_size || m.file_size || 0);
+    if (isAudio) {
+      content = '<div class="file-block"><div class="file-row"><div class="file-icon">🎵</div><div class="file-info"><div class="file-name">' + fname + '</div><div class="file-size">' + fsize + '</div></div></div><audio class="audio-player" controls src="' + m.attachment_url + '"></audio></div>';
+    } else {
+      const icon = m.file_mime && m.file_mime.includes("pdf") ? "📄" : "📎";
+      content = '<div class="file-block"><div class="file-row"><div class="file-icon">' + icon + '</div><div class="file-info"><div class="file-name">' + fname + '</div><div class="file-size">' + fsize + '</div></div><a class="file-dl" href="' + m.attachment_url + '" target="_blank" download>Скачать</a></div></div>';
+    }
+  }
+
+  content += linkify(m.text || "");
   let checks = "";
   if (isOwn) checks = m.read_at ? '<span class="checks read">✓✓</span>' : '<span class="checks">✓</span>';
   d.innerHTML = content + '<span class="time">' + time + checks + '</span>';
@@ -871,7 +852,7 @@ document.getElementById("msg-input").addEventListener("keypress", e => { if (e.k
 document.getElementById("send-btn").onclick = handleSend;
 
 function handleSend() {
-  if (pendingPhoto) return sendPhoto();
+  if (pendingPhoto || pendingFile) return sendFile();
   return sendMessage();
 }
 
@@ -888,40 +869,70 @@ async function sendMessage() {
   } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
 }
 
-async function sendPhoto() {
-  if (!pendingPhoto || !currentChat) return;
+async function sendFile() {
+  if (!currentChat) return;
   const input = document.getElementById("msg-input");
   const caption = input.value.trim();
   const fd = new FormData();
-  fd.append("file", pendingPhoto);
+  const isPhoto = !!pendingPhoto;
+  if (pendingPhoto) fd.append("file", pendingPhoto);
+  if (pendingFile) fd.append("file", pendingFile);
   fd.append("chat_id", currentChat.id);
-  fd.append("caption", caption);
+  if (isPhoto) fd.append("caption", caption);
   document.getElementById("photo-preview").classList.remove("active");
   input.value = "";
-  pendingPhoto = null;
+  const endpoint = isPhoto ? "/api/upload/photo" : "/api/upload/file";
+  pendingPhoto = null; pendingFile = null;
   try {
-    const data = await api("/api/upload/photo", { method: "POST", body: fd });
+    const data = await api(endpoint, { method: "POST", body: fd });
     if (data.message) appendMessage(data.message);
   } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
 }
 
-document.getElementById("btn-attach-photo").onclick = () => { if (!currentChat) return; document.getElementById("photo-file-input").click(); };
+document.getElementById("btn-attach-photo").onclick = () => {
+  if (!currentChat) return;
+  const isPremium = currentUser.premium;
+  const isFilePlus = currentUser.file_plus;
+  let choice = prompt("Что отправить?\n1 — Фото" + (isFilePlus ? "\n2 — Файл (PDF, DOCX, музыка...)" : ""), "1");
+  if (choice === "2" && isFilePlus) {
+    document.getElementById("photo-file-input").accept = "audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt";
+    document.getElementById("photo-file-input").click();
+  } else {
+    document.getElementById("photo-file-input").accept = "image/*";
+    document.getElementById("photo-file-input").click();
+  }
+};
+
 document.getElementById("photo-file-input").onchange = (e) => {
   const file = e.target.files[0]; if (!file) return;
-  if (file.size > 5 * 1024 * 1024) { alert("Файл больше 5 МБ"); e.target.value = ""; return; }
-  if (!file.type.startsWith("image/")) { alert("Только изображения"); e.target.value = ""; return; }
-  pendingPhoto = file;
+  const isImage = file.type.startsWith("image/");
+  if (isImage) {
+    if (file.size > 5 * 1024 * 1024) { alert("Фото больше 5 МБ"); e.target.value = ""; return; }
+    pendingPhoto = file; pendingFile = null;
+  } else {
+    if (file.size > 3 * 1024 * 1024) { alert("Файл больше 3 МБ"); e.target.value = ""; return; }
+    pendingFile = file; pendingPhoto = null;
+  }
   const reader = new FileReader();
   reader.onload = (ev) => {
-    document.getElementById("photo-preview-img").src = ev.target.result;
+    document.getElementById("photo-preview-img").src = isImage ? ev.target.result : "";
+    if (!isImage) document.getElementById("photo-preview-img").style.display = "none";
+    else document.getElementById("photo-preview-img").style.display = "block";
     document.getElementById("photo-preview-name").textContent = file.name;
     document.getElementById("photo-preview-size").textContent = fmtSize(file.size);
     document.getElementById("photo-preview").classList.add("active");
   };
-  reader.readAsDataURL(file);
+  if (isImage) reader.readAsDataURL(file);
+  else {
+    document.getElementById("photo-preview-img").style.display = "none";
+    document.getElementById("photo-preview-name").textContent = file.name;
+    document.getElementById("photo-preview-size").textContent = fmtSize(file.size);
+    document.getElementById("photo-preview").classList.add("active");
+  }
   e.target.value = "";
 };
-document.getElementById("photo-preview-close").onclick = () => { pendingPhoto = null; document.getElementById("photo-preview").classList.remove("active"); };
+
+document.getElementById("photo-preview-close").onclick = () => { pendingPhoto = null; pendingFile = null; document.getElementById("photo-preview").classList.remove("active"); };
 
 function startChatPolling() {
   if (chatPollInterval) clearInterval(chatPollInterval);
@@ -951,7 +962,7 @@ async function openChannel(channelId) {
     const data = await api("/api/channels/" + channelId + "/messages");
     const ch = data.channel; currentChannel = ch;
     document.getElementById("channel-title").textContent = ch.name;
-    document.getElementById("channel-status").textContent = (ch.type === "secret" ? "🔒 " : "📢 ") + (ch.subscribers_count || 0) + " подписчиков";
+    document.getElementById("channel-status").textContent = (ch.type === "secret" ? "🌍 " : "📢 ") + (ch.subscribers_count || 0) + " подписчиков";
     document.getElementById("channel-input-area").style.display = ch.is_owner ? "flex" : "none";
     renderChannelMessages(data.messages);
     if (data.messages.length) lastChannelMessageTime = data.messages[data.messages.length - 1].created_at;
@@ -960,7 +971,7 @@ async function openChannel(channelId) {
 }
 
 function renderChannelMessages(msgs) { const box = document.getElementById("channel-messages"); box.innerHTML = ""; if (!msgs.length) { box.innerHTML = '<div class="empty-state">В канале пока нет сообщений</div>'; return; } for (const m of msgs) appendChannelMessage(m); }
-function appendChannelMessage(m) { const box = document.getElementById("channel-messages"); const empty = box.querySelector(".empty-state"); if (empty) empty.remove(); const d = document.createElement("div"); d.className = "msg other"; d.innerHTML = escapeHtml(m.text) + '<span class="time">' + fmtTime(m.created_at) + '</span>'; box.appendChild(d); box.scrollTop = box.scrollHeight; }
+function appendChannelMessage(m) { const box = document.getElementById("channel-messages"); const empty = box.querySelector(".empty-state"); if (empty) empty.remove(); const d = document.createElement("div"); d.className = "msg other"; d.innerHTML = linkify(m.text) + '<span class="time">' + fmtTime(m.created_at) + '</span>'; box.appendChild(d); box.scrollTop = box.scrollHeight; }
 
 document.getElementById("channel-send-btn").onclick = sendChannelMessage;
 document.getElementById("channel-input").addEventListener("keypress", e => { if (e.key === "Enter") sendChannelMessage(); });
@@ -983,7 +994,6 @@ document.getElementById("btn-back-channel").onclick = () => { if (channelPollInt
 document.getElementById("channel-header-info").onclick = () => { if (currentChannel) openChannelInfo(currentChannel.id); };
 document.getElementById("btn-channel-report").onclick = () => { if (!currentChannel) return; reportTarget = { type: "channel", channel_id: currentChannel.id, name: currentChannel.name }; openReportModal(); };
 
-// CHANNEL INFO
 async function openChannelInfo(channelId) {
   try {
     const data = await api("/api/channels/" + channelId + "/info");
@@ -992,10 +1002,10 @@ async function openChannelInfo(channelId) {
     const av = document.getElementById("ch-info-avatar");
     av.className = "ch-info-avatar" + (ch.type === "secret" ? " secret" : "");
     if (ch.avatar_url) av.innerHTML = '<img src="' + ch.avatar_url + '">';
-    else av.textContent = ch.type === "secret" ? "🔒" : "📢";
+    else av.textContent = ch.type === "secret" ? "🌍" : "📢";
     document.getElementById("ch-info-name").textContent = ch.name;
-    document.getElementById("ch-info-username").textContent = ch.username ? "@" + ch.username : "Секретный канал";
-    document.getElementById("ch-info-type").textContent = ch.type === "secret" ? "🔒 Секретный" : "📢 Публичный";
+    document.getElementById("ch-info-username").textContent = ch.username ? "@" + ch.username : "🌍 Глобальный канал";
+    document.getElementById("ch-info-type").textContent = ch.type === "secret" ? "🌍 Глобальный" : "📢 Публичный";
     document.getElementById("ch-info-subs").textContent = (ch.subscribers_count || 0) + " подписчиков";
     const isOwner = ch.is_owner; const isSub = ch.is_subscribed;
     document.getElementById("btn-ch-info-edit").style.display = isOwner ? "block" : "none";
@@ -1015,7 +1025,7 @@ document.getElementById("btn-ch-info-edit").onclick = () => {
   const av = document.getElementById("ch-edit-avatar");
   av.className = "ch-info-avatar" + (currentChInfo.type === "secret" ? " secret" : "");
   if (currentChInfo.avatar_url) av.innerHTML = '<img src="' + currentChInfo.avatar_url + '">';
-  else av.textContent = currentChInfo.type === "secret" ? "🔒" : "📢";
+  else av.textContent = currentChInfo.type === "secret" ? "🌍" : "📢";
   document.getElementById("ch-edit-name").value = currentChInfo.name || "";
   document.getElementById("ch-edit-username").value = currentChInfo.username || "";
   document.getElementById("ch-edit-username-row").style.display = currentChInfo.type === "public" ? "block" : "none";
@@ -1039,7 +1049,7 @@ document.getElementById("ch-edit-avatar-file").onchange = (e) => {
 
 document.getElementById("ch-edit-type-public").onclick = () => { chEditType = "public"; document.getElementById("ch-edit-type-public").classList.add("selected"); document.getElementById("ch-edit-type-secret").classList.remove("selected"); document.getElementById("ch-edit-username-row").style.display = "block"; };
 document.getElementById("ch-edit-type-secret").onclick = () => {
-  if (currentUser.role !== "owner" && currentUser.role !== "developer") return alert("Только разработчики могут делать канал секретным");
+  if (currentUser.role !== "owner" && currentUser.role !== "developer") return alert("Только разработчики могут делать канал глобальным");
   chEditType = "secret"; document.getElementById("ch-edit-type-secret").classList.add("selected"); document.getElementById("ch-edit-type-public").classList.remove("selected"); document.getElementById("ch-edit-username-row").style.display = "none";
 };
 
@@ -1105,6 +1115,7 @@ document.getElementById("menu-profile").onclick = () => { closeMenu(); openProfi
 document.getElementById("menu-logout").onclick = () => { if (!confirm("Выйти?")) return; localStorage.removeItem("diogram_token"); location.reload(); };
 document.getElementById("menu-admin").onclick = () => { closeMenu(); openAdmin(); };
 document.getElementById("menu-new-channel").onclick = () => { closeMenu(); createChannelDialog(); };
+document.getElementById("menu-shop").onclick = () => { closeMenu(); openShop(); };
 
 // PROFILE
 function openProfile() {
@@ -1121,6 +1132,22 @@ function openProfile() {
   document.getElementById("profile-email").textContent = currentUser.email || "—";
   const roleMap = { owner: "👑 Владелец", developer: "⚡ Разработчик", moderator: "🛡️ Модератор", user: "Пользователь" };
   document.getElementById("profile-role").textContent = roleMap[currentUser.role] || "Пользователь";
+
+  const bal = parseFloat(currentUser.balance || 0);
+  document.getElementById("profile-balance").textContent = bal.toFixed(2) + " Di";
+  document.getElementById("profile-balance-rub").textContent = "~" + Math.round(bal * RATE) + "₽";
+
+  let subsHtml = "";
+  if (currentUser.premium) {
+    const until = currentUser.premium_until ? new Date(currentUser.premium_until).toLocaleDateString("ru-RU") : "";
+    subsHtml += '<div class="profile-block"><div class="profile-row"><div class="profile-row-icon">💎</div><div class="profile-row-content"><div class="profile-row-label">PDG Premium</div><div class="profile-row-value">Активна до ' + until + '</div></div></div></div>';
+  }
+  if (currentUser.file_plus) {
+    const until = currentUser.file_plus_until ? new Date(currentUser.file_plus_until).toLocaleDateString("ru-RU") : "";
+    subsHtml += '<div class="profile-block"><div class="profile-row"><div class="profile-row-icon">📎</div><div class="profile-row-content"><div class="profile-row-label">File Plus</div><div class="profile-row-value">Активна до ' + until + '</div></div></div></div>';
+  }
+  document.getElementById("profile-subs-block").innerHTML = subsHtml;
+
   const status = document.getElementById("profile-status");
   status.textContent = currentUser.username ? "@" + currentUser.username : "";
   status.classList.toggle("online", !!currentUser.is_online);
@@ -1167,7 +1194,6 @@ document.getElementById("btn-save-bio").onclick = async () => {
   try { const data = await api("/api/profile/bio", { method: "POST", body: JSON.stringify({ bio }) }); currentUser = data.user; closeModal("modal-bio"); openProfile(); } catch (e) { setError("modal-bio-error", e.message); }
 };
 
-// USER PROFILE (чужой)
 async function openUserProfile(userId) {
   try {
     const data = await api("/api/users/" + userId);
@@ -1192,13 +1218,87 @@ async function openUserProfile(userId) {
 }
 document.getElementById("btn-user-back").onclick = () => { show("screen-list"); loadList(); };
 
+// SHOP
+async function openShop() {
+  show("screen-shop");
+  currentShopCategory = "pdg";
+  document.querySelectorAll(".shop-tab").forEach(t => t.classList.toggle("active", t.dataset.cat === "pdg"));
+  try {
+    const data = await api("/api/shop/items");
+    shopItems = data.items;
+    document.getElementById("shop-balance").textContent = parseFloat(data.balance).toFixed(2) + " Di";
+    document.getElementById("shop-balance-rub").textContent = "~" + Math.round(data.balance * RATE) + "₽";
+    renderShop();
+  } catch (e) { document.getElementById("shop-list").innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+}
+
+document.querySelectorAll(".shop-tab").forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll(".shop-tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    currentShopCategory = tab.dataset.cat;
+    renderShop();
+  };
+});
+
+function renderShop() {
+  const box = document.getElementById("shop-list");
+  if (currentShopCategory === "history") return renderHistory();
+  box.innerHTML = "";
+  const filtered = shopItems.filter(i => i.category === currentShopCategory);
+  if (!filtered.length) { box.innerHTML = '<div class="empty-state">Товаров нет</div>'; return; }
+  const bal = parseFloat(currentUser.balance || 0);
+  for (const item of filtered) {
+    const el = document.createElement("div"); el.className = "shop-item";
+    let meta = "";
+    if (item.days) meta = item.days + " дней";
+    if (item.mb) meta = item.mb + " МБ";
+    const canBuy = bal >= item.price;
+    el.innerHTML = '<div class="shop-item-info"><div class="shop-item-name">' + escapeHtml(item.name) + '</div><div class="shop-item-meta">' + meta + '</div></div><div class="shop-item-price">' + item.price + ' Di</div><button class="shop-buy" ' + (canBuy ? "" : "disabled") + '>Купить</button>';
+    el.querySelector(".shop-buy").onclick = () => buyItem(item);
+    box.appendChild(el);
+  }
+}
+
+async function buyItem(item) {
+  if (!confirm("Купить \"" + item.name + "\" за " + item.price + " Di?")) return;
+  try {
+    const data = await api("/api/shop/buy", { method: "POST", body: JSON.stringify({ item_id: item.id }) });
+    currentUser = data.user;
+    document.getElementById("shop-balance").textContent = parseFloat(currentUser.balance).toFixed(2) + " Di";
+    document.getElementById("shop-balance-rub").textContent = "~" + Math.round(currentUser.balance * RATE) + "₽";
+    alert("Куплено! ✅");
+    renderShop();
+  } catch (e) { alert("Ошибка: " + e.message); }
+}
+
+async function renderHistory() {
+  const box = document.getElementById("shop-list");
+  box.innerHTML = '<div class="spinner"></div>';
+  try {
+    const data = await api("/api/transactions");
+    box.innerHTML = "";
+    if (!data.transactions.length) { box.innerHTML = '<div class="empty-state">История пуста</div>'; return; }
+    for (const t of data.transactions) {
+      const el = document.createElement("div"); el.className = "shop-item";
+      const color = t.amount > 0 ? "#4dd964" : "#ff5b5b";
+      const sign = t.amount > 0 ? "+" : "";
+      el.innerHTML = '<div class="shop-item-info"><div class="shop-item-name">' + escapeHtml(t.description || t.type) + '</div><div class="shop-item-meta">' + new Date(t.created_at).toLocaleString("ru-RU") + '</div></div><div class="shop-item-price" style="color:' + color + '">' + sign + t.amount + ' Di</div>';
+      box.appendChild(el);
+    }
+  } catch (e) { box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+}
+
+document.getElementById("btn-shop-back").onclick = () => { show("screen-list"); loadList(); };
+document.getElementById("btn-shop").onclick = openShop;
+
 // CREATE CHANNEL
 function createChannelDialog() {
   const name = prompt("Название канала:");
   if (!name || !name.trim()) return;
   const isSecret = currentUser.role === "owner" || currentUser.role === "developer";
   let type = "public"; let username = null;
-  if (isSecret) { const t = prompt("Тип канала:\n1 — Публичный\n2 — Секретный (только разработчики)", "1"); if (t === "2") type = "secret"; }
+  if (isSecret) { const t = prompt("Тип канала:\n1 — Публичный\n2 — 🌍 Глобальный (только разработчики)", "1"); if (t === "2") type = "secret"; }
   if (type === "public") { username = prompt("Username канала (без @):"); if (!username || !username.trim()) return; username = username.trim().replace("@", ""); }
   const description = prompt("Описание (необязательно):") || "";
   api("/api/channels", { method: "POST", body: JSON.stringify({ name: name.trim(), username, description, type }) }).then(() => { alert("Канал создан!"); loadList(); }).catch(e => alert("Ошибка: " + e.message));
@@ -1243,7 +1343,7 @@ document.querySelectorAll(".admin-tab").forEach(tab => { tab.onclick = () => { d
 
 async function loadAdminUsers() {
   const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
-  try { const data = await api("/api/admin/users?limit=100"); allAdminUsers = data.users; const me = data.me; renderAdminUsers(me, allAdminUsers); } catch (e) { box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+  try { const data = await api("/api/admin/users?limit=100"); allAdminUsers = data.users; renderAdminUsers(data.me, allAdminUsers); } catch (e) { box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
 }
 
 function renderAdminUsers(me, users) {
@@ -1256,13 +1356,18 @@ function renderAdminUsers(me, users) {
     const name = u.first_name || u.username || "—";
     const roleTag = u.role === "owner" ? "👑" : u.role === "developer" ? "⚡" : u.role === "moderator" ? "🛡️" : "";
     const bannedTag = u.banned ? " 🚫" : "";
+    const pdgTag = u.premium ? " 💎" : "";
+    const fpTag = u.file_plus ? " 📎" : "";
     let actions = "";
     if (me.role === "owner" && u.id !== me.id) {
-      actions = '<button class="admin-btn primary" onclick="adminChangeRole(' + u.id + ')">Роль</button>' + '<button class="admin-btn" onclick="adminToggleVerified(' + u.id + ',' + (!u.verified) + ')">' + (u.verified ? "Снять ⭐" : "⭐") + '</button>' + (u.banned ? '<button class="admin-btn success" onclick="adminUnban(' + u.id + ')">Разбан</button>' : '<button class="admin-btn danger" onclick="adminOpenBan(' + u.id + ',\'' + escapeHtml(name).replace(/'/g, "") + '\')">Бан</button>');
+      actions = '<button class="admin-btn primary" onclick="adminChangeRole(' + u.id + ')">Роль</button>' +
+                '<button class="admin-btn" onclick="adminToggleVerified(' + u.id + ',' + (!u.verified) + ')">' + (u.verified ? "Снять ⭐" : "⭐") + '</button>' +
+                '<button class="admin-btn" onclick="adminOpenBalance(' + u.id + ',\'' + escapeHtml(name).replace(/'/g, "") + '\')">💰</button>' +
+                (u.banned ? '<button class="admin-btn success" onclick="adminUnban(' + u.id + ')">Разбан</button>' : '<button class="admin-btn danger" onclick="adminOpenBan(' + u.id + ',\'' + escapeHtml(name).replace(/'/g, "") + '\')">Бан</button>');
     } else if (me.role === "developer" && u.role !== "owner" && u.role !== "developer") {
       actions = (u.banned ? '<button class="admin-btn success" onclick="adminUnban(' + u.id + ')">Разбан</button>' : '<button class="admin-btn danger" onclick="adminOpenBan(' + u.id + ',\'' + escapeHtml(name).replace(/'/g, "") + '\')">Бан</button>');
     }
-    el.innerHTML = '<div class="admin-info"><div class="admin-name">' + escapeHtml(name) + ' ' + roleTag + bannedTag + verifiedMark(u.verified) + '</div><div class="admin-sub">ID ' + u.id + ' · @' + escapeHtml(u.username || "—") + '<br>' + escapeHtml(u.email || "") + '</div></div><div class="admin-actions">' + actions + '</div>';
+    el.innerHTML = '<div class="admin-info"><div class="admin-name">' + escapeHtml(name) + ' ' + roleTag + pdgTag + fpTag + bannedTag + verifiedMark(u.verified) + '</div><div class="admin-sub">ID ' + u.id + ' · @' + escapeHtml(u.username || "—") + ' · ' + parseFloat(u.balance || 0).toFixed(2) + ' Di<br>' + escapeHtml(u.email || "") + '</div></div><div class="admin-actions">' + actions + '</div>';
     box.appendChild(el);
   }
 }
@@ -1272,6 +1377,14 @@ document.getElementById("admin-search").addEventListener("input", () => { if (cu
 async function adminChangeRole(userId) { const role = prompt("Роль (user / moderator / developer):", "moderator"); if (!role) return; if (!["user", "moderator", "developer"].includes(role)) return alert("Неверная роль"); try { await api("/api/admin/set_role", { method: "POST", body: JSON.stringify({ user_id: userId, role }) }); loadAdminUsers(); } catch (e) { alert("Ошибка: " + e.message); } }
 async function adminToggleVerified(userId, verified) { try { await api("/api/admin/set_verified", { method: "POST", body: JSON.stringify({ user_id: userId, verified }) }); loadAdminUsers(); } catch (e) { alert("Ошибка: " + e.message); } }
 async function adminUnban(userId) { if (!confirm("Разбанить?")) return; try { await api("/api/admin/unban", { method: "POST", body: JSON.stringify({ user_id: userId }) }); loadAdminUsers(); } catch (e) { alert("Ошибка: " + e.message); } }
+
+function adminOpenBalance(userId, name) { balanceTarget = userId; document.getElementById("balance-target-info").textContent = "Начислить: " + name; document.getElementById("balance-amount").value = ""; document.getElementById("balance-description").value = ""; setError("modal-balance-error", ""); openModal("modal-balance"); }
+document.getElementById("btn-confirm-balance").onclick = async () => {
+  const amount = parseInt(document.getElementById("balance-amount").value);
+  const description = document.getElementById("balance-description").value.trim();
+  if (!amount || amount <= 0) return setError("modal-balance-error", "Введи сумму");
+  try { await api("/api/admin/add_balance", { method: "POST", body: JSON.stringify({ user_id: balanceTarget, amount, description }) }); closeModal("modal-balance"); loadAdminUsers(); alert("Начислено " + amount + " Di"); } catch (e) { setError("modal-balance-error", e.message); }
+};
 
 function adminOpenBan(userId, name) { banTarget = userId; banDuration = ""; document.getElementById("ban-target-info").textContent = "Забанить: " + name; document.getElementById("ban-reason-input").value = ""; setError("modal-ban-error", ""); document.querySelectorAll("#ban-duration-list .reason-option").forEach((b, i) => b.classList.toggle("selected", i === 0)); openModal("modal-ban"); }
 
@@ -1330,4 +1443,4 @@ document.getElementById("btn-privacy-back").onclick = () => { if (currentUser &&
 })();
 </script>
 </body>
- </html> 
+                         </html>
