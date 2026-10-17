@@ -398,6 +398,26 @@
 
       <div id="profile-subs-block"></div>
 
+      <!-- ИМЯ И BIO (добавлено для фикса) -->
+      <div class="profile-block">
+        <div class="profile-row" id="edit-name" style="cursor:pointer;">
+          <div class="profile-row-icon">✏️</div>
+          <div class="profile-row-content">
+            <div class="profile-row-label">Имя и фамилия</div>
+            <div class="profile-row-value" id="profile-name-inline">—</div>
+          </div>
+          <div class="profile-row-edit">✏️</div>
+        </div>
+        <div class="profile-row" id="edit-bio" style="cursor:pointer;">
+          <div class="profile-row-icon">📝</div>
+          <div class="profile-row-content">
+            <div class="profile-row-label">О себе</div>
+            <div class="profile-row-value" id="profile-bio-inline">—</div>
+          </div>
+          <div class="profile-row-edit">✏️</div>
+        </div>
+      </div>
+
       <!-- ЮЗЕРНЕЙМЫ -->
       <div class="profile-block">
         <div class="profile-row">
@@ -721,6 +741,13 @@ function fmtSize(bytes) { if (bytes < 1024) return bytes + " Б"; if (bytes < 10
 function openModal(id) { document.getElementById(id).classList.add("active"); }
 function closeModal(id) { document.getElementById(id).classList.remove("active"); }
 function fmtDate(iso) { if (!iso) return ""; return new Date(iso).toLocaleDateString("ru-RU"); }
+
+// Безопасный биндинг: если элемента нет — warn в консоль, а не падение скрипта
+function bind(id, handler, event) {
+  const el = document.getElementById(id);
+  if (!el) { console.warn("[Diogram] Элемент #" + id + " не найден — пропускаю биндинг"); return; }
+  el[event || "onclick"] = handler;
+}
 
 function linkify(text) {
   const escaped = escapeHtml(text || "");
@@ -1291,6 +1318,12 @@ async function openProfile() {
   document.getElementById("profile-id").textContent = currentUser.id;
   document.getElementById("profile-role").textContent = currentUser.role;
 
+  // Заполняем новые поля (иначе они были "—")
+  const nameInline = document.getElementById("profile-name-inline");
+  if (nameInline) nameInline.textContent = name;
+  const bioInline = document.getElementById("profile-bio-inline");
+  if (bioInline) bioInline.textContent = currentUser.bio || "—";
+
   const bal = parseFloat(currentUser.balance || 0);
   document.getElementById("profile-balance").innerHTML = '<img src="' + COIN_URL + '" class="di-icon"> ' + bal.toFixed(2) + " Di";
   document.getElementById("profile-balance-rub").textContent = "~" + Math.round(bal * RATE) + "₽";
@@ -1332,7 +1365,8 @@ document.getElementById("profile-avatar").onclick = () => {
   input.click();
 };
 
-document.getElementById("edit-name").onclick = () => { document.getElementById("modal-name-first").value = currentUser.first_name || ""; document.getElementById("modal-name-last").value = currentUser.last_name || ""; setError("modal-name-error", ""); openModal("modal-name"); };
+// Используем bind() — если элемента нет, скрипт не упадёт
+bind("edit-name", () => { document.getElementById("modal-name-first").value = currentUser.first_name || ""; document.getElementById("modal-name-last").value = currentUser.last_name || ""; setError("modal-name-error", ""); openModal("modal-name"); });
 document.getElementById("btn-save-name").onclick = async () => {
   const first_name = document.getElementById("modal-name-first").value.trim(); const last_name = document.getElementById("modal-name-last").value.trim();
   if (!first_name) return setError("modal-name-error", "Имя обязательно");
@@ -1354,7 +1388,7 @@ document.getElementById("btn-save-username").onclick = async () => {
   } catch (e) { setError("modal-username-error", e.message); }
 };
 
-document.getElementById("edit-bio").onclick = () => { document.getElementById("modal-bio-input").value = currentUser.bio || ""; setError("modal-bio-error", ""); openModal("modal-bio"); };
+bind("edit-bio", () => { document.getElementById("modal-bio-input").value = currentUser.bio || ""; setError("modal-bio-error", ""); openModal("modal-bio"); });
 document.getElementById("btn-save-bio").onclick = async () => {
   const bio = document.getElementById("modal-bio-input").value.trim();
   try { const data = await api("/api/profile/bio", { method: "POST", body: JSON.stringify({ bio }) }); currentUser = data.user; closeModal("modal-bio"); openProfile(); } catch (e) { setError("modal-bio-error", e.message); }
@@ -1621,4 +1655,4 @@ document.getElementById("menu-new-channel").onclick = () => { closeMenu(); creat
 })();
 </script>
 </body>
-       </html>
+                                                                                                                                                                                                                  </html>
