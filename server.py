@@ -1,1812 +1,1559 @@
-import os
-import jwt
-import time
-import io
-import re
-from datetime import datetime, timedelta, timezone
-from collections import defaultdict
-from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
-from PIL import Image
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Diogram</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0e1621; color: #fff; overflow: hidden; }
+  #app { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+  .screen { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+  .screen.active { display: flex; }
 
-from db import (
-    email_exists, create_user, get_user_by_email,
-    get_user_by_id, get_user_by_username, search_users,
-    update_user_profile, update_user_name, update_user_username,
-    update_user_avatar, update_user_bio,
-    count_username_changes_24h, register_username_change,
-    get_or_create_chat, get_user_chats, get_chat_by_id,
-    save_message, get_messages, search_messages,
-    get_message_by_id, delete_message,
-    save_pending_code, verify_code, check_password,
-    update_last_seen, mark_messages_read,
-    can_change_avatar, can_upload_photo,
-    count_photo_uploads_last_15_days, register_photo_upload,
-    get_balance, spend_balance, add_balance, get_user_transactions,
-    activate_premium, activate_file_plus, add_file_quota,
-    check_premium, check_file_plus,
-    get_file_quota_used, register_file_upload,
-    create_channel, get_channel_by_id, get_channel_by_username,
-    count_user_channels, get_user_channels, search_public_channels,
-    subscribe_to_channel, unsubscribe_from_channel, is_subscribed,
-    get_channel_subscribers, update_channel, update_channel_full,
-    update_channel_avatar, delete_channel,
-    save_channel_message, get_channel_messages, delete_channel_message,
-    get_all_users_admin, update_user_role, update_user_verified,
-    subscribe_new_user_to_secret_channels,
-    count_reports_by_user_24h, create_report, get_reports,
-    update_report_status, count_new_reports,
-    ban_user, unban_user, is_ban_expired,
-    update_privacy_settings, get_user_sessions, delete_session,
-    get_user_usernames, activate_username, is_username_on_frigdmant,
-    create_frigdmant_listing, get_frigdmant_listings, get_user_listings,
-    cancel_listing, buy_frigdmant_listing, place_frigdmant_bid,
-    supabase
-)
-from email_service import generate_code
+  /* AUTH */
+  .auth-container { flex: 1; display: flex; flex-direction: column; padding: 30px 24px; justify-content: center; align-items: center; overflow-y: auto; }
+  .logo-big { width: 90px; height: 90px; background: linear-gradient(135deg, #5b8bff, #7b5bff); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 48px; font-weight: 800; color: #fff; margin-bottom: 20px; box-shadow: 0 10px 40px rgba(91,139,255,0.4); }
+  .logo-title { font-size: 32px; font-weight: 700; margin-bottom: 6px; }
+  .logo-sub { color: #7e8b99; margin-bottom: 40px; font-size: 14px; }
+  .form { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; }
+  input, textarea, select { background: #17212b; border: 1.5px solid #242f3d; outline: none; color: #fff; font-size: 15px; padding: 14px 16px; border-radius: 12px; font-family: inherit; width: 100%; }
+  input:focus, textarea:focus { border-color: #5b8bff; }
+  input::placeholder, textarea::placeholder { color: #6d7883; }
+  .btn { background: linear-gradient(135deg, #5b8bff, #4a7aff); border: none; color: #fff; font-size: 15px; font-weight: 600; padding: 14px; border-radius: 12px; cursor: pointer; font-family: inherit; width: 100%; }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.5; }
+  .btn-secondary { background: #242f3d; }
+  .btn-link { background: none; color: #5b8bff; font-size: 14px; text-align: center; padding: 10px; cursor: pointer; border: none; font-family: inherit; width: 100%; }
+  .error { color: #ff5b5b; font-size: 13px; text-align: center; min-height: 18px; }
+  .info { color: #4dd964; font-size: 13px; text-align: center; }
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "").strip()
-JWT_ALGO = "HS256"
-JWT_EXP_DAYS = 30
+  .agree-row { display: flex; align-items: flex-start; gap: 10px; padding: 12px 4px; cursor: pointer; }
+  .agree-row input[type="checkbox"] { width: 20px; height: 20px; margin-top: 2px; flex-shrink: 0; accent-color: #5b8bff; cursor: pointer; }
+  .agree-row span { font-size: 13px; color: #7e8b99; line-height: 1.5; }
+  .agree-row a { color: #5b8bff; text-decoration: none; }
 
-WORKER_KEY = os.environ.get("WORKER_KEY", "").strip()
+  /* HEADER */
+  .header { background: #17212b; padding: 14px 16px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #0e1621; flex-shrink: 0; min-height: 56px; }
+  .header h1 { font-size: 17px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .header-info { flex: 1; min-width: 0; cursor: pointer; }
+  .header-info .name { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .header-info .status { font-size: 12px; color: #7e8b99; }
+  .header-info .status.online { color: #4dd964; }
+  .header-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: transparent; border: none; color: #7e8b99; cursor: pointer; font-size: 20px; flex-shrink: 0; position: relative; }
+  .header-icon:active { background: #242f3d; }
+  .notif-badge { position: absolute; top: 2px; right: 2px; background: #ff5b5b; color: #fff; font-size: 10px; font-weight: 700; min-width: 16px; height: 16px; border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
 
-ALLOWED_DOMAINS = ["gmail.com", "yandex.com", "yandex.ru", "mail.ru", "outlook.com", "list.ru", "bk.ru", "inbox.ru"]
-BLOCKED_KEYWORDS = ["temp", "10minute", "guerrilla", "throwaway", "yopmail", "mailinator"]
+  .search-bar { padding: 8px 12px; background: #17212b; }
+  .search-bar input { background: #242f3d; padding: 10px 14px; border-radius: 20px; font-size: 14px; border: none; }
 
-PHOTO_LIMIT_15_DAYS = 8
-REPORT_LIMIT_24H = 5
-USERNAME_CHANGE_LIMIT_24H = 10
+  /* LIST */
+  .list { flex: 1; overflow-y: auto; }
+  .list-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #17212b; }
+  .list-item:active { background: #17212b; }
+  .avatar { width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg, #5b8bff, #7b5bff); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; flex-shrink: 0; color: #fff; overflow: hidden; position: relative; }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .avatar.channel { background: linear-gradient(135deg, #ffb800, #ff6b00); border-radius: 14px; }
+  .avatar.secret-channel { background: linear-gradient(135deg, #4dd964, #2fa54a); border-radius: 14px; }
+  .online-dot { position: absolute; right: 2px; bottom: 2px; width: 12px; height: 12px; border-radius: 50%; background: #4dd964; border: 2px solid #0e1621; }
+  .list-info { flex: 1; min-width: 0; }
+  .list-name { font-size: 15px; font-weight: 600; margin-bottom: 3px; display: flex; align-items: center; gap: 5px; }
+  .list-last { font-size: 13px; color: #7e8b99; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .list-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+  .list-time { font-size: 11px; color: #7e8b99; }
+  .badge-unread { background: #5b8bff; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; min-width: 20px; text-align: center; }
+  .verified { color: #5b8bff; font-size: 14px; }
+  .role-icon { font-size: 13px; }
+  .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #4a5568; text-align: center; padding: 40px; font-size: 14px; line-height: 1.6; }
 
-MAX_PHOTO_SIZE = 5 * 1024 * 1024
-MAX_DIMENSION = 1600
-COMPRESS_THRESHOLD = 4 * 1024 * 1024
-ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+  /* CHAT */
+  .messages { flex: 1; overflow-y: auto; padding: 16px 12px; display: flex; flex-direction: column; gap: 6px; background: #0e1621; }
+  .msg { max-width: 78%; padding: 9px 13px; border-radius: 16px; font-size: 15px; line-height: 1.35; word-wrap: break-word; animation: fadeIn 0.18s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .msg.own { background: linear-gradient(135deg, #5b8bff, #4a7aff); align-self: flex-end; border-bottom-right-radius: 4px; }
+  .msg.other { background: #1c2a38; align-self: flex-start; border-bottom-left-radius: 4px; }
+  .msg .time { display: inline-block; font-size: 10px; opacity: 0.65; margin-left: 6px; }
+  .msg .checks { font-size: 12px; margin-left: 4px; opacity: 0.85; }
+  .msg .checks.read { color: #b3d4ff; }
+  .msg-photo { max-width: 100%; border-radius: 8px; display: block; margin-bottom: 6px; cursor: pointer; }
+  .mention { color: #5b8bff; cursor: pointer; font-weight: 600; }
+  .mention:active { opacity: 0.7; }
+  .msg.own .mention { color: #c5d9ff; }
+  .typing-indicator { padding: 6px 16px; font-size: 13px; color: #7e8b99; font-style: italic; }
 
-MAX_FILE_SIZE = 3 * 1024 * 1024
-FILE_QUOTA_BASE = 42 * 1024 * 1024
-ALLOWED_FILE_MIME = {
-    "application/pdf": "pdf", "application/msword": "doc",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
-    "application/vnd.ms-excel": "xls", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
-    "application/vnd.ms-powerpoint": "ppt", "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
-    "text/plain": "txt", "audio/mpeg": "mp3", "audio/mp3": "mp3",
-    "audio/wav": "wav", "audio/x-wav": "wav", "audio/wave": "wav",
-    "audio/mp4": "m4a", "audio/x-m4a": "m4a", "audio/m4a": "m4a",
+  .file-block { background: rgba(0,0,0,0.2); border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; }
+  .file-row { display: flex; align-items: center; gap: 10px; }
+  .file-icon { font-size: 28px; flex-shrink: 0; }
+  .file-info { flex: 1; min-width: 0; }
+  .file-name { font-size: 13px; font-weight: 600; word-break: break-all; margin-bottom: 2px; }
+  .file-size { font-size: 11px; opacity: 0.7; }
+  .file-dl { background: rgba(255,255,255,0.15); border: none; color: #fff; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; font-family: inherit; text-decoration: none; display: inline-block; }
+  .audio-player { width: 100%; margin-top: 6px; }
+
+  .input-area { display: flex; gap: 8px; padding: 10px 12px; background: #17212b; border-top: 1px solid #0e1621; flex-shrink: 0; padding-bottom: calc(10px + env(safe-area-inset-bottom)); align-items: center; }
+  .input-area input { flex: 1; background: #242f3d; border: none; outline: none; color: #fff; font-size: 15px; padding: 11px 16px; border-radius: 22px; font-family: inherit; }
+  .input-btn { width: 40px; height: 40px; border-radius: 50%; background: transparent; border: none; color: #7e8b99; cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .input-btn:active { background: #242f3d; }
+  .send-btn { width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #5b8bff, #4a7aff); border: none; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .send-btn:active { transform: scale(0.92); }
+
+  .photo-preview { padding: 10px 12px; background: #17212b; border-top: 1px solid #0e1621; display: none; align-items: center; gap: 10px; }
+  .photo-preview.active { display: flex; }
+  .photo-preview img { max-width: 60px; max-height: 60px; border-radius: 8px; }
+  .photo-preview-info { flex: 1; font-size: 12px; color: #7e8b99; }
+  .photo-preview-close { background: transparent; border: none; color: #ff5b5b; font-size: 24px; cursor: pointer; padding: 0 8px; }
+
+  /* OVERLAY & MENU */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; z-index: 100; }
+  .overlay.active { display: block; }
+  .sheet { position: fixed; left: 0; right: 0; bottom: 0; background: #17212b; border-radius: 20px 20px 0 0; padding: 20px; z-index: 101; transform: translateY(100%); transition: transform 0.25s ease-out; max-height: 85vh; overflow-y: auto; }
+  .sheet.active { transform: translateY(0); }
+  .sheet-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; text-align: center; }
+  .menu-item { display: flex; align-items: center; gap: 14px; padding: 14px 4px; cursor: pointer; font-size: 15px; border-bottom: 1px solid #242f3d; }
+  .menu-item:last-child { border-bottom: none; }
+  .menu-item:active { opacity: 0.6; }
+  .menu-item .icon { font-size: 20px; width: 24px; text-align: center; }
+
+  /* PROFILE */
+  .profile-screen { flex: 1; overflow-y: auto; padding-bottom: 20px; }
+  .profile-top { display: flex; flex-direction: column; align-items: center; padding: 30px 20px 20px; gap: 12px; }
+  .profile-big-avatar { width: 110px; height: 110px; border-radius: 50%; background: linear-gradient(135deg, #5b8bff, #7b5bff); display: flex; align-items: center; justify-content: center; font-size: 48px; font-weight: 700; color: #fff; box-shadow: 0 8px 30px rgba(91,139,255,0.35); overflow: hidden; position: relative; cursor: pointer; }
+  .profile-big-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .avatar-edit-hint { position: absolute; bottom: -4px; right: -4px; width: 32px; height: 32px; border-radius: 50%; background: #5b8bff; border: 3px solid #0e1621; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  .profile-name { font-size: 24px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+  .profile-status { font-size: 14px; color: #7e8b99; }
+  .profile-status.online { color: #4dd964; }
+  .profile-block { background: #17212b; margin: 12px 16px; border-radius: 14px; padding: 4px 0; overflow: hidden; }
+  .profile-row { display: flex; align-items: center; gap: 14px; padding: 14px 18px; }
+  .profile-row + .profile-row { border-top: 1px solid #242f3d; }
+  .profile-row-icon { font-size: 20px; width: 24px; text-align: center; color: #5b8bff; }
+  .profile-row-content { flex: 1; min-width: 0; }
+  .profile-row-label { font-size: 12px; color: #7e8b99; margin-bottom: 2px; }
+  .profile-row-value { font-size: 15px; word-break: break-word; }
+  .profile-row-edit { cursor: pointer; font-size: 14px; color: #7e8b99; padding: 4px 8px; border-radius: 6px; }
+  .profile-row-edit:active { background: #242f3d; }
+  .profile-btn { display: block; width: calc(100% - 32px); margin: 12px 16px 0; padding: 14px; border-radius: 12px; border: none; font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; text-align: center; }
+  .profile-btn.primary { background: linear-gradient(135deg, #5b8bff, #4a7aff); color: #fff; }
+  .profile-btn.danger { background: #2a1f24; color: #ff5b5b; }
+  .profile-btn.secondary { background: #242f3d; color: #fff; }
+  .profile-btn:active { transform: scale(0.98); }
+
+  /* BALANCE & ICONS */
+  .balance-block { background: linear-gradient(135deg, #5b8bff, #7b5bff); margin: 12px 16px; border-radius: 14px; padding: 18px; text-align: center; }
+  .balance-label { font-size: 12px; opacity: 0.85; margin-bottom: 4px; }
+  .balance-value { font-size: 32px; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .balance-sub { font-size: 12px; opacity: 0.85; margin-top: 4px; }
+  .di-icon { width: 24px; height: 24px; vertical-align: middle; border-radius: 50%; object-fit: cover; box-shadow: 0 0 10px rgba(91,139,255,0.4); }
+  .di-icon-big { width: 80px; height: 80px; margin-bottom: 12px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 30px rgba(91,139,255,0.6); }
+
+  /* SHOP */
+  .shop-tabs { display: flex; gap: 6px; padding: 12px; background: #17212b; overflow-x: auto; }
+  .shop-tab { padding: 8px 16px; border-radius: 20px; font-size: 13px; white-space: nowrap; cursor: pointer; background: #242f3d; color: #fff; border: none; font-family: inherit; }
+  .shop-tab.active { background: #5b8bff; }
+  .shop-item { background: #17212b; margin: 8px 12px; border-radius: 14px; padding: 16px; display: flex; align-items: center; gap: 12px; }
+  .shop-item-info { flex: 1; }
+  .shop-item-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .shop-item-meta { font-size: 12px; color: #7e8b99; }
+  .shop-item-price { font-size: 18px; font-weight: 800; color: #5b8bff; margin-right: 10px; display: flex; align-items: center; gap: 4px; }
+  .shop-buy { background: linear-gradient(135deg, #5b8bff, #4a7aff); border: none; color: #fff; padding: 8px 16px; border-radius: 10px; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; }
+  .shop-buy:disabled { background: #242f3d; cursor: not-allowed; opacity: 0.6; }
+  .shop-buy:active:not(:disabled) { transform: scale(0.97); }
+
+  /* SETTINGS */
+  .settings-row { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px; border-bottom: 1px solid #242f3d; }
+  .settings-row:last-child { border-bottom: none; }
+  .settings-label { font-size: 15px; }
+  .settings-desc { font-size: 12px; color: #7e8b99; margin-top: 4px; }
+  .toggle { position: relative; width: 46px; height: 26px; background: #242f3d; border-radius: 13px; cursor: pointer; transition: background 0.2s; flex-shrink: 0; }
+  .toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; background: #fff; border-radius: 50%; transition: transform 0.2s; }
+  .toggle.active { background: #4dd964; }
+  .toggle.active::after { transform: translateX(20px); }
+
+  /* FRIGDMANT */
+  .frig-card { background: #17212b; margin: 8px 12px; border-radius: 14px; padding: 16px; border-left: 4px solid #5b8bff; }
+  .frig-card.auction { border-left-color: #ffb800; }
+  .frig-card.sold { border-left-color: #ff5b5b; opacity: 0.6; }
+  .frig-title { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+  .frig-price { font-size: 16px; font-weight: 600; color: #5b8bff; margin-bottom: 8px; display: flex; align-items: center; gap: 4px; }
+  .frig-meta { font-size: 12px; color: #7e8b99; margin-bottom: 12px; line-height: 1.5; }
+  .frig-actions { display: flex; gap: 8px; }
+
+  /* ADMIN & DOCS */
+  .admin-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 16px; }
+  .stat-card { background: #17212b; border-radius: 12px; padding: 16px; position: relative; }
+  .stat-value { font-size: 28px; font-weight: 700; color: #5b8bff; }
+  .stat-label { font-size: 12px; color: #7e8b99; margin-top: 4px; }
+  .stat-badge { position: absolute; top: 8px; right: 8px; background: #ff5b5b; color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 8px; }
+  .admin-tabs { display: flex; gap: 4px; padding: 8px 12px; background: #17212b; overflow-x: auto; }
+  .admin-tab { padding: 8px 14px; border-radius: 18px; font-size: 13px; white-space: nowrap; cursor: pointer; background: #242f3d; color: #fff; border: none; font-family: inherit; }
+  .admin-tab.active { background: #5b8bff; }
+  .admin-row { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #17212b; }
+  .admin-info { flex: 1; min-width: 0; }
+  .admin-name { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 4px; }
+  .admin-sub { font-size: 12px; color: #7e8b99; word-break: break-all; }
+  .admin-actions { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 45%; }
+  .admin-btn { background: #242f3d; color: #fff; border: none; padding: 6px 10px; border-radius: 8px; font-size: 12px; cursor: pointer; font-family: inherit; }
+  .admin-btn:active { opacity: 0.7; }
+  .admin-btn.primary { background: #5b8bff; }
+  .admin-btn.danger { background: #a52a2a; }
+  .admin-btn.success { background: #2fa54a; }
+
+  .report-card { background: #17212b; margin: 8px 12px; border-radius: 12px; padding: 14px; }
+  .report-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 12px; color: #7e8b99; }
+  .report-reason { display: inline-block; background: #ff5b5b22; color: #ff5b5b; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; margin-bottom: 8px; }
+  .report-body { font-size: 14px; margin-bottom: 10px; }
+  .report-actions { display: flex; gap: 8px; }
+
+  /* BAN & DOCS */
+  .ban-screen { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; overflow-y: auto; }
+  .ban-content { max-width: 480px; width: 100%; }
+  .ban-icon { font-size: 72px; text-align: center; margin-bottom: 20px; }
+  .ban-title { font-size: 24px; font-weight: 800; text-align: center; margin-bottom: 8px; }
+  .ban-subtitle { font-size: 15px; color: #7e8b99; text-align: center; margin-bottom: 24px; }
+  .ban-reason-block { background: #2a1f24; border: 1px solid #5b2a2a; border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+  .ban-reason-label { font-size: 12px; color: #ff5b5b; font-weight: 700; margin-bottom: 6px; }
+  .ban-reason-text { font-size: 15px; color: #fff; line-height: 1.5; }
+  .ban-info-block { background: #17212b; border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+  .ban-info-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 14px; border-bottom: 1px solid #242f3d; }
+  .ban-info-row:last-child { border-bottom: none; }
+  .ban-info-label { color: #7e8b99; }
+  .ban-info-value { color: #fff; font-weight: 600; }
+  .ban-contact { font-size: 13px; color: #7e8b99; text-align: center; margin-top: 16px; line-height: 1.7; }
+  .ban-contact a { color: #5b8bff; text-decoration: none; }
+
+  .doc-screen { flex: 1; overflow-y: auto; padding: 20px 16px 40px; line-height: 1.6; }
+  .doc-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; color: #fff; }
+  .doc-date { font-size: 12px; color: #7e8b99; margin-bottom: 24px; }
+  .doc-section { margin-bottom: 22px; }
+  .doc-section h3 { font-size: 16px; font-weight: 700; color: #5b8bff; margin-bottom: 8px; }
+  .doc-section p, .doc-section li { font-size: 14px; color: #c5cdd6; margin-bottom: 6px; }
+  .doc-section ul { padding-left: 20px; margin-bottom: 8px; }
+  .doc-contact { background: #17212b; border-radius: 12px; padding: 14px 18px; margin: 10px 0; }
+  .doc-contact a { color: #5b8bff; text-decoration: none; }
+
+  /* MODALS */
+  .modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
+  .modal.active { display: flex; }
+  .modal-bg { position: absolute; inset: 0; background: rgba(0,0,0,0.7); }
+  .modal-content { position: relative; background: #17212b; border-radius: 18px; padding: 22px; width: 100%; max-width: 420px; max-height: 85vh; overflow-y: auto; }
+  .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; text-align: center; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+  .modal-actions .btn { flex: 1; }
+  .reason-option { display: block; width: 100%; background: #242f3d; color: #fff; border: 2px solid transparent; padding: 12px 16px; border-radius: 10px; font-size: 14px; text-align: left; cursor: pointer; font-family: inherit; margin-bottom: 8px; }
+  .reason-option.selected { border-color: #5b8bff; background: #1c2a48; }
+
+  .photo-viewer { position: fixed; inset: 0; background: rgba(0,0,0,0.95); display: none; z-index: 300; align-items: center; justify-content: center; }
+  .photo-viewer.active { display: flex; }
+  .photo-viewer img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .photo-viewer-close { position: absolute; top: 20px; right: 20px; width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.1); border: none; color: #fff; font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+  .ch-info-screen { flex: 1; overflow-y: auto; padding-bottom: 20px; }
+  .ch-info-top { display: flex; flex-direction: column; align-items: center; padding: 30px 20px 20px; gap: 10px; }
+  .ch-info-avatar { width: 120px; height: 120px; border-radius: 24px; background: linear-gradient(135deg, #ffb800, #ff6b00); display: flex; align-items: center; justify-content: center; font-size: 56px; color: #fff; overflow: hidden; position: relative; }
+  .ch-info-avatar.secret { background: linear-gradient(135deg, #4dd964, #2fa54a); }
+  .ch-info-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .ch-info-name { font-size: 24px; font-weight: 700; text-align: center; }
+  .ch-info-username { font-size: 15px; color: #5b8bff; }
+  .ch-info-type { font-size: 13px; color: #7e8b99; background: #17212b; padding: 4px 12px; border-radius: 12px; }
+  .ch-info-subs { font-size: 14px; color: #7e8b99; margin-top: 4px; }
+
+  .spinner { width: 40px; height: 40px; border: 3px solid #242f3d; border-top-color: #5b8bff; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 20px auto; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-thumb { background: #242f3d; border-radius: 2px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- AUTH -->
+  <div class="screen active" id="screen-auth">
+    <div class="auth-container">
+      <div class="logo-big">D</div>
+      <div class="logo-title">Diogram</div>
+      <div class="logo-sub">Быстрый. Простой. Твой.</div>
+      <div class="form" id="auth-form">
+        <div class="error" id="auth-error"></div>
+        <div id="login-fields">
+          <input type="email" id="login-email" placeholder="Email" autocomplete="email">
+          <input type="password" id="login-password" placeholder="Пароль" autocomplete="current-password">
+          <button class="btn" id="btn-login">Войти</button>
+          <button class="btn btn-link" id="to-register">Нет аккаунта? Зарегистрироваться</button>
+        </div>
+        <div id="register-fields" style="display:none;">
+          <input type="email" id="reg-email" placeholder="Email (gmail, yandex, mail.ru, outlook)" autocomplete="email">
+          <input type="password" id="reg-password" placeholder="Пароль (мин. 6 символов)" autocomplete="new-password">
+          <label class="agree-row">
+            <input type="checkbox" id="agree-checkbox">
+            <span>Я согласен с <a href="#" onclick="openDoc('rules');return false;">Правилами</a> и <a href="#" onclick="openDoc('privacy');return false;">Политикой конфиденциальности</a></span>
+          </label>
+          <button class="btn" id="btn-register">Получить код</button>
+          <button class="btn btn-link" id="to-login">Уже есть аккаунт? Войти</button>
+        </div>
+        <div id="verify-fields" style="display:none;">
+          <div class="info">Мы отправили 9-значный код на <b id="verify-email-label"></b></div>
+          <input type="text" id="verify-code" placeholder="Код из письма" inputmode="numeric" maxlength="9">
+          <button class="btn" id="btn-verify">Подтвердить</button>
+          <button class="btn btn-link" id="to-register-back">Назад</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROFILE SETUP -->
+  <div class="screen" id="screen-profile-setup">
+    <div class="auth-container">
+      <div class="logo-big" style="width:70px;height:70px;font-size:36px;">D</div>
+      <div class="logo-title" style="font-size:24px;">Заполни профиль</div>
+      <div class="logo-sub">Чтобы тебя могли найти</div>
+      <div class="form">
+        <div class="error" id="profile-error"></div>
+        <input type="text" id="profile-username" placeholder="@username" autocomplete="off">
+        <input type="text" id="profile-first" placeholder="Имя" autocomplete="given-name">
+        <input type="text" id="profile-last" placeholder="Фамилия (необязательно)" autocomplete="family-name">
+        <button class="btn" id="btn-save-profile">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LIST -->
+  <div class="screen" id="screen-list">
+    <div class="header">
+      <button class="header-icon" id="btn-menu">☰</button>
+      <h1>Diogram</h1>
+      <button class="header-icon" id="btn-shop" title="Магазин">🛒</button>
+      <button class="header-icon" id="btn-frigdmant" title="Frigdmant">🏷️</button>
+      <button class="header-icon" id="btn-new-chat" title="Найти людей">➕</button>
+    </div>
+    <div class="search-bar">
+      <input type="text" id="global-search" placeholder="Поиск людей и каналов по @username">
+    </div>
+    <div class="list" id="list-container">
+      <div class="empty-state">Загрузка...</div>
+    </div>
+  </div>
+
+  <!-- CHAT -->
+  <div class="screen" id="screen-chat">
+    <div class="header">
+      <button class="header-icon" id="btn-back-chat">←</button>
+      <div class="header-info" id="chat-header-info">
+        <div class="name" id="chat-title">Чат</div>
+        <div class="status" id="chat-status">—</div>
+      </div>
+      <button class="header-icon" id="btn-chat-report">⚠️</button>
+    </div>
+    <div class="messages" id="messages"></div>
+    <div class="typing-indicator" id="typing" style="display:none;">печатает...</div>
+    <div class="photo-preview" id="photo-preview">
+      <img id="photo-preview-img">
+      <div class="photo-preview-info"><div id="photo-preview-name"></div><div id="photo-preview-size"></div></div>
+      <button class="photo-preview-close" id="photo-preview-close">✕</button>
+    </div>
+    <div class="input-area">
+      <button class="input-btn" id="btn-attach-photo">📎</button>
+      <input id="msg-input" placeholder="Сообщение..." autocomplete="off">
+      <button class="send-btn" id="send-btn">➤</button>
+    </div>
+    <input type="file" id="photo-file-input" accept="image/*" style="display:none;">
+  </div>
+
+  <!-- CHANNEL -->
+  <div class="screen" id="screen-channel">
+    <div class="header">
+      <button class="header-icon" id="btn-back-channel">←</button>
+      <div class="header-info" id="channel-header-info">
+        <div class="name" id="channel-title">Канал</div>
+        <div class="status" id="channel-status">—</div>
+      </div>
+      <button class="header-icon" id="btn-channel-report">⚠️</button>
+    </div>
+    <div class="messages" id="channel-messages"></div>
+    <div class="input-area" id="channel-input-area" style="display:none;">
+      <input id="channel-input" placeholder="Сообщение в канал..." autocomplete="off">
+      <button class="send-btn" id="channel-send-btn">➤</button>
+    </div>
+  </div>
+
+  <!-- PROFILE (СВОЙ) -->
+  <div class="screen" id="screen-profile-full">
+    <div class="header">
+      <button class="header-icon" id="btn-profile-back">←</button>
+      <h1>Профиль</h1>
+      <button class="header-icon" id="btn-settings" title="Настройки">⚙️</button>
+    </div>
+    <div class="profile-screen">
+      <div class="profile-top">
+        <div class="profile-big-avatar" id="profile-avatar">D</div>
+        <div class="profile-name"><span id="profile-name">Имя</span></div>
+        <div class="profile-status" id="profile-status">@username</div>
+      </div>
+      
+      <div class="balance-block">
+        <div class="balance-label">Баланс</div>
+        <div class="balance-value" id="profile-balance"><img src="https://ltpduienoflklktunihc.supabase.co/storage/v1/object/public/chat-photos/Diogram.coin.di.jpg" class="di-icon"> 0 Di</div>
+        <div class="balance-sub" id="profile-balance-rub">~0₽</div>
+      </div>
+
+      <div id="profile-subs-block"></div>
+
+      <!-- ЮЗЕРНЕЙМЫ -->
+      <div class="profile-block">
+        <div class="profile-row">
+          <div class="profile-row-icon">👤</div>
+          <div class="profile-row-content">
+            <div class="profile-row-label">Активный юзернейм</div>
+            <div class="profile-row-value" id="profile-username-show">—</div>
+          </div>
+          <div class="profile-row-edit" id="edit-username">✏️</div>
+        </div>
+        <div id="profile-collection-block"></div>
+      </div>
+
+      <div class="profile-block">
+        <div class="profile-row"><div class="profile-row-icon">🆔</div><div class="profile-row-content"><div class="profile-row-label">ID</div><div class="profile-row-value" id="profile-id">—</div></div></div>
+        <div class="profile-row"><div class="profile-row-icon">🎭</div><div class="profile-row-content"><div class="profile-row-label">Роль</div><div class="profile-row-value" id="profile-role">—</div></div></div>
+        <div class="profile-row" id="open-frig-my" style="cursor:pointer;"><div class="profile-row-icon">🏷️</div><div class="profile-row-content"><div class="profile-row-value">Мои лоты на Frigdmant</div></div></div>
+      </div>
+
+      <div class="profile-block">
+        <div class="profile-row" id="open-rules" style="cursor:pointer;"><div class="profile-row-icon">📋</div><div class="profile-row-content"><div class="profile-row-value">Правила мессенджера</div></div></div>
+        <div class="profile-row" id="open-privacy" style="cursor:pointer;"><div class="profile-row-icon">📄</div><div class="profile-row-content"><div class="profile-row-value">Политика конфиденциальности</div></div></div>
+      </div>
+      <button class="profile-btn danger" id="btn-logout">Выйти из аккаунта</button>
+    </div>
+  </div>
+
+  <!-- НАСТРОЙКИ -->
+  <div class="screen" id="screen-settings">
+    <div class="header">
+      <button class="header-icon" id="btn-settings-back">←</button>
+      <h1>⚙️ Настройки</h1>
+    </div>
+    <div class="profile-screen">
+      <div class="profile-block">
+        <div class="profile-row" style="padding:12px 18px;"><div class="profile-row-label" style="font-size:14px; font-weight:700;">Приватность</div></div>
+        <div class="settings-row">
+          <div><div class="settings-label">Скрывать дату захода</div><div class="settings-desc">Скрыть "был(а) недавно" (PDG)</div></div>
+          <div class="toggle" id="toggle-hide-seen"></div>
+        </div>
+        <div class="settings-row" id="who-can-msg-row">
+          <div><div class="settings-label">Кто может писать</div><div class="settings-desc" id="who-can-msg-val">Все</div></div>
+          <button class="admin-btn" onclick="changeWhoCanMessage()">Изменить</button>
+        </div>
+      </div>
+      <div class="profile-block">
+        <div class="profile-row" style="padding:12px 18px;"><div class="profile-row-label" style="font-size:14px; font-weight:700;">Активные сессии</div></div>
+        <div id="sessions-list"></div>
+      </div>
+      <div class="profile-block">
+        <div class="profile-row"><div class="profile-row-icon">ℹ️</div><div class="profile-row-content"><div class="profile-row-label">Версия</div><div class="profile-row-value">1.0.1</div></div></div>
+        <div class="profile-row"><div class="profile-row-icon">💬</div><div class="profile-row-content"><div class="profile-row-label">Поддержка</div><div class="profile-row-value"><a href="https://t.me/Dipxex" target="_blank" style="color:#5b8bff;text-decoration:none;">@Dipxex</a></div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FRIGDMANT -->
+  <div class="screen" id="screen-frigdmant">
+    <div class="header">
+      <button class="header-icon" id="btn-frig-back">←</button>
+      <h1>🏷️ Frigdmant</h1>
+      <button class="header-icon" id="btn-frig-new">➕</button>
+    </div>
+    <div class="shop-tabs">
+      <button class="shop-tab active" data-frig="market">Витрина</button>
+      <button class="shop-tab" data-frig="my">Мои лоты</button>
+    </div>
+    <div class="list" id="frig-list"><div class="spinner"></div></div>
+  </div>
+
+  <!-- SHOP (Магазин) -->
+  <div class="screen" id="screen-shop">
+    <div class="header"><button class="header-icon" id="btn-shop-back">←</button><h1>🛒 Магазин</h1></div>
+    <div class="balance-block">
+      <div class="balance-label">Твой баланс</div>
+      <div class="balance-value" id="shop-balance"><img src="https://ltpduienoflklktunihc.supabase.co/storage/v1/object/public/chat-photos/Diogram.coin.di.jpg" class="di-icon"> 0 Di</div>
+      <div class="balance-sub" id="shop-balance-rub">~0₽</div>
+    </div>
+    <div class="shop-tabs">
+      <button class="shop-tab" data-cat="di">Купить Di</button>
+      <button class="shop-tab active" data-cat="pdg">PDG</button>
+      <button class="shop-tab" data-cat="file_plus">File Plus</button>
+      <button class="shop-tab" data-cat="mb">МБ</button>
+      <button class="shop-tab" data-cat="history">История</button>
+    </div>
+    <div class="list" id="shop-list"><div class="spinner"></div></div>
+  </div>
+
+  <!-- ADMIN -->
+  <div class="screen" id="screen-admin">
+    <div class="header"><button class="header-icon" id="btn-admin-back">←</button><h1>👑 Админка</h1></div>
+    <div class="admin-stats">
+      <div class="stat-card"><div class="stat-value" id="stat-users">—</div><div class="stat-label">Юзеров</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-channels">—</div><div class="stat-label">Каналов</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-messages">—</div><div class="stat-label">Сообщений</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-reports">—</div><div class="stat-label">Жалоб</div><div class="stat-badge" id="stat-reports-badge" style="display:none;">new</div></div>
+    </div>
+    <div class="admin-tabs">
+      <button class="admin-tab active" data-tab="users">👥 Юзеры</button>
+      <button class="admin-tab" data-tab="reports">📩 Жалобы</button>
+    </div>
+    <div class="search-bar"><input type="text" id="admin-search" placeholder="Поиск по @username или email"></div>
+    <div class="list" id="admin-list"><div class="spinner"></div></div>
+  </div>
+
+  <!-- RULES & PRIVACY -->
+  <div class="screen" id="screen-rules">
+    <div class="header"><button class="header-icon" id="btn-rules-back">←</button><h1>📋 Правила</h1></div>
+    <div class="doc-screen">
+      <div class="doc-title">Правила мессенджера Diogram</div>
+      <div class="doc-date">Дата последнего обновления: 11.10.2026</div>
+      <div class="doc-section"><h3>1. О чём это</h3><p>Это правила использования Diogram. Они существуют, чтобы мессенджер был безопасным и удобным для всех. Используя Diogram, ты соглашаешься с этими правилами.</p></div>
+      <div class="doc-section"><h3>2. Кто может пользоваться</h3><p>Diogram доступен с 12 лет. Если ты младше — нужно разрешение родителей.</p></div>
+      <div class="doc-section"><h3>3. Что можно</h3><ul><li>Общаться с друзьями в личных чатах</li><li>Создавать свои каналы</li><li>Делиться фото и мыслями</li><li>Находить новых людей по @username</li><li>Выражать своё мнение (уважительно)</li></ul></div>
+      <div class="doc-section"><h3>4. Что запрещено</h3><p><b>4.1. Незаконный контент:</b></p><ul><li>Мошенничество и скам</li><li>Фишинг и кража данных</li><li>Продажа запрещённых товаров</li><li>Экстремизм и терроризм</li><li>Детская опасность</li><li>Пиратство</li></ul><p><b>4.2. Вред другим:</b></p><ul><li>Оскорбления и травля</li><li>Угрозы и запугивание</li><li>Разжигание ненависти</li><li>Спам и массовые рассылки</li><li>Реклама без разрешения</li></ul><p><b>4.3. Обман:</b></p><ul><li>Фейковые аккаунты</li><li>Выдача себя за других</li><li>Поддельные фото/документы</li></ul><p><b>4.4. Другое:</b></p><ul><li>18+ контент без пометки</li><li>Вирусы и вредоносные ссылки</li><li>Попытки взломать Diogram</li><li>Любое другое незаконное действие</li></ul></div>
+      <div class="doc-section"><h3>5. Что за нарушение</h3><p><b>⚠️ 1. Предупреждение</b> — за мелкие нарушения.</p><p><b>🔒 2. Временный бан</b> — за повторное нарушение.</p><p><b>🚫 3. Бан навсегда</b> — за серьёзные нарушения.</p></div>
+      <div class="doc-section"><h3>6. Как пожаловаться</h3><p>1. Открой профиль/сообщение/канал</p><p>2. Нажми "Пожаловаться"</p><p>3. Выбери причину и опиши ситуацию</p><p>Жалоба попадёт к модераторам. Рассмотрим в течение 24-48 часов.</p><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a></div></div>
+      <div class="doc-section"><h3>7. Удаление аккаунта</h3><p>Напиши владельцу:</p><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a></div></div>
+      <div class="doc-section"><h3>8. Контакты</h3><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a></div></div>
+      <div class="doc-section" style="text-align:center;padding-top:20px;color:#7e8b99;">Спасибо, что ты с нами 💙</div>
+    </div>
+  </div>
+
+  <div class="screen" id="screen-privacy">
+    <div class="header"><button class="header-icon" id="btn-privacy-back">←</button><h1>📄 Политика</h1></div>
+    <div class="doc-screen">
+      <div class="doc-title">Политика конфиденциальности</div>
+      <div class="doc-date">Дата последнего обновления: 11.10.2026</div>
+      <div class="doc-section"><h3>1. О чём это</h3><p>Эта политика объясняет, какие данные Diogram собирает, зачем, где хранит и как защищает.</p></div>
+      <div class="doc-section"><h3>2. Какие данные собираем</h3><p><b>При регистрации:</b> email, пароль (зашифрован).</p><p><b>В профиле:</b> имя, фамилия, @username, bio, аватарка.</p><p><b>В процессе:</b> сообщения, фото, дата входа.</p><p><b>НЕ собираем:</b> IP, устройство, геолокацию, контакты.</p></div>
+      <div class="doc-section"><h3>3. Зачем</h3><ul><li>Email — для входа</li><li>Профиль — чтобы тебя нашли</li><li>Сообщения — чтобы работал мессенджер</li><li>Дата входа — "был(а) недавно"</li></ul></div>
+      <div class="doc-section"><h3>4. Кто имеет доступ</h3><p><b>Ты</b> — видишь свои данные в профиле.</p><p><b>Владелец</b> (<a href="https://t.me/Dipxex" style="color:#5b8bff;">@Dipxex</a>) — видит email, ID, дату регистрации, роль. Использует только для модерации.</p><p><b>Другие юзеры</b> — видят только публичный профиль (имя, @username, bio, аватарку).</p></div>
+      <div class="doc-section"><h3>5. Кому передаём</h3><ul><li><b>Supabase</b> — БД</li><li><b>Railway</b> — хостинг</li><li><b>Mail.ru</b> — отправка кодов</li></ul><p>НЕ продаём и НЕ передаём третьим лицам.</p></div>
+      <div class="doc-section"><h3>6. Срок хранения</h3><p>Бессрочно, пока работает Diogram. Хочешь удалить — напиши владельцу.</p></div>
+      <div class="doc-section"><h3>7. Безопасность</h3><ul><li>Пароли в bcrypt-хешах</li><li>HTTPS</li><li>JWT-токены</li></ul></div>
+      <div class="doc-section"><h3>8. Твои права</h3><ul><li>Посмотреть свои данные</li><li>Изменить имя, @username, bio</li><li>Запросить удаление</li></ul></div>
+      <div class="doc-section"><h3>9. Контакты</h3><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a></div></div>
+      <div class="doc-section"><h3>10. Возраст</h3><p>Diogram с 12 лет. Младше — нужно согласие родителей.</p></div>
+      <div class="doc-section"><h3>11. Изменения</h3><p>Можем обновлять политику. О серьёзных изменениях сообщим в мессенджере.</p></div>
+    </div>
+  </div>
+
+  <!-- BAN -->
+  <div class="screen" id="screen-ban">
+    <div class="ban-screen">
+      <div class="ban-content">
+        <div class="ban-icon">🚫</div>
+        <div class="ban-title">Вы были заблокированы</div>
+        <div class="ban-subtitle">в мессенджере Diogram</div>
+        <div class="ban-reason-block"><div class="ban-reason-label">ПРИЧИНА:</div><div class="ban-reason-text" id="ban-reason">—</div></div>
+        <div class="ban-info-block">
+          <div class="ban-info-row"><span class="ban-info-label">Ваше имя:</span><span class="ban-info-value" id="ban-name">—</span></div>
+          <div class="ban-info-row"><span class="ban-info-label">Ваш ID:</span><span class="ban-info-value" id="ban-id">—</span></div>
+          <div class="ban-info-row"><span class="ban-info-label">Ваш @username:</span><span class="ban-info-value" id="ban-username">—</span></div>
+        </div>
+        <button class="btn btn-secondary" id="btn-copy-ban" style="margin-bottom:12px;">📋 Скопировать для апелляции</button>
+        <button class="btn" id="btn-ban-logout">Выйти</button>
+        <div class="ban-contact">Для подачи апелляции:<br>📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- МОДАЛКИ -->
+<div class="overlay" id="overlay"></div>
+<div class="sheet" id="menu-sheet">
+  <div class="menu-title">Меню</div>
+  <div class="menu-item" id="menu-profile"><span class="icon">👤</span> Профиль</div>
+  <div class="menu-item" id="menu-shop"><span class="icon">🛒</span> Магазин</div>
+  <div class="menu-item" id="menu-frig"><span class="icon">🏷️</span> Frigdmant</div>
+  <div class="menu-item" id="menu-new-channel"><span class="icon">📢</span> Новый канал</div>
+  <div class="menu-item" id="menu-admin" style="display:none;"><span class="icon">👑</span> Админка <span id="menu-admin-badge" style="display:none;background:#ff5b5b;color:#fff;font-size:10px;padding:2px 6px;border-radius:8px;margin-left:auto;">0</span></div>
+  <div class="menu-item" id="menu-logout"><span class="icon">🚪</span> Выйти</div>
+</div>
+
+<div class="modal" id="modal-name"><div class="modal-bg" onclick="closeModal('modal-name')"></div><div class="modal-content"><div class="modal-title">Изменить имя</div><input type="text" id="modal-name-first" placeholder="Имя" maxlength="32" style="margin-bottom:10px;"><input type="text" id="modal-name-last" placeholder="Фамилия (необязательно)" maxlength="32"><div class="error" id="modal-name-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-name')">Отмена</button><button class="btn" id="btn-save-name">Сохранить</button></div></div></div>
+
+<div class="modal" id="modal-username"><div class="modal-bg" onclick="closeModal('modal-username')"></div><div class="modal-content"><div class="modal-title">Изменить @username</div><input type="text" id="modal-username-input" placeholder="username" maxlength="32"><div style="font-size:12px;color:#7e8b99;margin-top:8px;" id="username-limit-info"></div><div class="error" id="modal-username-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-username')">Отмена</button><button class="btn" id="btn-save-username">Сохранить</button></div></div></div>
+
+<div class="modal" id="modal-bio"><div class="modal-bg" onclick="closeModal('modal-bio')"></div><div class="modal-content"><div class="modal-title">О себе</div><textarea id="modal-bio-input" placeholder="Расскажи о себе..." maxlength="200" rows="4" style="resize:none;"></textarea><div class="error" id="modal-bio-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-bio')">Отмена</button><button class="btn" id="btn-save-bio">Сохранить</button></div></div></div>
+
+<div class="modal" id="modal-report"><div class="modal-bg" onclick="closeModal('modal-report')"></div><div class="modal-content"><div class="modal-title">⚠️ Жалоба</div><div id="report-target-info" style="font-size:13px;color:#7e8b99;margin-bottom:12px;text-align:center;"></div><div id="report-reasons-list"></div><textarea id="report-comment" placeholder="Опиши ситуацию (необязательно)" maxlength="500" rows="3" style="resize:none;margin-top:8px;"></textarea><div class="error" id="modal-report-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-report')">Отмена</button><button class="btn" id="btn-send-report">Отправить</button></div></div></div>
+
+<div class="modal" id="modal-ban"><div class="modal-bg" onclick="closeModal('modal-ban')"></div><div class="modal-content"><div class="modal-title">🚫 Забанить</div><div id="ban-target-info" style="font-size:13px;color:#7e8b99;margin-bottom:12px;text-align:center;"></div><textarea id="ban-reason-input" placeholder="Причина бана" maxlength="500" rows="3" style="resize:none;"></textarea><div style="margin-top:12px;font-size:13px;color:#7e8b99;">Срок:</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;" id="ban-duration-list">
+<button class="reason-option" data-days="" style="flex:1;min-width:80px;text-align:center;margin:0;">Навсегда</button>
+<button class="reason-option" data-days="1" style="flex:1;min-width:80px;text-align:center;margin:0;">1 день</button>
+<button class="reason-option" data-days="7" style="flex:1;min-width:80px;text-align:center;margin:0;">7 дней</button>
+<button class="reason-option" data-days="30" style="flex:1;min-width:80px;text-align:center;margin:0;">30 дней</button></div><div class="error" id="modal-ban-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-ban')">Отмена</button><button class="btn" id="btn-confirm-ban" style="background:#a52a2a;">Забанить</button></div></div></div>
+
+<div class="modal" id="modal-balance"><div class="modal-bg" onclick="closeModal('modal-balance')"></div><div class="modal-content"><div class="modal-title">💰 Пополнить баланс</div><div id="balance-target-info" style="font-size:13px;color:#7e8b99;margin-bottom:12px;text-align:center;"></div><input type="number" id="balance-amount" placeholder="Сколько Di (1-1000000)" min="1" max="1000000" style="margin-bottom:10px;"><input type="text" id="balance-description" placeholder="Описание (необязательно)" maxlength="200"><div class="error" id="modal-balance-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-balance')">Отмена</button><button class="btn" id="btn-confirm-balance">Начислить</button></div></div></div>
+
+<div class="modal" id="modal-ch-edit"><div class="modal-bg" onclick="closeModal('modal-ch-edit')"></div><div class="modal-content"><div class="modal-title">✏️ Редактировать канал</div><div style="text-align:center;margin-bottom:16px;"><div class="ch-info-avatar" id="ch-edit-avatar" style="width:80px;height:80px;font-size:36px;border-radius:20px;margin:0 auto;cursor:pointer;">📢</div><div style="font-size:12px;color:#7e8b99;margin-top:6px;">Нажми чтобы изменить аватарку</div><input type="file" id="ch-edit-avatar-file" accept="image/*" style="display:none;"></div><div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">Название</div><input type="text" id="ch-edit-name" placeholder="Название" maxlength="64" style="margin-bottom:12px;"><div id="ch-edit-username-row"><div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">@username</div><input type="text" id="ch-edit-username" placeholder="username" maxlength="32" style="margin-bottom:12px;"></div><div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">Тип канала</div><div style="display:flex;gap:6px;margin-bottom:12px;"><button class="reason-option" data-type="public" id="ch-edit-type-public" style="flex:1;text-align:center;margin:0;">📢 Публичный</button><button class="reason-option" data-type="secret" id="ch-edit-type-secret" style="flex:1;text-align:center;margin:0;">🌍 Глобальный</button></div><div class="error" id="modal-ch-edit-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-ch-edit')">Отмена</button><button class="btn" id="btn-ch-save">Сохранить</button></div></div></div>
+
+<div class="photo-viewer" id="photo-viewer">
+  <button class="photo-viewer-close" onclick="closePhotoViewer()">✕</button>
+  <img id="photo-viewer-img">
+</div>
+<script>
+const API = location.origin;
+const RATE = 1.59;
+const COIN_URL = "https://ltpduienoflklktunihc.supabase.co/storage/v1/object/public/chat-photos/Diogram.coin.di.jpg";
+let token = localStorage.getItem("diogram_token") || null;
+let currentUser = null;
+let currentChat = null;
+let currentChannel = null;
+let currentUserProfile = null;
+let currentChInfo = null;
+let chEditType = "public";
+let newAvatarFile = null;
+let currentShopCategory = "di";
+let shopItems = [];
+let currentFrigTab = "market";
+let frigListings = [];
+let myListings = [];
+let myUsernames = [];
+let currentAdminTab = "users";
+let allAdminUsers = [];
+let allReports = [];
+let listPollInterval = null;
+let chatPollInterval = null;
+let channelPollInterval = null;
+let heartbeatInterval = null;
+let adminPollInterval = null;
+let typingTimer = null;
+let lastMessageTime = "1970-01-01T00:00:00+00:00";
+let lastChannelMessageTime = "1970-01-01T00:00:00+00:00";
+let pendingPhoto = null;
+let pendingFile = null;
+let selectedReportReason = null;
+let reportTarget = null;
+let banTarget = null;
+let banDuration = null;
+let balanceTarget = null;
+let frigListingType = "buyout";
+
+async function api(path, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  if (!(opts.body instanceof FormData)) headers["Content-Type"] = "application/json";
+  if (token) headers["Authorization"] = "Bearer " + token;
+  const res = await fetch(API + path, { ...opts, headers });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 403 && data.banned) { showBanScreen(data); throw new Error("banned"); }
+  if (!res.ok) throw new Error(data.error || "Ошибка сервера");
+  return data;
 }
 
-REPORT_REASONS = ["spam", "abuse", "scam", "18+", "fake", "other"]
+function show(id) { document.querySelectorAll(".screen").forEach(s => s.classList.remove("active")); document.getElementById(id).classList.add("active"); }
+function setError(id, msg) { document.getElementById(id).textContent = msg || ""; }
+function escapeHtml(t) { const d = document.createElement("div"); d.textContent = t || ""; return d.innerHTML; }
+function initial(name) { return (name && name[0] ? name[0] : "?").toUpperCase(); }
+function roleIcon(role) { return role === "owner" ? '<span class="role-icon">👑</span>' : role === "developer" ? '<span class="role-icon">⚡</span>' : role === "moderator" ? '<span class="role-icon">🛡️</span>' : ""; }
+function verifiedMark(v) { return v ? '<span class="verified">✓</span>' : ""; }
+function fmtTime(iso) { if (!iso) return ""; const d = new Date(iso); const diff = (Date.now() - d) / 1000; if (diff < 60) return "сейчас"; if (diff < 3600) return Math.floor(diff / 60) + " мин"; return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }); }
+function statusText(u) { if (!u) return "—"; if (u.is_online) return "онлайн"; if (u.last_seen) { const d = new Date(u.last_seen); const diff = (Date.now() - d) / 1000; if (diff < 60) return "был(а) только что"; if (diff < 3600) return "был(а) " + Math.floor(diff / 60) + " мин назад"; if (diff < 86400) return "был(а) " + Math.floor(diff / 3600) + " ч назад"; return "был(а) " + d.toLocaleDateString("ru-RU"); } return "не в сети"; }
+function fmtSize(bytes) { if (bytes < 1024) return bytes + " Б"; if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " КБ"; return (bytes / 1048576).toFixed(2) + " МБ"; }
+function openModal(id) { document.getElementById(id).classList.add("active"); }
+function closeModal(id) { document.getElementById(id).classList.remove("active"); }
+function fmtDate(iso) { if (!iso) return ""; return new Date(iso).toLocaleDateString("ru-RU"); }
 
-SHOP_ITEMS = {
-    "pdg_1d": {"category": "pdg", "name": "PDG 1 день", "price": 4.30, "days": 1},
-    "pdg_30d": {"category": "pdg", "name": "PDG 30 дней", "price": 99, "days": 30},
-    "pdg_3m": {"category": "pdg", "name": "PDG 3 месяца", "price": 290, "days": 90},
-    "pdg_6m": {"category": "pdg", "name": "PDG 6 месяцев", "price": 585, "days": 180},
-    "pdg_9m": {"category": "pdg", "name": "PDG 9 месяцев", "price": 875, "days": 270},
-    "pdg_12m": {"category": "pdg", "name": "PDG 12 месяцев", "price": 1152, "days": 365},
-    "fp_1m": {"category": "file_plus", "name": "File Plus 1 месяц", "price": 100, "days": 30},
-    "fp_3m": {"category": "file_plus", "name": "File Plus 3 месяца", "price": 280, "days": 90},
-    "fp_6m": {"category": "file_plus", "name": "File Plus 6 месяцев", "price": 550, "days": 180},
-    "fp_12m": {"category": "file_plus", "name": "File Plus 12 месяцев", "price": 1125, "days": 365},
-    "mb_10": {"category": "mb", "name": "10 МБ", "price": 50, "mb": 10},
-    "mb_50": {"category": "mb", "name": "50 МБ", "price": 232, "mb": 50},
-    "mb_100": {"category": "mb", "name": "100 МБ", "price": 464, "mb": 100},
+function linkify(text) {
+  const escaped = escapeHtml(text || "");
+  return escaped.replace(/@([a-zA-Z][a-zA-Z0-9_]{0,31})/g, function(match, username) {
+    return '<span class="mention" data-username="' + username + '">' + match + '</span>';
+  });
 }
 
-app = Flask(__name__, static_folder=".")
-CORS(app)
+async function openUserByUsername(username) {
+  try {
+    const data = await api("/api/users/by_username/" + encodeURIComponent(username));
+    if (data.exists && data.user) openUserProfile(data.user.id);
+    else alert("Аккаунт не найден, юзернейм @" + username + " свободен");
+  } catch (e) { if (e.message !== "banned") alert("Аккаунт не найден, юзернейм @" + username + " свободен"); }
+}
 
-typing_store = defaultdict(dict)
-rate_limit_store = defaultdict(list)
+document.addEventListener("click", function(e) {
+  const el = e.target.closest(".mention");
+  if (el) { e.preventDefault(); e.stopPropagation(); const uname = el.getAttribute("data-username"); if (uname) openUserByUsername(uname); }
+});
 
+function showBanScreen(data) {
+  document.getElementById("ban-reason").textContent = data.ban_reason || "Нарушение правил";
+  const u = data.user_info || {};
+  document.getElementById("ban-name").textContent = ((u.first_name || "") + " " + (u.last_name || "")).trim() || "—";
+  document.getElementById("ban-id").textContent = u.id || "—";
+  document.getElementById("ban-username").textContent = u.username ? "@" + u.username : "—";
+  localStorage.removeItem("diogram_token"); token = null; currentUser = null; show("screen-ban");
+}
 
-# ==================== HELPERS ====================
+document.getElementById("btn-copy-ban").onclick = () => {
+  const text = "Я забанен в Diogram\nПричина: " + document.getElementById("ban-reason").textContent + "\nИмя: " + document.getElementById("ban-name").textContent + "\nID: " + document.getElementById("ban-id").textContent + "\n@username: " + document.getElementById("ban-username").textContent;
+  navigator.clipboard.writeText(text).then(() => alert("Скопировано!")).catch(() => alert("Не удалось"));
+};
+document.getElementById("btn-ban-logout").onclick = () => { localStorage.removeItem("diogram_token"); location.reload(); };
 
-def make_token(user_id):
-    payload = {
-        "user_id": user_id,
-        "exp": datetime.now(timezone.utc) + timedelta(days=JWT_EXP_DAYS),
+document.getElementById("to-register").onclick = () => { document.getElementById("login-fields").style.display = "none"; document.getElementById("register-fields").style.display = "flex"; document.getElementById("register-fields").style.flexDirection = "column"; document.getElementById("register-fields").style.gap = "12px"; setError("auth-error", ""); };
+document.getElementById("to-login").onclick = () => { document.getElementById("login-fields").style.display = "flex"; document.getElementById("login-fields").style.flexDirection = "column"; document.getElementById("login-fields").style.gap = "12px"; document.getElementById("register-fields").style.display = "none"; setError("auth-error", ""); };
+document.getElementById("to-register-back").onclick = () => { document.getElementById("verify-fields").style.display = "none"; document.getElementById("register-fields").style.display = "flex"; document.getElementById("register-fields").style.flexDirection = "column"; document.getElementById("register-fields").style.gap = "12px"; setError("auth-error", ""); };
+
+document.getElementById("btn-login").onclick = async () => {
+  const email = document.getElementById("login-email").value.trim();
+  const password = document.getElementById("login-password").value;
+  if (!email || !password) return setError("auth-error", "Заполни все поля");
+  try {
+    setError("auth-error", "");
+    const data = await api("/api/login", { method: "POST", body: JSON.stringify({ email, password }) });
+    token = data.token; localStorage.setItem("diogram_token", token); currentUser = data.user; afterLogin();
+  } catch (e) { if (e.message !== "banned") setError("auth-error", e.message); }
+};
+
+let pendingReg = null;
+document.getElementById("btn-register").onclick = async () => {
+  const email = document.getElementById("reg-email").value.trim();
+  const password = document.getElementById("reg-password").value;
+  const agree = document.getElementById("agree-checkbox").checked;
+  if (!email || !password) return setError("auth-error", "Заполни все поля");
+  if (!agree) return setError("auth-error", "Нужно согласиться с правилами");
+  try {
+    setError("auth-error", "");
+    await api("/api/register", { method: "POST", body: JSON.stringify({ email, password }) });
+    pendingReg = { email, password };
+    document.getElementById("verify-email-label").textContent = email;
+    document.getElementById("register-fields").style.display = "none";
+    document.getElementById("verify-fields").style.display = "flex"; document.getElementById("verify-fields").style.flexDirection = "column"; document.getElementById("verify-fields").style.gap = "12px";
+  } catch (e) { setError("auth-error", e.message); }
+};
+
+document.getElementById("btn-verify").onclick = async () => {
+  const code = document.getElementById("verify-code").value.trim();
+  if (!code || code.length !== 9) return setError("auth-error", "Код из 9 цифр");
+  try {
+    setError("auth-error", "");
+    const data = await api("/api/verify", { method: "POST", body: JSON.stringify({ email: pendingReg.email, code, password: pendingReg.password }) });
+    token = data.token; localStorage.setItem("diogram_token", token); currentUser = data.user; afterLogin();
+  } catch (e) { setError("auth-error", e.message); }
+};
+
+function afterLogin() {
+  if (!currentUser.profile_completed) { show("screen-profile-setup"); return; }
+  startHeartbeat(); show("screen-list"); loadList(); startListPolling();
+  if (currentUser.role === "owner" || currentUser.role === "developer") {
+    document.getElementById("menu-admin").style.display = "flex"; startAdminPoll();
+  }
+}
+
+document.getElementById("btn-save-profile").onclick = async () => {
+  const username = document.getElementById("profile-username").value.trim().replace("@", "");
+  const first_name = document.getElementById("profile-first").value.trim();
+  const last_name = document.getElementById("profile-last").value.trim();
+  if (!username || !first_name) return setError("profile-error", "Username и имя обязательны");
+  try {
+    setError("profile-error", "");
+    const data = await api("/api/profile", { method: "POST", body: JSON.stringify({ username, first_name, last_name }) });
+    currentUser = data.user; afterLogin();
+  } catch (e) { setError("profile-error", e.message); }
+};
+
+function startHeartbeat() {
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
+  const beat = async () => { try { await api("/api/heartbeat", { method: "POST" }); } catch (e) {} };
+  beat(); heartbeatInterval = setInterval(beat, 30000);
+}
+
+function startAdminPoll() {
+  if (adminPollInterval) clearInterval(adminPollInterval);
+  const check = async () => {
+    try {
+      const stats = await api("/api/admin/stats");
+      const n = stats.new_reports || 0;
+      const badge = document.getElementById("menu-admin-badge");
+      if (n > 0) { badge.textContent = n; badge.style.display = "inline-block"; } else badge.style.display = "none";
+    } catch (e) {}
+  };
+  check(); adminPollInterval = setInterval(check, 30000);
+}
+
+async function loadList() {
+  const box = document.getElementById("list-container");
+  try {
+    const data = await api("/api/all_list");
+    if (!data.items.length) { box.innerHTML = '<div class="empty-state">Пока ничего нет.<br>Нажми ➕ чтобы найти людей,<br>или 📢 чтобы создать канал.</div>'; return; }
+    box.innerHTML = "";
+    for (const item of data.items) {
+      const el = document.createElement("div"); el.className = "list-item";
+      if (item.type === "chat") {
+        const u = item.other_user;
+        const name = u.first_name || u.username || "Без имени";
+        const av = document.createElement("div"); av.className = "avatar";
+        if (u.avatar_url) av.innerHTML = '<img src="' + u.avatar_url + '">';
+        else av.textContent = initial(name);
+        if (u.is_online) { const dot = document.createElement("div"); dot.className = "online-dot"; av.appendChild(dot); }
+        const last = item.last_message_type === "photo" ? "📷 Фото" : item.last_message_type === "file" ? "📎 Файл" : (item.last_message || "Нет сообщений");
+        el.innerHTML = ''; el.appendChild(av);
+        const info = document.createElement("div"); info.className = "list-info";
+        info.innerHTML = '<div class="list-name">' + escapeHtml(name) + roleIcon(u.role) + verifiedMark(u.verified) + '</div><div class="list-last">' + escapeHtml(last) + '</div>';
+        el.appendChild(info);
+        const meta = document.createElement("div"); meta.className = "list-meta";
+        meta.innerHTML = '<div class="list-time">' + fmtTime(item.last_message_at) + '</div>' + (item.unread_count > 0 ? '<div class="badge-unread">' + item.unread_count + '</div>' : '');
+        el.appendChild(meta);
+        el.onclick = () => openChat(item.chat_id, u);
+      } else {
+        const av = document.createElement("div"); av.className = "avatar " + (item.channel_type === "secret" ? "secret-channel" : "channel");
+        if (item.avatar_url) av.innerHTML = '<img src="' + item.avatar_url + '">';
+        else av.textContent = item.channel_type === "secret" ? "🌍" : "📢";
+        el.innerHTML = ''; el.appendChild(av);
+        const info = document.createElement("div"); info.className = "list-info";
+        info.innerHTML = '<div class="list-name">' + escapeHtml(item.name) + '</div><div class="list-last">' + (item.subscribers_count || 0) + ' подписчиков</div>';
+        el.appendChild(info);
+        el.onclick = () => openChannel(item.channel_id);
+      }
+      box.appendChild(el);
     }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
+  } catch (e) { if (e.message !== "banned") box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+}
 
+function startListPolling() { if (listPollInterval) clearInterval(listPollInterval); listPollInterval = setInterval(() => { if (document.getElementById("screen-list").classList.contains("active")) loadList(); }, 5000); }
 
-def get_current_user():
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        return None
-    token = auth[7:]
-    try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
-        return get_user_by_id(payload["user_id"])
-    except Exception:
-        return None
+async function openChat(chatId, otherUser) {
+  currentChat = { id: chatId, other: otherUser };
+  lastMessageTime = "1970-01-01T00:00:00+00:00";
+  const name = otherUser.first_name || otherUser.username || "Чат";
+  document.getElementById("chat-title").innerHTML = escapeHtml(name) + roleIcon(otherUser.role) + verifiedMark(otherUser.verified);
+  document.getElementById("chat-status").textContent = statusText(otherUser);
+  document.getElementById("messages").innerHTML = '<div class="spinner"></div>';
+  show("screen-chat");
+  try {
+    const data = await api("/api/chats/" + chatId + "/messages");
+    renderMessages(data.messages);
+    if (data.other_user) { currentChat.other = data.other_user; document.getElementById("chat-status").textContent = statusText(data.other_user); }
+    if (data.messages.length) lastMessageTime = data.messages[data.messages.length - 1].created_at;
+    startChatPolling();
+  } catch (e) { if (e.message !== "banned") document.getElementById("messages").innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+}
 
+function renderMessages(msgs) { const box = document.getElementById("messages"); box.innerHTML = ""; if (!msgs.length) { box.innerHTML = '<div class="empty-state">Напиши первое сообщение 👋</div>'; return; } for (const m of msgs) appendMessage(m); }
 
-def check_rate_limit(key, max_attempts, window_sec):
-    now = time.time()
-    rate_limit_store[key] = [t for t in rate_limit_store[key] if now - t < window_sec]
-    if len(rate_limit_store[key]) >= max_attempts:
-        return False
-    rate_limit_store[key].append(now)
-    return True
-
-
-def is_valid_email(email):
-    email = email.lower().strip()
-    if "@" not in email:
-        return False, "Неверный email"
-    try:
-        email.encode("ascii")
-    except UnicodeEncodeError:
-        return False, "Email только латиницей"
-    if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", email):
-        return False, "Неверный формат email"
-    domain = email.split("@")[-1]
-    if domain not in ALLOWED_DOMAINS:
-        return False, "Разрешены только: " + ", ".join("@" + d for d in ALLOWED_DOMAINS)
-    for bad in BLOCKED_KEYWORDS:
-        if bad in domain:
-            return False, "Временные почты запрещены"
-    return True, ""
-
-
-def user_to_dict(u):
-    from db import is_online
-    if not u:
-        return None
-    return {
-        "id": u["id"],
-        "email": u.get("email"),
-        "username": u.get("username"),
-        "first_name": u.get("first_name"),
-        "last_name": u.get("last_name"),
-        "role": u.get("role", "user"),
-        "verified": u.get("verified", False),
-        "profile_completed": u.get("profile_completed", False),
-        "avatar_url": u.get("avatar_url"),
-        "bio": u.get("bio"),
-        "last_seen": u.get("last_seen"),
-        "is_online": is_online(u),
-        "banned": u.get("banned", False),
-        "balance": u.get("balance", 0) or 0,
-        "premium": check_premium(u),
-        "premium_until": u.get("premium_until"),
-        "file_plus": check_file_plus(u),
-        "file_plus_until": u.get("file_plus_until"),
-        "hide_last_seen": u.get("hide_last_seen", False),
-        "who_can_message": u.get("who_can_message", "all")
+function appendMessage(m) {
+  const box = document.getElementById("messages");
+  const empty = box.querySelector(".empty-state"); if (empty) empty.remove();
+  const isOwn = m.sender_id === currentUser.id;
+  const d = document.createElement("div"); d.className = "msg " + (isOwn ? "own" : "other");
+  const time = fmtTime(m.created_at);
+  let content = "";
+  if (m.type === "photo" && m.attachment_url) { content = '<img src="' + m.attachment_url + '" class="msg-photo" onclick="openPhotoViewer(\'' + m.attachment_url + '\')">'; }
+  else if (m.type === "file" && m.attachment_url) {
+    const isAudio = m.file_type === "audio" || (m.file_mime && m.file_mime.startsWith("audio/"));
+    const fname = escapeHtml(m.file_name || m.attachment_name || "file");
+    const fsize = fmtSize(m.attachment_size || m.file_size || 0);
+    if (isAudio) content = '<div class="file-block"><div class="file-row"><div class="file-icon">🎵</div><div class="file-info"><div class="file-name">' + fname + '</div><div class="file-size">' + fsize + '</div></div></div><audio class="audio-player" controls src="' + m.attachment_url + '"></audio></div>';
+    else {
+      const icon = m.file_mime && m.file_mime.includes("pdf") ? "📄" : "📎";
+      content = '<div class="file-block"><div class="file-row"><div class="file-icon">' + icon + '</div><div class="file-info"><div class="file-name">' + fname + '</div><div class="file-size">' + fsize + '</div></div><a class="file-dl" href="' + m.attachment_url + '" target="_blank" download>Скачать</a></div></div>';
     }
+  }
+  content += linkify(m.text || "");
+  let checks = "";
+  if (isOwn) checks = m.read_at ? '<span class="checks read">✓✓</span>' : '<span class="checks">✓</span>';
+  d.innerHTML = content + '<span class="time">' + time + checks + '</span>';
+  box.appendChild(d); box.scrollTop = box.scrollHeight;
+}
 
+function openPhotoViewer(url) { document.getElementById("photo-viewer-img").src = url; document.getElementById("photo-viewer").classList.add("active"); }
+function closePhotoViewer() { document.getElementById("photo-viewer").classList.remove("active"); }
 
-def user_public_dict(u):
-    from db import is_online
-    if not u:
-        return None
-    res = {
-        "id": u["id"],
-        "username": u.get("username"),
-        "first_name": u.get("first_name"),
-        "last_name": u.get("last_name"),
-        "role": u.get("role", "user"),
-        "verified": u.get("verified", False),
-        "avatar_url": u.get("avatar_url"),
-        "bio": u.get("bio"),
-        "last_seen": u.get("last_seen"),
-        "is_online": is_online(u),
-        "banned": u.get("banned", False)
+document.getElementById("msg-input").addEventListener("keypress", e => { if (e.key === "Enter") handleSend(); });
+document.getElementById("send-btn").onclick = handleSend;
+
+function handleSend() { if (pendingPhoto || pendingFile) return sendFile(); return sendMessage(); }
+
+document.getElementById("msg-input").addEventListener("input", () => { if (!currentChat) return; if (typingTimer) return; typingTimer = setTimeout(() => typingTimer = null, 3000); api("/api/typing", { method: "POST", body: JSON.stringify({ chat_id: currentChat.id }) }).catch(() => {}); });
+
+async function sendMessage() {
+  const input = document.getElementById("msg-input"); const text = input.value.trim();
+  if (!text || !currentChat) return; input.value = "";
+  try {
+    const data = await api("/api/send", { method: "POST", body: JSON.stringify({ chat_id: currentChat.id, text }) });
+    appendMessage(data.message || { sender_id: currentUser.id, text, created_at: new Date().toISOString(), type: "text" });
+  } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
+}
+
+async function sendFile() {
+  if (!currentChat) return;
+  const input = document.getElementById("msg-input");
+  const caption = input.value.trim();
+  const fd = new FormData();
+  const isPhoto = !!pendingPhoto;
+  if (pendingPhoto) fd.append("file", pendingPhoto);
+  if (pendingFile) fd.append("file", pendingFile);
+  fd.append("chat_id", currentChat.id);
+  if (isPhoto) fd.append("caption", caption);
+  document.getElementById("photo-preview").classList.remove("active");
+  input.value = ""; const endpoint = isPhoto ? "/api/upload/photo" : "/api/upload/file"; pendingPhoto = null; pendingFile = null;
+  try {
+    const data = await api(endpoint, { method: "POST", body: fd });
+    if (data.message) appendMessage(data.message);
+  } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
+}
+
+document.getElementById("btn-attach-photo").onclick = () => {
+  if (!currentChat) return;
+  const isFilePlus = currentUser.file_plus;
+  let choice = prompt("Что отправить?\n1 — Фото" + (isFilePlus ? "\n2 — Файл (PDF, DOCX, музыка...)" : ""), "1");
+  if (choice === "2" && isFilePlus) { document.getElementById("photo-file-input").accept = "audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"; document.getElementById("photo-file-input").click(); }
+  else { document.getElementById("photo-file-input").accept = "image/*"; document.getElementById("photo-file-input").click(); }
+};
+
+document.getElementById("photo-file-input").onchange = (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const isImage = file.type.startsWith("image/");
+  if (isImage) { if (file.size > 5 * 1024 * 1024) { alert("Фото больше 5 МБ"); e.target.value = ""; return; } pendingPhoto = file; pendingFile = null; }
+  else { if (file.size > 3 * 1024 * 1024) { alert("Файл больше 3 МБ"); e.target.value = ""; return; } pendingFile = file; pendingPhoto = null; }
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    document.getElementById("photo-preview-img").src = isImage ? ev.target.result : "";
+    if (!isImage) document.getElementById("photo-preview-img").style.display = "none";
+    else document.getElementById("photo-preview-img").style.display = "block";
+    document.getElementById("photo-preview-name").textContent = file.name;
+    document.getElementById("photo-preview-size").textContent = fmtSize(file.size);
+    document.getElementById("photo-preview").classList.add("active");
+  };
+  if (isImage) reader.readAsDataURL(file);
+  else { document.getElementById("photo-preview-img").style.display = "none"; document.getElementById("photo-preview-name").textContent = file.name; document.getElementById("photo-preview-size").textContent = fmtSize(file.size); document.getElementById("photo-preview").classList.add("active"); }
+  e.target.value = "";
+};
+
+document.getElementById("photo-preview-close").onclick = () => { pendingPhoto = null; pendingFile = null; document.getElementById("photo-preview").classList.remove("active"); };
+
+function startChatPolling() {
+  if (chatPollInterval) clearInterval(chatPollInterval);
+  chatPollInterval = setInterval(async () => {
+    if (!currentChat) return;
+    try {
+      const data = await api("/api/poll?chat_id=" + currentChat.id + "&after=" + encodeURIComponent(lastMessageTime));
+      if (data.messages && data.messages.length) {
+        for (const m of data.messages) { if (m.sender_id !== currentUser.id) appendMessage(m); lastMessageTime = m.created_at; }
+        api("/api/chats/" + currentChat.id + "/read", { method: "POST" }).catch(() => {});
+      }
+      document.getElementById("typing").style.display = data.typing ? "block" : "none";
+    } catch (e) {}
+  }, 2000);
+}
+
+document.getElementById("btn-back-chat").onclick = () => { if (chatPollInterval) clearInterval(chatPollInterval); currentChat = null; show("screen-list"); loadList(); };
+document.getElementById("chat-header-info").onclick = () => { if (currentChat && currentChat.other) openUserProfile(currentChat.other.id); };
+document.getElementById("btn-chat-report").onclick = () => { if (!currentChat) return; reportTarget = { type: "user", user_id: currentChat.other.id, name: currentChat.other.first_name || currentChat.other.username }; openReportModal(); };
+
+async function openChannel(channelId) {
+  currentChannel = { id: channelId };
+  lastChannelMessageTime = "1970-01-01T00:00:00+00:00";
+  document.getElementById("channel-messages").innerHTML = '<div class="spinner"></div>'; show("screen-channel");
+  try {
+    const data = await api("/api/channels/" + channelId + "/messages");
+    const ch = data.channel; currentChannel = ch;
+    document.getElementById("channel-title").textContent = ch.name;
+    document.getElementById("channel-status").textContent = (ch.type === "secret" ? "🌍 " : "📢 ") + (ch.subscribers_count || 0) + " подписчиков";
+    document.getElementById("channel-input-area").style.display = ch.is_owner ? "flex" : "none";
+    renderChannelMessages(data.messages);
+    if (data.messages.length) lastChannelMessageTime = data.messages[data.messages.length - 1].created_at;
+    startChannelPolling();
+  } catch (e) { if (e.message !== "banned") document.getElementById("channel-messages").innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+}
+
+function renderChannelMessages(msgs) { const box = document.getElementById("channel-messages"); box.innerHTML = ""; if (!msgs.length) { box.innerHTML = '<div class="empty-state">В канале пока нет сообщений</div>'; return; } for (const m of msgs) appendChannelMessage(m); }
+function appendChannelMessage(m) { const box = document.getElementById("channel-messages"); const empty = box.querySelector(".empty-state"); if (empty) empty.remove(); const d = document.createElement("div"); d.className = "msg other"; d.innerHTML = linkify(m.text) + '<span class="time">' + fmtTime(m.created_at) + '</span>'; box.appendChild(d); box.scrollTop = box.scrollHeight; }
+
+document.getElementById("channel-send-btn").onclick = sendChannelMessage;
+document.getElementById("channel-input").addEventListener("keypress", e => { if (e.key === "Enter") sendChannelMessage(); });
+
+async function sendChannelMessage() {
+  const input = document.getElementById("channel-input"); const text = input.value.trim();
+  if (!text || !currentChannel) return; input.value = "";
+  try { await api("/api/channels/" + currentChannel.id + "/send", { method: "POST", body: JSON.stringify({ text }) }); } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
+}
+
+function startChannelPolling() {
+  if (channelPollInterval) clearInterval(channelPollInterval);
+  channelPollInterval = setInterval(async () => {
+    if (!currentChannel) return;
+    try { const data = await api("/api/channels/" + currentChannel.id + "/messages"); renderChannelMessages(data.messages); if (data.messages.length) lastChannelMessageTime = data.messages[data.messages.length - 1].created_at; } catch (e) {}
+  }, 3000);
+}
+
+document.getElementById("btn-back-channel").onclick = () => { if (channelPollInterval) clearInterval(channelPollInterval); currentChannel = null; show("screen-list"); loadList(); };
+document.getElementById("channel-header-info").onclick = () => { if (currentChannel) openChannelInfo(currentChannel.id); };
+document.getElementById("btn-channel-report").onclick = () => { if (!currentChannel) return; reportTarget = { type: "channel", channel_id: currentChannel.id, name: currentChannel.name }; openReportModal(); };
+
+async function openChannelInfo(channelId) {
+  try {
+    const data = await api("/api/channels/" + channelId + "/info");
+    const ch = data.channel;
+    currentChInfo = ch;
+    const av = document.getElementById("ch-info-avatar");
+    av.className = "ch-info-avatar" + (ch.type === "secret" ? " secret" : "");
+    if (ch.avatar_url) av.innerHTML = '<img src="' + ch.avatar_url + '">';
+    else av.textContent = ch.type === "secret" ? "🌍" : "📢";
+    document.getElementById("ch-info-name").textContent = ch.name;
+    document.getElementById("ch-info-username").textContent = ch.username ? "@" + ch.username : "🌍 Глобальный канал";
+    document.getElementById("ch-info-type").textContent = ch.type === "secret" ? "🌍 Глобальный" : "📢 Публичный";
+    document.getElementById("ch-info-subs").textContent = (ch.subscribers_count || 0) + " подписчиков";
+    const isOwner = ch.is_owner; const isSub = ch.is_subscribed;
+    document.getElementById("btn-ch-info-edit").style.display = isOwner ? "block" : "none";
+    document.getElementById("btn-ch-info-delete").style.display = isOwner ? "block" : "none";
+    if (isOwner) { document.getElementById("btn-ch-info-subscribe").style.display = "none"; document.getElementById("btn-ch-info-unsubscribe").style.display = "none"; }
+    else if (isSub) { document.getElementById("btn-ch-info-subscribe").style.display = "none"; document.getElementById("btn-ch-info-unsubscribe").style.display = ch.type === "public" ? "block" : "none"; }
+    else { document.getElementById("btn-ch-info-subscribe").style.display = "block"; document.getElementById("btn-ch-info-unsubscribe").style.display = "none"; }
+    show("screen-channel-info");
+  } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
+}
+
+document.getElementById("btn-ch-info-back").onclick = () => { if (currentChannel) show("screen-channel"); else { show("screen-list"); loadList(); } };
+
+document.getElementById("btn-ch-info-edit").onclick = () => {
+  if (!currentChInfo) return;
+  newAvatarFile = null; chEditType = currentChInfo.type;
+  const av = document.getElementById("ch-edit-avatar");
+  av.className = "ch-info-avatar" + (currentChInfo.type === "secret" ? " secret" : "");
+  if (currentChInfo.avatar_url) av.innerHTML = '<img src="' + currentChInfo.avatar_url + '">';
+  else av.textContent = currentChInfo.type === "secret" ? "🌍" : "📢";
+  document.getElementById("ch-edit-name").value = currentChInfo.name || "";
+  document.getElementById("ch-edit-username").value = currentChInfo.username || "";
+  document.getElementById("ch-edit-username-row").style.display = currentChInfo.type === "public" ? "block" : "none";
+  document.getElementById("ch-edit-type-public").classList.toggle("selected", currentChInfo.type === "public");
+  document.getElementById("ch-edit-type-secret").classList.toggle("selected", currentChInfo.type === "secret");
+  setError("modal-ch-edit-error", ""); openModal("modal-ch-edit");
+};
+
+document.getElementById("ch-edit-avatar").onclick = () => document.getElementById("ch-edit-avatar-file").click();
+document.getElementById("ch-edit-avatar-file").onchange = (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { alert("Файл больше 5 МБ"); e.target.value = ""; return; }
+  if (!file.type.startsWith("image/")) { alert("Только изображения"); e.target.value = ""; return; }
+  newAvatarFile = file;
+  const reader = new FileReader();
+  reader.onload = (ev) => { document.getElementById("ch-edit-avatar").innerHTML = '<img src="' + ev.target.result + '">'; };
+  reader.readAsDataURL(file); e.target.value = "";
+};
+
+document.getElementById("ch-edit-type-public").onclick = () => { chEditType = "public"; document.getElementById("ch-edit-type-public").classList.add("selected"); document.getElementById("ch-edit-type-secret").classList.remove("selected"); document.getElementById("ch-edit-username-row").style.display = "block"; };
+document.getElementById("ch-edit-type-secret").onclick = () => {
+  if (currentUser.role !== "owner" && currentUser.role !== "developer") return alert("Только разработчики могут делать канал глобальным");
+  chEditType = "secret"; document.getElementById("ch-edit-type-secret").classList.add("selected"); document.getElementById("ch-edit-type-public").classList.remove("selected"); document.getElementById("ch-edit-username-row").style.display = "none";
+};
+
+document.getElementById("btn-ch-save").onclick = async () => {
+  if (!currentChInfo) return;
+  const name = document.getElementById("ch-edit-name").value.trim();
+  const username = document.getElementById("ch-edit-username").value.trim().replace("@", "");
+  if (!name) return setError("modal-ch-edit-error", "Название обязательно");
+  if (chEditType === "public" && !username) return setError("modal-ch-edit-error", "Для публичного нужен @username");
+  try {
+    await api("/api/channels/" + currentChInfo.id + "/update", { method: "POST", body: JSON.stringify({ name, username: chEditType === "public" ? username : null, type: chEditType }) });
+    if (newAvatarFile) {
+      const fd = new FormData(); fd.append("file", newAvatarFile);
+      try { await api("/api/channels/" + currentChInfo.id + "/avatar", { method: "POST", body: fd }); } catch (e) { alert("Аватар: " + e.message); }
     }
-    if u.get("hide_last_seen"):
-        res["last_seen"] = None
-        res["is_online"] = False
-    return res
-
-
-def check_banned(user):
-    if not user:
-        return False, None
-    if not user.get("banned"):
-        return False, None
-    if is_ban_expired(user):
-        unban_user(user["id"])
-        return False, None
-    return True, user.get("ban_reason") or "Нарушение правил"
-
-
-def validate_username(username, role):
-    if not username:
-        return False, "Username обязателен"
-    min_len = 1 if role in ("owner", "developer") else 4
-    if len(username) < min_len:
-        return False, f"Username от {min_len} до 32 символов"
-    if len(username) > 32:
-        return False, "Username до 32 символов"
-    if not re.match(r"^[a-zA-Z][a-zA-Z0-9_]*$", username):
-        return False, "Username: начинается с буквы, только латиница, цифры, _"
-    return True, ""
-
-
-# ==================== STATIC ====================
-
-@app.route("/")
-def index():
-    return send_from_directory(".", "index.html")
-
-
-# ==================== AUTH ====================
-
-@app.route("/api/register", methods=["POST"])
-def api_register():
-    ip = request.remote_addr or "unknown"
-    if not check_rate_limit(f"reg_{ip}", 10, 3600):
-        return jsonify({"error": "Слишком много попыток. Подожди час."}), 429
-
-    data = request.get_json() or {}
-    email = (data.get("email") or "").lower().strip()
-    password = data.get("password") or ""
-
-    if not email or not password:
-        return jsonify({"error": "Email и пароль обязательны"}), 400
-
-    ok, msg = is_valid_email(email)
-    if not ok:
-        return jsonify({"error": msg}), 400
-
-    if len(password) < 6:
-        return jsonify({"error": "Пароль минимум 6 символов"}), 400
-
-    if email_exists(email):
-        return jsonify({"error": "Этот email уже зарегистрирован"}), 400
-
-    code = generate_code()
-    save_pending_code(email, code, expires_minutes=15)
-    return jsonify({"ok": True, "message": "Код создан"})
-
-
-@app.route("/api/verify", methods=["POST"])
-def api_verify():
-    data = request.get_json() or {}
-    email = (data.get("email") or "").lower().strip()
-    code = str(data.get("code") or "").strip()
-    password = data.get("password") or ""
-
-    if not email or not code or not password:
-        return jsonify({"error": "Заполни все поля"}), 400
-
-    if not check_rate_limit(f"verify_{email}", 20, 3600):
-        return jsonify({"error": "Слишком много попыток"}), 429
-
-    if not verify_code(email, code):
-        return jsonify({"error": "Неверный или истёкший код"}), 400
-
-    if email_exists(email):
-        return jsonify({"error": "Этот email уже зарегистрирован"}), 400
-
-    user = create_user(email=email, password=password)
-    if not user:
-        return jsonify({"error": "Ошибка создания аккаунта"}), 500
-
-    subs_count = subscribe_new_user_to_secret_channels(user["id"])
-
-    token = make_token(user["id"])
-    return jsonify({
-        "ok": True,
-        "token": token,
-        "user": user_to_dict(user),
-        "auto_subscribed_channels": subs_count,
-    })
-
-
-@app.route("/api/login", methods=["POST"])
-def api_login():
-    ip = request.remote_addr or "unknown"
-    if not check_rate_limit(f"login_{ip}", 10, 300):
-        return jsonify({"error": "Слишком много попыток. Подожди 5 минут."}), 429
-
-    data = request.get_json() or {}
-    email = (data.get("email") or "").lower().strip()
-    password = data.get("password") or ""
-
-    user = get_user_by_email(email)
-    if not user or not check_password(password, user["password_hash"]):
-        return jsonify({"error": "Неверный email или пароль"}), 401
-
-    is_banned, ban_reason = check_banned(user)
-    if is_banned:
-        return jsonify({
-            "error": "Забанен",
-            "banned": True,
-            "ban_reason": ban_reason,
-            "user_info": {
-                "id": user["id"],
-                "username": user.get("username"),
-                "first_name": user.get("first_name"),
-                "last_name": user.get("last_name"),
-            }
-        }), 403
-
-    update_last_seen(user["id"])
-    token = make_token(user["id"])
-    return jsonify({"ok": True, "token": token, "user": user_to_dict(user)})
-
-
-@app.route("/api/me")
-def api_me():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    is_banned, ban_reason = check_banned(user)
-    if is_banned:
-        return jsonify({
-            "error": "Забанен",
-            "banned": True,
-            "ban_reason": ban_reason,
-            "user_info": {
-                "id": user["id"],
-                "username": user.get("username"),
-                "first_name": user.get("first_name"),
-                "last_name": user.get("last_name"),
-            }
-        }), 403
-
-    update_last_seen(user["id"])
-    return jsonify({"user": user_to_dict(user)})
-
-
-@app.route("/api/heartbeat", methods=["POST"])
-def api_heartbeat():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-    update_last_seen(user["id"])
-    return jsonify({"ok": True})
-
-
-# ==================== PROFILE & SETTINGS ====================
-
-@app.route("/api/profile", methods=["POST"])
-def api_profile():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    data = request.get_json() or {}
-    username = (data.get("username") or "").strip().lstrip("@")
-    first_name = (data.get("first_name") or "").strip()
-    last_name = (data.get("last_name") or "").strip() or None
-
-    if not first_name:
-        return jsonify({"error": "Имя обязательно"}), 400
-
-    ok, err = validate_username(username, user.get("role", "user"))
-    if not ok:
-        return jsonify({"error": err}), 400
-
-    existing = get_user_by_username(username)
-    if existing and existing["id"] != user["id"]:
-        return jsonify({"error": "Этот @username занят"}), 400
-
-    updated = update_user_profile(user["id"], username, first_name, last_name)
-    return jsonify({"ok": True, "user": user_to_dict(updated)})
-
-
-@app.route("/api/profile/name", methods=["POST"])
-def api_profile_name():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    data = request.get_json() or {}
-    first_name = (data.get("first_name") or "").strip()
-    last_name = (data.get("last_name") or "").strip() or None
-
-    if not first_name:
-        return jsonify({"error": "Имя обязательно"}), 400
-    if len(first_name) > 32:
-        return jsonify({"error": "Имя слишком длинное"}), 400
-
-    updated = update_user_name(user["id"], first_name, last_name)
-    return jsonify({"ok": True, "user": user_to_dict(updated)})
-
-
-@app.route("/api/profile/username", methods=["POST"])
-def api_profile_username():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    data = request.get_json() or {}
-    username = (data.get("username") or "").strip().lstrip("@")
-
-    min_len = 1 if user.get("role") in ("owner", "developer") else 4
-    if len(username) < min_len:
-        return jsonify({
-            "error": f"Такие редкие юзернеймы (до {min_len} символов) можно купить на Frigdmant",
-            "rare_username": True
-        }), 400
-
-    ok, err = validate_username(username, user.get("role", "user"))
-    if not ok:
-        return jsonify({"error": err}), 400
-
-    if username.lower() == (user.get("username") or "").lower():
-        return jsonify({"error": "Это твой текущий @username"}), 400
-
-    existing = get_user_by_username(username)
-    if existing and existing["id"] != user["id"]:
-        return jsonify({"error": "Этот @username уже занят"}), 400
-
-    on_market = is_username_on_frigdmant(username)
-    if on_market:
-        return jsonify({
-            "error": "Этот юзернейм сейчас на продаже",
-            "on_frigdmant": True,
-            "price": on_market["price"]
-        }), 400
-
-    used = count_username_changes_24h(user["id"])
-    if used >= USERNAME_CHANGE_LIMIT_24H and user.get("role") not in ("owner", "developer"):
-        return jsonify({"error": f"Лимит {USERNAME_CHANGE_LIMIT_24H} смен @username за 24 часа"}), 429
-
-    updated = update_user_username(user["id"], username)
-    register_username_change(user["id"])
-
-    return jsonify({
-        "ok": True,
-        "user": user_to_dict(updated),
-        "changes_left": USERNAME_CHANGE_LIMIT_24H - used - 1,
-    })
-
-
-@app.route("/api/profile/bio", methods=["POST"])
-def api_profile_bio():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    data = request.get_json() or {}
-    bio = data.get("bio")
-    birthday = data.get("birthday")
-
-    if bio and len(bio) > 200:
-        return jsonify({"error": "Bio максимум 200 символов"}), 400
-
-    updated = update_user_bio(user["id"], bio, birthday)
-    if not updated:
-        return jsonify({"error": "Нечего обновлять"}), 400
-
-    return jsonify({"ok": True, "user": user_to_dict(updated)})
-
-
-@app.route("/api/profile/username-limit")
-def api_username_limit():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-    used = count_username_changes_24h(user["id"])
-    return jsonify({
-        "used": used,
-        "limit": USERNAME_CHANGE_LIMIT_24H,
-        "left": max(0, USERNAME_CHANGE_LIMIT_24H - used),
-    })
-
-
-@app.route("/api/settings/privacy", methods=["POST"])
-def api_privacy():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    data = request.get_json() or {}
-    update_privacy_settings(user["id"], data.get("hide_last_seen"), data.get("who_can_message"))
-    return jsonify({"ok": True})
-
-
-@app.route("/api/sessions", methods=["GET"])
-def api_sessions_get():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-    return jsonify({"sessions": get_user_sessions(user["id"])})
-
-
-@app.route("/api/sessions/<int:sid>", methods=["DELETE"])
-def api_sessions_del(sid):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-    delete_session(sid, user["id"])
-    return jsonify({"ok": True})
-
-
-# ==================== USERS ====================
-
-@app.route("/api/users/search")
-def api_users_search():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    q = request.args.get("q", "").strip()
-    if len(q) < 2:
-        return jsonify({"users": []})
-
-    users = search_users(q, user["id"], limit=20)
-    return jsonify({"users": [user_public_dict(u) for u in users]})
-
-
-@app.route("/api/users/by_username/<username>")
-def api_user_by_username(username):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    username = username.strip().lstrip("@")
-    if not username:
-        return jsonify({"error": "Username не указан"}), 400
-
-    target = get_user_by_username(username)
-    if not target:
-        return jsonify({"exists": False, "username": username}), 404
-
-    if target.get("banned"):
-        return jsonify({"exists": False, "username": username, "banned": True}), 404
-
-    return jsonify({"exists": True, "user": user_public_dict(target)})
-
-
-@app.route("/api/users/<int:user_id>")
-def api_user_profile(user_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    target = get_user_by_id(user_id)
-    if not target:
-        return jsonify({"error": "Юзер не найден"}), 404
-
-    return jsonify({"user": user_public_dict(target)})
-
-
-# ==================== FRIGDMANT & INVENTORY ====================
-
-@app.route("/api/usernames/my")
-def api_usernames_my():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-    return jsonify({"active": user.get("username"), "collection": get_user_usernames(user["id"])})
-
-
-@app.route("/api/usernames/activate", methods=["POST"])
-def api_usernames_activate():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-    if activate_username(user["id"], (request.get_json() or {}).get("username", "").strip()):
-        return jsonify({"ok": True})
-    return jsonify({"error": "Не удалось активировать"}), 400
-
-
-@app.route("/api/frigdmant/listings")
-def api_frig_listings():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-    return jsonify({"market": get_frigdmant_listings(), "my_listings": get_user_listings(user["id"])})
-
-
-@app.route("/api/frigdmant/list", methods=["POST"])
-def api_frig_list():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-    data = request.get_json() or {}
-    price = int(data.get("price", 0))
-    if price < 42:
-        return jsonify({"error": "Мин. цена 42 Di"}), 400
-
-    owned = [u["username"] for u in get_user_usernames(user["id"])]
-    if user["username"] == data.get("username"):
-        owned.append(user["username"])
-    if data.get("username") not in owned:
-        return jsonify({"error": "Вы не владеете этим юзернеймом"}), 403
-
-    supabase.table("owned_usernames").delete().eq("user_id", user["id"]).eq("username", data["username"]).execute()
-    create_frigdmant_listing(user["id"], "user", user["id"], data["username"], price, data.get("listing_type", "buyout"))
-    return jsonify({"ok": True})
-
-
-@app.route("/api/frigdmant/buy", methods=["POST"])
-def api_frig_buy():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-    success, err = buy_frigdmant_listing((request.get_json() or {}).get("listing_id"), user["id"])
-    if success:
-        return jsonify({"ok": True})
-    return jsonify({"error": err}), 400
-
-
-@app.route("/api/frigdmant/bid", methods=["POST"])
-def api_frig_bid():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-    data = request.get_json() or {}
-    success, err = place_frigdmant_bid(data.get("listing_id"), user["id"], int(data.get("amount", 0)))
-    if success:
-        return jsonify({"ok": True})
-    return jsonify({"error": err}), 400
-
-
-@app.route("/api/frigdmant/cancel", methods=["POST"])
-def api_frig_cancel():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-    if cancel_listing((request.get_json() or {}).get("listing_id"), user["id"]):
-        return jsonify({"ok": True})
-    return jsonify({"error": "Ошибка отмены"}), 400
-
-
-# ==================== SHOP ====================
-
-@app.route("/api/shop/items")
-def api_shop_items():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    items = []
-    for item_id, item in SHOP_ITEMS.items():
-        items.append({
-            "id": item_id,
-            "category": item["category"],
-            "name": item["name"],
-            "price": item["price"],
-            "days": item.get("days"),
-            "mb": item.get("mb"),
-        })
-    return jsonify({"items": items, "balance": get_balance(user["id"])})
-
-
-@app.route("/api/shop/buy", methods=["POST"])
-def api_shop_buy():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    data = request.get_json() or {}
-    item_id = data.get("item_id")
-
-    if item_id not in SHOP_ITEMS:
-        return jsonify({"error": "Товар не найден"}), 404
-
-    item = SHOP_ITEMS[item_id]
-    category = item["category"]
-    price = item["price"]
-
-    if category == "pdg":
-        success, err = activate_premium(user["id"], item["days"], int(price), f"Покупка {item['name']}")
-        if not success:
-            return jsonify({"error": err}), 400
-        updated = get_user_by_id(user["id"])
-        return jsonify({"ok": True, "user": user_to_dict(updated)})
-
-    elif category == "file_plus":
-        success, err = activate_file_plus(user["id"], item["days"], int(price), f"Покупка {item['name']}")
-        if not success:
-            return jsonify({"error": err}), 400
-        updated = get_user_by_id(user["id"])
-        return jsonify({"ok": True, "user": user_to_dict(updated)})
-
-    elif category == "mb":
-        success, err = spend_balance(user["id"], int(price), f"Покупка {item['name']}")
-        if not success:
-            return jsonify({"error": err}), 400
-        mb_bytes = item["mb"] * 1024 * 1024
-        add_file_quota(user["id"], mb_bytes)
-        updated = get_user_by_id(user["id"])
-        return jsonify({"ok": True, "user": user_to_dict(updated)})
-
-    return jsonify({"error": "Неизвестная категория"}), 400
-
-
-@app.route("/api/transactions")
-def api_transactions():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-    return jsonify({"transactions": get_user_transactions(user["id"], limit=50)})
-
-
-# ==================== CHATS ====================
-
-@app.route("/api/chats")
-def api_chats():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-    if not user.get("profile_completed"):
-        return jsonify({"error": "Заполни профиль"}), 403
-
-    update_last_seen(user["id"])
-    chats = get_user_chats(user["id"])
-    return jsonify({"chats": chats})
-
-
-@app.route("/api/all_list")
-def api_all_list():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-    if not user.get("profile_completed"):
-        return jsonify({"error": "Заполни профиль"}), 403
-
-    update_last_seen(user["id"])
-    chats = get_user_chats(user["id"])
-    channels = get_user_channels(user["id"])
-
-    items = chats + channels
-    items.sort(key=lambda x: x["last_message_at"] or "", reverse=True)
-    return jsonify({"items": items})
-
-
-@app.route("/api/chats", methods=["POST"])
-def api_chats_create():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    data = request.get_json() or {}
-    other_id = data.get("user_id")
-    if not other_id:
-        return jsonify({"error": "user_id обязателен"}), 400
-    if other_id == user["id"]:
-        return jsonify({"error": "Нельзя чатиться с самим собой"}), 400
-
-    other = get_user_by_id(other_id)
-    if not other:
-        return jsonify({"error": "Юзер не найден"}), 404
-
-    chat = get_or_create_chat(user["id"], other_id)
-    return jsonify({"ok": True, "chat_id": chat["id"]})
-
-
-@app.route("/api/chats/<int:chat_id>/messages")
-def api_chat_messages(chat_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    chat = get_chat_by_id(chat_id)
-    if not chat:
-        return jsonify({"error": "Чат не найден"}), 404
-    if user["id"] not in (chat["user1_id"], chat["user2_id"]):
-        return jsonify({"error": "Нет доступа"}), 403
-
-    limit = int(request.args.get("limit", 50))
-    offset = int(request.args.get("offset", 0))
-    messages = get_messages(chat_id, limit, offset)
-
-    mark_messages_read(chat_id, user["id"])
-    update_last_seen(user["id"])
-
-    other_id = chat["user2_id"] if chat["user1_id"] == user["id"] else chat["user1_id"]
-    other = get_user_by_id(other_id)
-
-    return jsonify({
-        "messages": messages,
-        "other_user": user_public_dict(other) if other else None,
-    })
-
-
-@app.route("/api/chats/<int:chat_id>/read", methods=["POST"])
-def api_chat_read(chat_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    chat = get_chat_by_id(chat_id)
-    if not chat or user["id"] not in (chat["user1_id"], chat["user2_id"]):
-        return jsonify({"error": "Нет доступа"}), 403
-
-    mark_messages_read(chat_id, user["id"])
-    return jsonify({"ok": True})
-
-
-@app.route("/api/send", methods=["POST"])
-def api_send():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    data = request.get_json() or {}
-    chat_id = data.get("chat_id")
-    text = (data.get("text") or "").strip()
-
-    if not chat_id or not text:
-        return jsonify({"error": "chat_id и text обязательны"}), 400
-    if len(text) > 4000:
-        return jsonify({"error": "Сообщение слишком длинное"}), 400
-
-    chat = get_chat_by_id(chat_id)
-    if not chat or user["id"] not in (chat["user1_id"], chat["user2_id"]):
-        return jsonify({"error": "Нет доступа"}), 403
-
-    msg = save_message(chat_id, user["id"], text, "text")
-    update_last_seen(user["id"])
-    return jsonify({"ok": True, "message": msg})
-
-
-@app.route("/api/messages/<int:message_id>", methods=["DELETE"])
-def api_message_delete(message_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    msg = get_message_by_id(message_id)
-    if not msg:
-        return jsonify({"error": "Сообщение не найдено"}), 404
-    if msg["sender_id"] != user["id"]:
-        return jsonify({"error": "Можно удалять только свои"}), 403
-
-    delete_message(message_id)
-    return jsonify({"ok": True})
-
-
-@app.route("/api/messages/search")
-def api_messages_search():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    q = request.args.get("q", "").strip()
-    if len(q) < 2:
-        return jsonify({"messages": []})
-
-    messages = search_messages(user["id"], q)
-    return jsonify({"messages": messages})
-
-
-@app.route("/api/poll")
-def api_poll():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    chat_id = request.args.get("chat_id")
-    after = request.args.get("after", "1970-01-01T00:00:00+00:00")
-
-    if not chat_id:
-        return jsonify({"messages": []})
-
-    chat = get_chat_by_id(int(chat_id))
-    if not chat or user["id"] not in (chat["user1_id"], chat["user2_id"]):
-        return jsonify({"error": "Нет доступа"}), 403
-
-    update_last_seen(user["id"])
-
-    res = supabase.table("messages").select("*").eq("chat_id", int(chat_id)).gt(
-        "created_at", after
-    ).order("created_at").execute()
-
-    other_id = chat["user2_id"] if chat["user1_id"] == user["id"] else chat["user1_id"]
-    now = time.time()
-    typing_users = [
-        uid for uid, ts in typing_store.get(int(chat_id), {}).items()
-        if uid == other_id and now - ts < 5
-    ]
-
-    return jsonify({
-        "messages": res.data or [],
-        "typing": len(typing_users) > 0,
-    })
-
-
-@app.route("/api/typing", methods=["POST"])
-def api_typing():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    data = request.get_json() or {}
-    chat_id = data.get("chat_id")
-    if not chat_id:
-        return jsonify({"error": "chat_id обязателен"}), 400
-
-    typing_store[int(chat_id)][user["id"]] = time.time()
-    return jsonify({"ok": True})
-
-
-# ==================== UPLOAD: ФОТО ====================
-
-def _process_image(file_bytes, mime):
-    if len(file_bytes) > MAX_PHOTO_SIZE:
-        raise ValueError("Файл больше 5 МБ")
-    try:
-        img = Image.open(io.BytesIO(file_bytes))
-        img.verify()
-        img = Image.open(io.BytesIO(file_bytes))
-    except Exception:
-        raise ValueError("Неверный формат изображения")
-
-    output = io.BytesIO()
-    fmt = "JPEG"
-    ext = "jpg"
-
-    if img.mode in ("RGBA", "P") and mime == "image/png":
-        fmt = "PNG"
-        ext = "png"
-        img.save(output, format=fmt, optimize=True)
-    else:
-        if img.mode != "RGB":
-            img = img.convert("RGB")
-        if len(file_bytes) > COMPRESS_THRESHOLD or max(img.size) > MAX_DIMENSION:
-            img.thumbnail((MAX_DIMENSION, MAX_DIMENSION), Image.LANCZOS)
-            img.save(output, format=fmt, quality=82, optimize=True)
-        else:
-            img.save(output, format=fmt, quality=92, optimize=True)
-
-    return output.getvalue(), ext
-
-
-@app.route("/api/upload/avatar", methods=["POST"])
-def api_upload_avatar():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    can, next_date = can_change_avatar(user["id"])
-    if not can:
-        return jsonify({
-            "error": "Аватарку можно менять раз в 7 дней (или с PDG)",
-            "next_date": next_date.isoformat() if next_date else None
-        }), 429
-
-    if "file" not in request.files:
-        return jsonify({"error": "Файл не передан"}), 400
-
-    file = request.files["file"]
-    if not file.filename:
-        return jsonify({"error": "Пустой файл"}), 400
-
-    mime = file.mimetype or ""
-    if mime not in ALLOWED_MIME:
-        return jsonify({"error": "Только JPG, PNG, WEBP, GIF"}), 400
-
-    try:
-        file_bytes = file.read()
-        processed, ext = _process_image(file_bytes, mime)
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-
-    filename = f"user_{user['id']}_{int(time.time())}.{ext}"
-
-    try:
-        supabase.storage.from_("avatars").upload(
-            filename, processed,
-            file_options={"content-type": f"image/{ext if ext != 'jpg' else 'jpeg'}"}
-        )
-        public_url = supabase.storage.from_("avatars").get_public_url(filename)
-    except Exception as e:
-        return jsonify({"error": f"Ошибка загрузки: {str(e)}"}), 500
-
-    updated = update_user_avatar(user["id"], public_url)
-    return jsonify({"ok": True, "avatar_url": public_url, "user": user_to_dict(updated)})
-
-
-@app.route("/api/upload/photo", methods=["POST"])
-def api_upload_photo():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    can, next_date = can_upload_photo(user["id"])
-    if not can:
-        return jsonify({
-            "error": "Бесплатно можно 1 фото раз в 7 дней. Купи PDG для безлимита!",
-            "next_date": next_date.isoformat() if next_date else None
-        }), 429
-
-    chat_id = request.form.get("chat_id")
-    if not chat_id:
-        return jsonify({"error": "chat_id обязателен"}), 400
-
-    chat = get_chat_by_id(int(chat_id))
-    if not chat or user["id"] not in (chat["user1_id"], chat["user2_id"]):
-        return jsonify({"error": "Нет доступа"}), 403
-
-    if "file" not in request.files:
-        return jsonify({"error": "Файл не передан"}), 400
-
-    file = request.files["file"]
-    mime = file.mimetype or ""
-    if mime not in ALLOWED_MIME:
-        return jsonify({"error": "Только JPG, PNG, WEBP, GIF"}), 400
-
-    caption = (request.form.get("caption") or "").strip()
-    if len(caption) > 500:
-        return jsonify({"error": "Подпись максимум 500 символов"}), 400
-
-    try:
-        file_bytes = file.read()
-        processed, ext = _process_image(file_bytes, mime)
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-
-    filename = f"photo_{user['id']}_{int(time.time())}.{ext}"
-
-    try:
-        supabase.storage.from_("chat-photos").upload(
-            filename, processed,
-            file_options={"content-type": f"image/{ext if ext != 'jpg' else 'jpeg'}"}
-        )
-        public_url = supabase.storage.from_("chat-photos").get_public_url(filename)
-    except Exception as e:
-        return jsonify({"error": f"Ошибка загрузки: {str(e)}"}), 500
-
-    msg = save_message(
-        int(chat_id), user["id"], caption, "photo",
-        public_url, len(processed), filename
-    )
-    register_photo_upload(user["id"])
-
-    return jsonify({"ok": True, "message": msg})
-
-
-# ==================== UPLOAD: ФАЙЛЫ (FILE PLUS) ====================
-
-@app.route("/api/upload/file", methods=["POST"])
-def api_upload_file():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    if not check_file_plus(user):
-        return jsonify({"error": "Нужна подписка File Plus"}), 403
-
-    chat_id = request.form.get("chat_id")
-    if not chat_id:
-        return jsonify({"error": "chat_id обязателен"}), 400
-
-    chat = get_chat_by_id(int(chat_id))
-    if not chat or user["id"] not in (chat["user1_id"], chat["user2_id"]):
-        return jsonify({"error": "Нет доступа"}), 403
-
-    if "file" not in request.files:
-        return jsonify({"error": "Файл не передан"}), 400
-
-    file = request.files["file"]
-    mime = file.mimetype or ""
-
-    if mime not in ALLOWED_FILE_MIME:
-        return jsonify({"error": "Такой формат не поддерживается"}), 400
-
-    file_bytes = file.read()
-    size = len(file_bytes)
-
-    if size > MAX_FILE_SIZE:
-        return jsonify({"error": "Файл больше 3 МБ"}), 400
-
-    base_quota = FILE_QUOTA_BASE
-    extra_quota = user.get("file_quota_bytes", 0) or 0
-    total_quota = base_quota + extra_quota
-    used = get_file_quota_used(user["id"])
-
-    if used + size > total_quota:
-        left_mb = max(0, (total_quota - used) // (1024 * 1024))
-        return jsonify({
-            "error": f"Лимит исчерпан. Осталось {left_mb} МБ. Докупи в магазине!",
-            "used": used,
-            "total": total_quota,
-        }), 429
-
-    ext = ALLOWED_FILE_MIME[mime]
-    safe_name = re.sub(r"[^\w\-_.]", "_", file.filename or f"file.{ext}")
-    filename = f"file_{user['id']}_{int(time.time())}.{ext}"
-
-    try:
-        supabase.storage.from_("chat-photos").upload(
-            filename, file_bytes,
-            file_options={"content-type": mime}
-        )
-        public_url = supabase.storage.from_("chat-photos").get_public_url(filename)
-    except Exception as e:
-        return jsonify({"error": f"Ошибка загрузки: {str(e)}"}), 500
-
-    file_category = "audio" if mime.startswith("audio/") else "document"
-    msg = save_message(
-        int(chat_id), user["id"], "", "file",
-        public_url, size, safe_name,
-        file_type=file_category,
-        file_mime=mime
-    )
-    register_file_upload(user["id"], size)
-
-    return jsonify({"ok": True, "message": msg})
-
-
-@app.route("/api/file-quota")
-def api_file_quota():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    base_quota = FILE_QUOTA_BASE
-    extra_quota = user.get("file_quota_bytes", 0) or 0
-    total = base_quota + extra_quota
-    used = get_file_quota_used(user["id"])
-
-    return jsonify({
-        "used": used,
-        "total": total,
-        "left": max(0, total - used),
-        "has_file_plus": check_file_plus(user),
-    })
-
-
-@app.route("/api/photo-limit")
-def api_photo_limit():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-    can, next_date = can_upload_photo(user["id"])
-    return jsonify({
-        "can": can,
-        "next_date": next_date.isoformat() if next_date else None,
-        "has_pdg": check_premium(user),
-    })
-
-
-# ==================== CHANNELS ====================
-
-@app.route("/api/channels", methods=["POST"])
-def api_channels_create():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    if count_user_channels(user["id"]) >= 4:
-        return jsonify({"error": "Максимум 4 канала на аккаунт"}), 400
-
-    data = request.get_json() or {}
-    name = (data.get("name") or "").strip()
-    username = (data.get("username") or "").strip().lstrip("@")
-    description = (data.get("description") or "").strip() or None
-    ch_type = data.get("type", "public")
-
-    if not name:
-        return jsonify({"error": "Название обязательно"}), 400
-    if len(name) > 64:
-        return jsonify({"error": "Название слишком длинное"}), 400
-
-    if ch_type == "secret":
-        if user.get("role") not in ("owner", "developer"):
-            return jsonify({"error": "Только разработчики могут создавать глобальные каналы"}), 403
-        username = None
-    else:
-        ch_type = "public"
-        if not username:
-            return jsonify({"error": "Для публичного канала нужен @username"}), 400
-        ok, err = validate_username(username, "user")
-        if not ok:
-            return jsonify({"error": err}), 400
-        existing = get_channel_by_username(username)
-        if existing:
-            return jsonify({"error": "Этот @username канала занят"}), 400
-
-    ch = create_channel(user["id"], name, username, description, ch_type)
-    if not ch:
-        return jsonify({"error": "Ошибка создания"}), 500
-
-    if ch_type == "secret":
-        all_users = get_all_users_admin(limit=10000)
-        for u in all_users:
-            subscribe_to_channel(ch["id"], u["id"])
-    else:
-        subscribe_to_channel(ch["id"], user["id"])
-
-    return jsonify({"ok": True, "channel": ch})
-
-
-@app.route("/api/channels/search")
-def api_channels_search():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    q = request.args.get("q", "").strip()
-    if len(q) < 2:
-        return jsonify({"channels": []})
-
-    channels = search_public_channels(q, limit=20)
-    result = []
-    for ch in channels:
-        owner = get_user_by_id(ch["owner_id"])
-        subs = supabase.table("channel_subscribers").select("id").eq("channel_id", ch["id"]).execute()
-        result.append({
-            "id": ch["id"],
-            "name": ch["name"],
-            "username": ch.get("username"),
-            "description": ch.get("description"),
-            "avatar_url": ch.get("avatar_url"),
-            "subscribers_count": len(subs.data or []),
-            "is_subscribed": is_subscribed(ch["id"], user["id"]),
-            "owner_name": owner.get("first_name") if owner else None,
-        })
-    return jsonify({"channels": result})
-
-
-@app.route("/api/channels/<int:channel_id>/info")
-def api_channel_info(channel_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    ch = get_channel_by_id(channel_id)
-    if not ch:
-        return jsonify({"error": "Канал не найден"}), 404
-
-    subs = supabase.table("channel_subscribers").select("id").eq("channel_id", channel_id).execute()
-    owner = get_user_by_id(ch["owner_id"])
-
-    return jsonify({
-        "channel": {
-            "id": ch["id"],
-            "name": ch["name"],
-            "username": ch.get("username"),
-            "description": ch.get("description"),
-            "type": ch["type"],
-            "avatar_url": ch.get("avatar_url"),
-            "subscribers_count": len(subs.data or []),
-            "is_owner": ch["owner_id"] == user["id"],
-            "is_subscribed": is_subscribed(channel_id, user["id"]),
-            "created_at": ch.get("created_at"),
-            "owner": user_public_dict(owner) if owner else None,
-        },
-    })
-
-
-@app.route("/api/channels/<int:channel_id>/update", methods=["POST"])
-def api_channel_update(channel_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    ch = get_channel_by_id(channel_id)
-    if not ch or ch["owner_id"] != user["id"]:
-        return jsonify({"error": "Нет доступа"}), 403
-
-    data = request.get_json() or {}
-    name = data.get("name")
-    username = data.get("username")
-    ch_type = data.get("type")
-
-    if name is not None:
-        name = name.strip()
-        if not name:
-            return jsonify({"error": "Название не может быть пустым"}), 400
-        if len(name) > 64:
-            return jsonify({"error": "Название максимум 64 символа"}), 400
-
-    if ch_type is not None and ch_type not in ("public", "secret"):
-        return jsonify({"error": "Тип: public или secret"}), 400
-
-    if ch_type is not None and ch_type != ch["type"]:
-        if user.get("role") not in ("owner", "developer"):
-            return jsonify({"error": "Только разработчики могут менять тип"}), 403
-
-    final_type = ch_type if ch_type is not None else ch["type"]
-
-    if final_type == "public":
-        if username is None:
-            username = ch.get("username")
-        if not username or not username.strip():
-            return jsonify({"error": "Для публичного канала нужен @username"}), 400
-        username = username.strip().lstrip("@")
-        ok, err = validate_username(username, "user")
-        if not ok:
-            return jsonify({"error": err}), 400
-        if username.lower() != (ch.get("username") or "").lower():
-            existing = get_channel_by_username(username)
-            if existing and existing["id"] != channel_id:
-                return jsonify({"error": "Этот @username канала занят"}), 400
-    else:
-        username = None
-
-    updated = update_channel_full(
-        channel_id,
-        name=name if name is not None else ch["name"],
-        username=username,
-        ch_type=final_type,
-    )
-
-    if final_type == "public":
-        subscribe_to_channel(channel_id, user["id"])
-
-    return jsonify({"ok": True, "channel": updated})
-
-
-@app.route("/api/channels/<int:channel_id>/avatar", methods=["POST"])
-def api_channel_avatar(channel_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    ch = get_channel_by_id(channel_id)
-    if not ch or ch["owner_id"] != user["id"]:
-        return jsonify({"error": "Нет доступа"}), 403
-
-    if "file" not in request.files:
-        return jsonify({"error": "Файл не передан"}), 400
-
-    file = request.files["file"]
-    mime = file.mimetype or ""
-    if mime not in ALLOWED_MIME:
-        return jsonify({"error": "Только JPG, PNG, WEBP, GIF"}), 400
-
-    try:
-        file_bytes = file.read()
-        processed, ext = _process_image(file_bytes, mime)
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-
-    filename = f"ch_{channel_id}_{int(time.time())}.{ext}"
-
-    try:
-        supabase.storage.from_("avatars").upload(
-            filename, processed,
-            file_options={"content-type": f"image/{ext if ext != 'jpg' else 'jpeg'}"}
-        )
-        public_url = supabase.storage.from_("avatars").get_public_url(filename)
-    except Exception as e:
-        return jsonify({"error": f"Ошибка загрузки: {str(e)}"}), 500
-
-    updated = update_channel_avatar(channel_id, public_url)
-    return jsonify({"ok": True, "avatar_url": public_url, "channel": updated})
-
-
-@app.route("/api/channels/<int:channel_id>/subscribe", methods=["POST"])
-def api_channels_subscribe(channel_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    ch = get_channel_by_id(channel_id)
-    if not ch:
-        return jsonify({"error": "Канал не найден"}), 404
-
-    if ch["type"] == "secret":
-        return jsonify({"error": "На глобальный канал нельзя подписаться вручную"}), 403
-
-    subscribe_to_channel(channel_id, user["id"])
-    return jsonify({"ok": True})
-
-
-@app.route("/api/channels/<int:channel_id>/unsubscribe", methods=["POST"])
-def api_channels_unsubscribe(channel_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    ch = get_channel_by_id(channel_id)
-    if not ch:
-        return jsonify({"error": "Канал не найден"}), 404
-
-    if ch["type"] == "secret":
-        return jsonify({"error": "От глобального канала нельзя отписаться"}), 403
-
-    unsubscribe_from_channel(channel_id, user["id"])
-    return jsonify({"ok": True})
-
-
-@app.route("/api/channels/<int:channel_id>/messages")
-def api_channel_messages(channel_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    ch = get_channel_by_id(channel_id)
-    if not ch:
-        return jsonify({"error": "Канал не найден"}), 404
-
-    if not is_subscribed(channel_id, user["id"]) and ch["owner_id"] != user["id"]:
-        return jsonify({"error": "Ты не подписан"}), 403
-
-    limit = int(request.args.get("limit", 50))
-    offset = int(request.args.get("offset", 0))
-    messages = get_channel_messages(channel_id, limit, offset)
-
-    subs = supabase.table("channel_subscribers").select("id").eq("channel_id", channel_id).execute()
-    owner = get_user_by_id(ch["owner_id"])
-
-    return jsonify({
-        "messages": messages,
-        "channel": {
-            "id": ch["id"],
-            "name": ch["name"],
-            "username": ch.get("username"),
-            "description": ch.get("description"),
-            "type": ch["type"],
-            "avatar_url": ch.get("avatar_url"),
-            "subscribers_count": len(subs.data or []),
-            "is_owner": ch["owner_id"] == user["id"],
-            "owner": user_public_dict(owner) if owner else None,
-        },
-    })
-
-
-@app.route("/api/channels/<int:channel_id>/send", methods=["POST"])
-def api_channel_send(channel_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    ch = get_channel_by_id(channel_id)
-    if not ch:
-        return jsonify({"error": "Канал не найден"}), 404
-
-    if ch["owner_id"] != user["id"]:
-        return jsonify({"error": "Только владелец может писать"}), 403
-
-    data = request.get_json() or {}
-    text = (data.get("text") or "").strip()
-    if not text:
-        return jsonify({"error": "Текст обязателен"}), 400
-    if len(text) > 4000:
-        return jsonify({"error": "Слишком длинное"}), 400
-
-    msg = save_channel_message(channel_id, user["id"], text)
-    return jsonify({"ok": True, "message": msg})
-
-
-@app.route("/api/channels/<int:channel_id>/edit", methods=["POST"])
-def api_channel_edit(channel_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    ch = get_channel_by_id(channel_id)
-    if not ch or ch["owner_id"] != user["id"]:
-        return jsonify({"error": "Нет доступа"}), 403
-
-    data = request.get_json() or {}
-    name = data.get("name")
-    description = data.get("description")
-    updated = update_channel(channel_id, name, description)
-    return jsonify({"ok": True, "channel": updated})
-
-
-@app.route("/api/channels/<int:channel_id>", methods=["DELETE"])
-def api_channel_delete(channel_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    ch = get_channel_by_id(channel_id)
-    if not ch or ch["owner_id"] != user["id"]:
-        return jsonify({"error": "Нет доступа"}), 403
-
-    delete_channel(channel_id)
-    return jsonify({"ok": True})
-
-
-@app.route("/api/channels/<int:channel_id>/subscribers")
-def api_channel_subscribers(channel_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    ch = get_channel_by_id(channel_id)
-    if not ch or ch["owner_id"] != user["id"]:
-        return jsonify({"error": "Только владелец видит список"}), 403
-
-    subs = get_channel_subscribers(channel_id)
-    return jsonify({"subscribers": [user_public_dict(u) for u in subs]})
-
-
-@app.route("/api/channels/<int:channel_id>/messages/<int:msg_id>", methods=["DELETE"])
-def api_channel_msg_delete(channel_id, msg_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    ch = get_channel_by_id(channel_id)
-    if not ch or ch["owner_id"] != user["id"]:
-        return jsonify({"error": "Нет доступа"}), 403
-
-    delete_channel_message(msg_id)
-    return jsonify({"ok": True})
-
-
-# ==================== REPORTS ====================
-
-@app.route("/api/reports", methods=["POST"])
-def api_report_create():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Не авторизован"}), 401
-
-    used = count_reports_by_user_24h(user["id"])
-    if used >= REPORT_LIMIT_24H:
-        return jsonify({"error": f"Лимит {REPORT_LIMIT_24H} жалоб в сутки"}), 429
-
-    data = request.get_json() or {}
-    reason = (data.get("reason") or "").strip()
-    comment = (data.get("comment") or "").strip() or None
-    reported_user_id = data.get("reported_user_id")
-    reported_message_id = data.get("reported_message_id")
-    reported_channel_id = data.get("reported_channel_id")
-
-    if reason not in REPORT_REASONS:
-        return jsonify({"error": "Неверная причина"}), 400
-
-    if not (reported_user_id or reported_message_id or reported_channel_id):
-        return jsonify({"error": "Нужно указать на кого/что жалуешься"}), 400
-
-    if reported_user_id and reported_user_id == user["id"]:
-        return jsonify({"error": "Нельзя жаловаться на себя"}), 400
-
-    r = create_report(
-        reporter_id=user["id"],
-        reason=reason,
-        comment=comment,
-        reported_user_id=reported_user_id,
-        reported_message_id=reported_message_id,
-        reported_channel_id=reported_channel_id,
-    )
-    return jsonify({"ok": True, "report_id": r["id"] if r else None})
-
-
-@app.route("/api/reports/reasons")
-def api_report_reasons():
-    return jsonify({"reasons": REPORT_REASONS})
-
-
-# ==================== ADMIN ====================
-
-def require_admin():
-    user = get_current_user()
-    if not user:
-        return None
-    if user.get("role") not in ("owner", "developer"):
-        return None
-    return user
-
-
-def require_owner():
-    user = get_current_user()
-    if not user or user.get("role") != "owner":
-        return None
-    return user
-
-
-@app.route("/api/admin/stats")
-def api_admin_stats():
-    admin = require_admin()
-    if not admin:
-        return jsonify({"error": "Нет доступа"}), 403
-
-    users_res = supabase.table("users").select("id", count="exact").execute()
-    channels_res = supabase.table("channels").select("id", count="exact").execute()
-    msgs_res = supabase.table("messages").select("id", count="exact").execute()
-    new_reports = count_new_reports()
-
-    return jsonify({
-        "total_users": users_res.count or 0,
-        "total_channels": channels_res.count or 0,
-        "total_messages": msgs_res.count or 0,
-        "new_reports": new_reports,
-    })
-
-
-@app.route("/api/admin/users")
-def api_admin_users():
-    admin = require_admin()
-    if not admin:
-        return jsonify({"error": "Нет доступа"}), 403
-
-    limit = int(request.args.get("limit", 100))
-    offset = int(request.args.get("offset", 0))
-    users = get_all_users_admin(limit, offset)
-    return jsonify({"users": [user_to_dict(u) for u in users], "me": user_to_dict(admin)})
-
-
-@app.route("/api/admin/set_role", methods=["POST"])
-def api_admin_set_role():
-    admin = require_owner()
-    if not admin:
-        return jsonify({"error": "Только владелец"}), 403
-
-    data = request.get_json() or {}
-    target_id = data.get("user_id")
-    role = data.get("role")
-
-    if role not in ("user", "moderator", "developer"):
-        return jsonify({"error": "Неверная роль"}), 400
-    if target_id == admin["id"]:
-        return jsonify({"error": "Нельзя менять свою роль"}), 400
-
-    updated = update_user_role(target_id, role)
-    if not updated:
-        return jsonify({"error": "Юзер не найден"}), 404
-    return jsonify({"ok": True})
-
-
-@app.route("/api/admin/set_verified", methods=["POST"])
-def api_admin_set_verified():
-    admin = require_owner()
-    if not admin:
-        return jsonify({"error": "Только владелец"}), 403
-
-    data = request.get_json() or {}
-    target_id = data.get("user_id")
-    verified = bool(data.get("verified"))
-
-    updated = update_user_verified(target_id, verified)
-    if not updated:
-        return jsonify({"error": "Юзер не найден"}), 404
-    return jsonify({"ok": True})
-
-
-@app.route("/api/admin/add_balance", methods=["POST"])
-def api_admin_add_balance():
-    admin = require_owner()
-    if not admin:
-        return jsonify({"error": "Только владелец"}), 403
-
-    data = request.get_json() or {}
-    target_id = data.get("user_id")
-    amount = data.get("amount")
-    description = (data.get("description") or "Пополнение от админа").strip()
-
-    try:
-        amount = int(amount)
-    except Exception:
-        return jsonify({"error": "Неверная сумма"}), 400
-
-    if amount <= 0 or amount > 1000000:
-        return jsonify({"error": "Сумма: 1 - 1 000 000"}), 400
-
-    target = get_user_by_id(target_id)
-    if not target:
-        return jsonify({"error": "Юзер не найден"}), 404
-
-    if not add_balance(target_id, amount, description, admin["id"]):
-        return jsonify({"error": "Ошибка начисления"}), 500
-
-    return jsonify({"ok": True})
-
-
-@app.route("/api/admin/reports")
-def api_admin_reports():
-    admin = require_admin()
-    if not admin:
-        return jsonify({"error": "Нет доступа"}), 403
-
-    status_filter = request.args.get("status")
-    if status_filter not in ("new", "reviewed", "rejected", None):
-        status_filter = None
-
-    reports = get_reports(status_filter=status_filter, limit=100)
-    return jsonify({"reports": reports})
-
-
-@app.route("/api/admin/reports/<int:report_id>/review", methods=["POST"])
-def api_admin_report_review(report_id):
-    admin = require_admin()
-    if not admin:
-        return jsonify({"error": "Нет доступа"}), 403
-
-    data = request.get_json() or {}
-    status = data.get("status")
-    if status not in ("reviewed", "rejected"):
-        return jsonify({"error": "Статус: reviewed или rejected"}), 400
-
-    update_report_status(report_id, status, admin["id"])
-    return jsonify({"ok": True})
-
-
-def can_ban(admin, target):
-    if not admin or not target:
-        return False
-    if target["id"] == admin["id"]:
-        return False
-    ar = admin.get("role")
-    tr = target.get("role", "user")
-    if ar == "owner":
-        return tr != "owner"
-    if ar == "developer":
-        return tr not in ("owner", "developer")
-    if ar == "moderator":
-        return tr == "user"
-    return False
-
-
-@app.route("/api/admin/ban", methods=["POST"])
-def api_admin_ban():
-    admin = get_current_user()
-    if not admin or admin.get("role") not in ("owner", "developer", "moderator"):
-        return jsonify({"error": "Нет доступа"}), 403
-
-    data = request.get_json() or {}
-    target_id = data.get("user_id")
-    reason = (data.get("reason") or "").strip()
-    duration_days = data.get("duration_days")
-
-    if not target_id or not reason:
-        return jsonify({"error": "user_id и reason обязательны"}), 400
-
-    target = get_user_by_id(target_id)
-    if not target:
-        return jsonify({"error": "Юзер не найден"}), 404
-
-    if not can_ban(admin, target):
-        return jsonify({"error": "Недостаточно прав"}), 403
-
-    until = None
-    if duration_days:
-        try:
-            days = int(duration_days)
-            if days <= 0 or days > 3650:
-                return jsonify({"error": "Срок: 1-3650 дней"}), 400
-            until = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
-        except Exception:
-            return jsonify({"error": "Неверный срок"}), 400
-
-    ban_user(target_id, reason, admin["id"], until)
-    return jsonify({"ok": True})
-
-
-@app.route("/api/admin/unban", methods=["POST"])
-def api_admin_unban():
-    admin = get_current_user()
-    if not admin or admin.get("role") not in ("owner", "developer"):
-        return jsonify({"error": "Нет доступа"}), 403
-
-    data = request.get_json() or {}
-    target_id = data.get("user_id")
-    if not target_id:
-        return jsonify({"error": "user_id обязателен"}), 400
-
-    unban_user(target_id)
-    return jsonify({"ok": True})
-
-
-# ==================== WORKER ====================
-
-@app.route("/api/worker/get_pending")
-def worker_get_pending():
-    if request.headers.get("X-Worker-Key") != WORKER_KEY:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-    supabase.table("pending_codes").delete().lt("created_at", cutoff).execute()
-
-    res = supabase.table("pending_codes").select("*").eq("sent", False).order("created_at").limit(1).execute()
-    if not res.data:
-        return jsonify({"email": None, "code": None})
-
-    task = res.data[0]
-    return jsonify({"email": task["email"], "code": task["code"]})
-
-
-@app.route("/api/worker/task_done", methods=["POST"])
-def worker_task_done():
-    if request.headers.get("X-Worker-Key") != WORKER_KEY:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    data = request.get_json() or {}
-    email = data.get("email")
-    if email:
-        supabase.table("pending_codes").update({"sent": True}).eq("email", email.lower()).execute()
-    return jsonify({"ok": True})
-
-
-# ==================== RUN ====================
-
-port = int(os.environ.get("PORT", 8080))
-print("Server on " + str(port))
-app.run(host="0.0.0.0", port=port, debug=False)
+    closeModal("modal-ch-edit"); alert("Канал обновлён!"); newAvatarFile = null; openChannelInfo(currentChInfo.id);
+    if (currentChannel) { currentChannel.name = name; document.getElementById("channel-title").textContent = name; }
+  } catch (e) { setError("modal-ch-edit-error", e.message); }
+};
+
+document.getElementById("btn-ch-info-subscribe").onclick = async () => {
+  if (!currentChInfo) return;
+  try { await api("/api/channels/" + currentChInfo.id + "/subscribe", { method: "POST" }); alert("Подписан!"); openChannelInfo(currentChInfo.id); loadList(); } catch (e) { alert("Ошибка: " + e.message); }
+};
+
+document.getElementById("btn-ch-info-unsubscribe").onclick = async () => {
+  if (!currentChInfo) return;
+  if (!confirm("Отписаться от канала?")) return;
+  try { await api("/api/channels/" + currentChInfo.id + "/unsubscribe", { method: "POST" }); show("screen-list"); loadList(); } catch (e) { alert("Ошибка: " + e.message); }
+};
+
+document.getElementById("btn-ch-info-delete").onclick = async () => {
+  if (!currentChInfo) return;
+  if (!confirm('Удалить канал "' + currentChInfo.name + '"?\n\nЭто НЕОБРАТИМО!')) return;
+  if (!confirm("Точно? Подтверди ещё раз.")) return;
+  try { await api("/api/channels/" + currentChInfo.id, { method: "DELETE" }); alert("Удалён"); currentChannel = null; currentChInfo = null; show("screen-list"); loadList(); } catch (e) { alert("Ошибка: " + e.message); }
+};
+
+// НАСТРОЙКИ
+async function openSettings() {
+  show("screen-settings");
+  try {
+    const me = await api("/api/me"); currentUser = me.user;
+    document.getElementById("toggle-hide-seen").classList.toggle("active", currentUser.hide_last_seen);
+    const whoMap = { "all": "Все", "contacts": "Только контакты", "nobody": "Никто" };
+    document.getElementById("who-can-msg-val").textContent = whoMap[currentUser.who_can_message] || "Все";
+    
+    const sess = await api("/api/sessions");
+    const box = document.getElementById("sessions-list"); box.innerHTML = "";
+    if (!sess.sessions.length) box.innerHTML = '<div style="padding:16px;color:#7e8b99;font-size:13px;">Нет активных сессий</div>';
+    for (const s of sess.sessions) {
+      const el = document.createElement("div"); el.className = "settings-row";
+      el.innerHTML = `<div><div class="settings-label">${escapeHtml(s.device || "Устройство")}</div><div class="settings-desc">${new Date(s.last_used).toLocaleString("ru-RU")}</div></div><button class="admin-btn danger" onclick="deleteSession(${s.id})">Выйти</button>`;
+      box.appendChild(el);
+    }
+  } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
+}
+
+document.getElementById("btn-settings").onclick = openSettings;
+document.getElementById("btn-settings-back").onclick = () => { show("screen-profile-full"); openProfile(); };
+
+document.getElementById("toggle-hide-seen").onclick = async () => {
+  if (!currentUser.premium) return alert("Эта функция доступна только с подпиской PDG!");
+  const newState = !document.getElementById("toggle-hide-seen").classList.contains("active");
+  document.getElementById("toggle-hide-seen").classList.toggle("active", newState);
+  try { await api("/api/settings/privacy", { method: "POST", body: JSON.stringify({ hide_last_seen: newState }) }); currentUser.hide_last_seen = newState; } catch(e) { alert(e.message); }
+};
+
+async function changeWhoCanMessage() {
+  if (!currentUser.premium) return alert("Эта функция доступна только с подпиской PDG!");
+  const cur = currentUser.who_can_message;
+  const choice = prompt("Кто может тебе писать?\n1 — Все\n2 — Только контакты\n3 — Никто", cur === "all" ? "1" : cur === "contacts" ? "2" : "3");
+  if (!choice) return;
+  const val = choice === "1" ? "all" : choice === "2" ? "contacts" : "nobody";
+  try { await api("/api/settings/privacy", { method: "POST", body: JSON.stringify({ who_can_message: val }) }); currentUser.who_can_message = val; openSettings(); } catch(e) { alert(e.message); }
+}
+
+async function deleteSession(sid) {
+  if (!confirm("Завершить эту сессию?")) return;
+  try { await api("/api/sessions/" + sid, { method: "DELETE" }); openSettings(); } catch(e) { alert(e.message); }
+}
+
+// FRIGDMANT
+async function openFrigdmant() {
+  show("screen-frigdmant");
+  currentFrigTab = "market";
+  document.querySelectorAll(".shop-tab[data-frig]").forEach(t => t.classList.toggle("active", t.dataset.frig === "market"));
+  document.getElementById("frig-list").innerHTML = '<div class="spinner"></div>';
+  try {
+    const data = await api("/api/frigdmant/listings");
+    frigListings = data.market; myListings = data.my_listings; renderFrig();
+  } catch(e) { document.getElementById("frig-list").innerHTML = 'Ошибка'; }
+}
+
+document.querySelectorAll(".shop-tab[data-frig]").forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll(".shop-tab[data-frig]").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active"); currentFrigTab = tab.dataset.frig; renderFrig();
+  };
+});
+
+function renderFrig() {
+  const box = document.getElementById("frig-list"); box.innerHTML = "";
+  const items = currentFrigTab === "market" ? frigListings : myListings;
+  if (!items.length) { box.innerHTML = '<div class="empty-state">Здесь пока пусто</div>'; return; }
+  for (const l of items) {
+    const el = document.createElement("div"); el.className = "frig-card" + (l.listing_type === "auction" ? " auction" : "");
+    const isAuction = l.listing_type === "auction";
+    const typeLabel = isAuction ? "⏳ Аукцион" : "💰 Фикс-цена";
+    const priceLabel = isAuction ? "Текущая ставка: " + l.current_bid + " Di" : "Цена: " + l.price + " Di";
+    const timeLeft = isAuction ? "До конца: " + fmtDate(l.end_time) : "";
+    const seller = l.seller_username ? "@" + l.seller_username : "скрыт";
+    let actions = "";
+    if (currentFrigTab === "market") {
+      if (isAuction) actions = '<button class="admin-btn primary" onclick="openFrigAction('+l.id+', \'bid\')">Сделать ставку</button>';
+      else actions = '<button class="admin-btn primary" onclick="openFrigAction('+l.id+', \'buy\')">Купить</button>';
+    } else { actions = '<button class="admin-btn danger" onclick="cancelFrigListing('+l.id+')">Отменить</button>'; }
+    el.innerHTML = '<div class="frig-title"><img src="'+COIN_URL+'" class="di-icon" style="width:16px;height:16px;"> @' + escapeHtml(l.username) + '</div><div class="frig-price">' + priceLabel + '</div><div class="frig-meta">' + typeLabel + '<br>Продавец: ' + escapeHtml(seller) + '<br>' + timeLeft + '</div><div class="frig-actions">' + actions + '</div>';
+    box.appendChild(el);
+  }
+}
+
+document.getElementById("btn-frig-new").onclick = () => { document.getElementById("frig-price").value = ""; setError("modal-frig-error", ""); openModal("modal-frig-new"); };
+
+document.querySelectorAll("#modal-frig-new .reason-option").forEach(btn => {
+  btn.onclick = () => { document.querySelectorAll("#modal-frig-new .reason-option").forEach(b => b.classList.remove("selected")); btn.classList.add("selected"); frigListingType = btn.dataset.ltype; };
+});
+
+document.getElementById("btn-frig-create").onclick = async () => {
+  const price = parseInt(document.getElementById("frig-price").value);
+  if (isNaN(price) || price < 42) return setError("modal-frig-error", "Мин. цена 42 Di");
+  try {
+    await api("/api/frigdmant/list", { method: "POST", body: JSON.stringify({ target_type: "user", username: currentUser.username, price: price, listing_type: frigListingType }) });
+    closeModal("modal-frig-new"); alert("Выставлено на Frigdmant!"); openFrigdmant();
+  } catch(e) { setError("modal-frig-error", e.message); }
+};
+
+async function cancelFrigListing(id) {
+  if (!confirm("Снять лот с продажи?")) return;
+  try { await api("/api/frigdmant/cancel", { method: "POST", body: JSON.stringify({ listing_id: id }) }); openFrigdmant(); } catch(e) { alert(e.message); }
+}
+
+function openFrigAction(id, action) {
+  const listing = frigListings.find(l => l.id === id); if (!listing) return;
+  const modal = document.getElementById("modal-frig-action"); const title = document.getElementById("frig-action-title");
+  const info = document.getElementById("frig-action-info"); const inputBlock = document.getElementById("frig-action-input-block");
+  title.textContent = action === 'buy' ? "Покупка" : "Ставка на аукционе";
+  info.innerHTML = "Юзернейм: <b>@" + escapeHtml(listing.username) + "</b><br>";
+  document.getElementById("btn-frig-confirm-action").onclick = () => action === 'buy' ? buyFrigListing(id) : placeFrigBid(id);
+  if (action === 'buy') { info.innerHTML += "Цена: <b>" + listing.price + " Di</b><br>У вас: <b>" + parseFloat(currentUser.balance).toFixed(2) + " Di</b>"; inputBlock.style.display = "none"; }
+  else { info.innerHTML += "Мин. ставка: <b>" + Math.max(listing.price, listing.current_bid + 1) + " Di</b>"; inputBlock.style.display = "block"; document.getElementById("frig-bid-amount").value = Math.max(listing.price, listing.current_bid + 1); }
+  setError("modal-frig-action-error", ""); openModal("modal-frig-action");
+}
+
+async function buyFrigListing(id) {
+  try {
+    await api("/api/frigdmant/buy", { method: "POST", body: JSON.stringify({ listing_id: id }) });
+    closeModal("modal-frig-action"); alert("Куплено! Юз добавлен в профиль.");
+    const me = await api("/api/me"); currentUser = me.user; openFrigdmant();
+  } catch(e) { setError("modal-frig-action-error", e.message); }
+}
+
+async function placeFrigBid(id) {
+  const amount = parseInt(document.getElementById("frig-bid-amount").value);
+  if (isNaN(amount)) return setError("modal-frig-action-error", "Введите сумму");
+  try {
+    await api("/api/frigdmant/bid", { method: "POST", body: JSON.stringify({ listing_id: id, amount: amount }) });
+    closeModal("modal-frig-action"); alert("Ставка принята!");
+    const me = await api("/api/me"); currentUser = me.user; openFrigdmant();
+  } catch(e) { setError("modal-frig-action-error", e.message); }
+}
+
+document.getElementById("btn-frig-back").onclick = () => { show("screen-list"); loadList(); };
+document.getElementById("btn-frigdmant").onclick = openFrigdmant;
+document.getElementById("menu-frig").onclick = () => { closeMenu(); openFrigdmant(); };
+document.getElementById("open-frig-my").onclick = () => { currentFrigTab = "my"; document.querySelectorAll(".shop-tab[data-frig]").forEach(t => t.classList.toggle("active", t.dataset.frig === "my")); openFrigdmant(); };
+
+// ПРОФИЛЬ
+async function openProfile() {
+  if (!currentUser) return;
+  const name = ((currentUser.first_name || "") + " " + (currentUser.last_name || "")).trim() || "Без имени";
+  const av = document.getElementById("profile-avatar");
+  if (currentUser.avatar_url) av.innerHTML = '<img src="' + currentUser.avatar_url + '"><div class="avatar-edit-hint">📷</div>';
+  else av.innerHTML = initial(name) + '<div class="avatar-edit-hint">📷</div>';
+  document.getElementById("profile-name").textContent = name;
+  document.getElementById("profile-username-show").textContent = currentUser.username ? "@" + currentUser.username : "—";
+  document.getElementById("profile-id").textContent = currentUser.id;
+  document.getElementById("profile-role").textContent = currentUser.role;
+
+  const bal = parseFloat(currentUser.balance || 0);
+  document.getElementById("profile-balance").innerHTML = '<img src="' + COIN_URL + '" class="di-icon"> ' + bal.toFixed(2) + " Di";
+  document.getElementById("profile-balance-rub").textContent = "~" + Math.round(bal * RATE) + "₽";
+
+  let subsHtml = "";
+  if (currentUser.premium) subsHtml += '<div class="profile-block"><div class="profile-row"><div class="profile-row-icon">💎</div><div class="profile-row-content"><div class="profile-row-label">PDG Premium</div><div class="profile-row-value">Активна до ' + fmtDate(currentUser.premium_until) + '</div></div></div></div>';
+  if (currentUser.file_plus) subsHtml += '<div class="profile-block"><div class="profile-row"><div class="profile-row-icon">📎</div><div class="profile-row-content"><div class="profile-row-label">File Plus</div><div class="profile-row-value">Активна до ' + fmtDate(currentUser.file_plus_until) + '</div></div></div></div>';
+  document.getElementById("profile-subs-block").innerHTML = subsHtml;
+
+  try {
+    const uData = await api("/api/usernames/my"); myUsernames = uData.collection || [];
+    let colHtml = "";
+    if (myUsernames.length > 0) {
+      for (const u of myUsernames) {
+        colHtml += '<div class="profile-row"><div class="profile-row-icon">⭐</div><div class="profile-row-content"><div class="profile-row-value">@' + escapeHtml(u.username) + '</div></div><button class="admin-btn" style="padding:4px 8px;font-size:11px;" onclick="activateMyUsername(\''+u.username+'\')">Активировать</button></div>';
+      }
+    }
+    document.getElementById("profile-collection-block").innerHTML = colHtml;
+  } catch(e) {}
+
+  show("screen-profile-full");
+}
+
+async function activateMyUsername(uname) {
+  if (!confirm("Сделать @" + uname + " вашим активным юзернеймом?")) return;
+  try { await api("/api/usernames/activate", { method: "POST", body: JSON.stringify({ username: uname }) }); const me = await api("/api/me"); currentUser = me.user; openProfile(); } catch (e) { alert(e.message); }
+}
+
+document.getElementById("btn-profile-back").onclick = () => { show("screen-list"); loadList(); };
+document.getElementById("btn-logout").onclick = () => { if (!confirm("Выйти?")) return; localStorage.removeItem("diogram_token"); location.reload(); };
+document.getElementById("profile-avatar").onclick = () => {
+  const input = document.createElement("input"); input.type = "file"; input.accept = "image/*";
+  input.onchange = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    if (file.size > 5 * 1024 * 1024) return alert("Файл больше 5 МБ");
+    const fd = new FormData(); fd.append("file", file);
+    try { const data = await api("/api/upload/avatar", { method: "POST", body: fd }); currentUser = data.user; openProfile(); alert("Аватарка обновлена!"); } catch (e) { alert("Ошибка: " + e.message); }
+  };
+  input.click();
+};
+
+document.getElementById("edit-name").onclick = () => { document.getElementById("modal-name-first").value = currentUser.first_name || ""; document.getElementById("modal-name-last").value = currentUser.last_name || ""; setError("modal-name-error", ""); openModal("modal-name"); };
+document.getElementById("btn-save-name").onclick = async () => {
+  const first_name = document.getElementById("modal-name-first").value.trim(); const last_name = document.getElementById("modal-name-last").value.trim();
+  if (!first_name) return setError("modal-name-error", "Имя обязательно");
+  try { const data = await api("/api/profile/name", { method: "POST", body: JSON.stringify({ first_name, last_name }) }); currentUser = data.user; closeModal("modal-name"); openProfile(); } catch (e) { setError("modal-name-error", e.message); }
+};
+
+document.getElementById("edit-username").onclick = async () => {
+  document.getElementById("modal-username-input").value = currentUser.username || ""; setError("modal-username-error", "");
+  try { const data = await api("/api/profile/username-limit"); document.getElementById("username-limit-info").textContent = "Осталось смен сегодня: " + data.left + " / " + data.limit; } catch (e) { document.getElementById("username-limit-info").textContent = ""; }
+  openModal("modal-username");
+};
+
+document.getElementById("btn-save-username").onclick = async () => {
+  const username = document.getElementById("modal-username-input").value.trim().replace("@", "");
+  if (!username) return setError("modal-username-error", "Username обязателен");
+  try {
+    const data = await api("/api/profile/username", { method: "POST", body: JSON.stringify({ username }) });
+    currentUser = data.user; closeModal("modal-username"); openProfile(); alert("Username изменён!");
+  } catch (e) { setError("modal-username-error", e.message); }
+};
+
+document.getElementById("edit-bio").onclick = () => { document.getElementById("modal-bio-input").value = currentUser.bio || ""; setError("modal-bio-error", ""); openModal("modal-bio"); };
+document.getElementById("btn-save-bio").onclick = async () => {
+  const bio = document.getElementById("modal-bio-input").value.trim();
+  try { const data = await api("/api/profile/bio", { method: "POST", body: JSON.stringify({ bio }) }); currentUser = data.user; closeModal("modal-bio"); openProfile(); } catch (e) { setError("modal-bio-error", e.message); }
+};
+
+async function openUserProfile(userId) {
+  try {
+    const data = await api("/api/users/" + userId);
+    const u = data.user; const name = ((u.first_name || "") + " " + (u.last_name || "")).trim() || "Без имени";
+    const av = document.getElementById("user-avatar"); if (u.avatar_url) av.innerHTML = '<img src="' + u.avatar_url + '">'; else av.textContent = initial(name);
+    document.getElementById("user-name").textContent = name; document.getElementById("user-verified").style.display = u.verified ? "inline" : "none";
+    document.getElementById("user-status").textContent = (u.username ? "@" + u.username + " · " : "") + statusText(u); document.getElementById("user-status").classList.toggle("online", !!u.is_online);
+    document.getElementById("user-bio").textContent = u.bio || "—"; document.getElementById("user-id").textContent = u.id;
+    document.getElementById("user-role").textContent = u.role;
+    document.getElementById("btn-user-message").onclick = async () => { try { const r = await api("/api/chats", { method: "POST", body: JSON.stringify({ user_id: u.id }) }); openChat(r.chat_id, u); } catch (e) { alert("Ошибка: " + e.message); } };
+    document.getElementById("btn-user-report").onclick = () => { reportTarget = { type: "user", user_id: u.id, name: name }; openReportModal(); };
+    show("screen-user-profile");
+  } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
+}
+document.getElementById("btn-user-back").onclick = () => { show("screen-list"); loadList(); };
+
+// МАГАЗИН
+async function openShop() {
+  show("screen-shop");
+  currentShopCategory = "di";
+  document.querySelectorAll(".shop-tab").forEach(t => t.classList.toggle("active", t.dataset.cat === "di"));
+  try {
+    const data = await api("/api/shop/items"); shopItems = data.items;
+    document.getElementById("shop-balance").innerHTML = '<img src="' + COIN_URL + '" class="di-icon"> ' + parseFloat(data.balance).toFixed(2) + " Di";
+    document.getElementById("shop-balance-rub").textContent = "~" + Math.round(data.balance * RATE) + "₽";
+    renderShop();
+  } catch (e) { document.getElementById("shop-list").innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+}
+
+document.querySelectorAll(".shop-tab").forEach(tab => {
+  tab.onclick = () => { document.querySelectorAll(".shop-tab").forEach(t => t.classList.remove("active")); tab.classList.add("active"); currentShopCategory = tab.dataset.cat; renderShop(); };
+});
+
+function renderShop() {
+  const box = document.getElementById("shop-list");
+  if (currentShopCategory === "history") return renderHistory();
+  if (currentShopCategory === "di") {
+    box.innerHTML = `
+      <div style="padding: 20px 16px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <img src="${COIN_URL}" class="di-icon-big">
+          <h2 style="font-size: 22px; margin-bottom: 6px;">Покупка Di</h2>
+          <p style="color: #7e8b99; font-size: 14px;">Внутренняя валюта Diogram</p>
+        </div>
+        <div style="background: #17212b; border-radius: 14px; padding: 18px; margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 12px;"><span style="color: #7e8b99;">💱 Курс:</span><span style="font-weight: 700; color: #5b8bff;">1 Di = 1.59 ₽</span></div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 12px;"><span style="color: #7e8b99;">💳 Мин. оплата:</span><span style="font-weight: 700;">95 ₽</span></div>
+          <div style="display: flex; justify-content: space-between;"><span style="color: #7e8b99;">🎁 Пример:</span><span style="font-weight: 700;">159 ₽ = 100 Di</span></div>
+        </div>
+        <div style="background: #1c2a48; border: 1px solid #2a3f6a; border-radius: 14px; padding: 18px; margin-bottom: 20px;">
+          <div style="font-weight: 700; margin-bottom: 8px; color: #5b8bff;">📝 Как купить:</div>
+          <div style="font-size: 14px; line-height: 1.6; color: #c5cdd6;">1. Нажми на кнопку ниже<br>2. Напиши разработчику сумму<br>3. Оплати удобным способом (СБП / карта)<br>4. Di зачислятся на баланс в течение 5 минут</div>
+        </div>
+        <a href="https://t.me/Dipxex" target="_blank" class="btn" style="display: block; text-align: center; text-decoration: none; font-size: 16px; padding: 16px;">💬 Написать @Dipxex</a>
+        <div style="text-align: center; font-size: 12px; color: #7e8b99; margin-top: 16px;">После оплаты напиши свой @username разработчику</div>
+      </div>
+    `;
+    return;
+  }
+  box.innerHTML = "";
+  const filtered = shopItems.filter(i => i.category === currentShopCategory);
+  if (!filtered.length) { box.innerHTML = '<div class="empty-state">Товаров нет</div>'; return; }
+  const bal = parseFloat(currentUser.balance || 0);
+  for (const item of filtered) {
+    const el = document.createElement("div"); el.className = "shop-item";
+    let meta = ""; if (item.days) meta = item.days + " дней"; if (item.mb) meta = item.mb + " МБ";
+    const canBuy = bal >= item.price;
+    el.innerHTML = '<div class="shop-item-info"><div class="shop-item-name">' + escapeHtml(item.name) + '</div><div class="shop-item-meta">' + meta + '</div></div><div class="shop-item-price"><img src="' + COIN_URL + '" class="di-icon"> ' + item.price + '</div><button class="shop-buy" ' + (canBuy ? "" : "disabled") + '>Купить</button>';
+    el.querySelector(".shop-buy").onclick = () => buyItem(item);
+    box.appendChild(el);
+  }
+}
+
+async function buyItem(item) {
+  if (!confirm("Купить \"" + item.name + "\" за " + item.price + " Di?")) return;
+  try {
+    const data = await api("/api/shop/buy", { method: "POST", body: JSON.stringify({ item_id: item.id }) });
+    currentUser = data.user;
+    document.getElementById("shop-balance").innerHTML = '<img src="' + COIN_URL + '" class="di-icon"> ' + parseFloat(currentUser.balance).toFixed(2) + " Di";
+    document.getElementById("shop-balance-rub").textContent = "~" + Math.round(currentUser.balance * RATE) + "₽";
+    alert("Куплено! ✅"); renderShop();
+  } catch (e) { alert("Ошибка: " + e.message); }
+}
+
+async function renderHistory() {
+  const box = document.getElementById("shop-list"); box.innerHTML = '<div class="spinner"></div>';
+  try {
+    const data = await api("/api/transactions"); box.innerHTML = "";
+    if (!data.transactions.length) { box.innerHTML = '<div class="empty-state">История пуста</div>'; return; }
+    for (const t of data.transactions) {
+      const el = document.createElement("div"); el.className = "shop-item";
+      const color = t.amount > 0 ? "#4dd964" : "#ff5b5b"; const sign = t.amount > 0 ? "+" : "";
+      el.innerHTML = '<div class="shop-item-info"><div class="shop-item-name">' + escapeHtml(t.description || t.type) + '</div><div class="shop-item-meta">' + new Date(t.created_at).toLocaleString("ru-RU") + '</div></div><div class="shop-item-price" style="color:' + color + '">' + sign + t.amount + ' Di</div>';
+      box.appendChild(el);
+    }
+  } catch (e) { box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+}
+
+document.getElementById("btn-shop-back").onclick = () => { show("screen-list"); loadList(); };
+document.getElementById("btn-shop").onclick = openShop;
+
+// СОЗДАНИЕ КАНАЛА
+function createChannelDialog() {
+  const name = prompt("Название канала:");
+  if (!name || !name.trim()) return;
+  const isSecret = currentUser.role === "owner" || currentUser.role === "developer";
+  let type = "public"; let username = null;
+  if (isSecret) { const t = prompt("Тип канала:\n1 — Публичный\n2 — 🌍 Глобальный (только разработчики)", "1"); if (t === "2") type = "secret"; }
+  if (type === "public") { username = prompt("Username канала (без @):"); if (!username || !username.trim()) return; username = username.trim().replace("@", ""); }
+  const description = prompt("Описание (необязательно):") || "";
+  api("/api/channels", { method: "POST", body: JSON.stringify({ name: name.trim(), username, description, type }) }).then(() => { alert("Канал создан!"); loadList(); }).catch(e => alert("Ошибка: " + e.message));
+}
+document.getElementById("btn-new-channel").onclick = createChannelDialog;
+document.getElementById("btn-new-chat").onclick = () => { const q = prompt("Найди @username:"); if (q) { document.getElementById("global-search").value = q; document.getElementById("global-search").dispatchEvent(new Event("input")); } };
+
+// ЖАЛОБЫ
+const REASON_NAMES = { spam: "Спам", abuse: "Оскорбления", scam: "Мошенничество", "18+": "18+ контент", fake: "Фейк", other: "Другое" };
+
+function openReportModal() {
+  if (!reportTarget) return;
+  document.getElementById("report-target-info").textContent = "На: " + (reportTarget.name || "—");
+  selectedReportReason = null;
+  const box = document.getElementById("report-reasons-list"); box.innerHTML = "";
+  for (const [key, name] of Object.entries(REASON_NAMES)) { const b = document.createElement("button"); b.className = "reason-option"; b.textContent = name; b.onclick = () => { document.querySelectorAll("#report-reasons-list .reason-option").forEach(x => x.classList.remove("selected")); b.classList.add("selected"); selectedReportReason = key; }; box.appendChild(b); }
+  document.getElementById("report-comment").value = ""; setError("modal-report-error", ""); openModal("modal-report");
+}
+
+document.getElementById("btn-send-report").onclick = async () => {
+  if (!selectedReportReason) return setError("modal-report-error", "Выбери причину");
+  const comment = document.getElementById("report-comment").value.trim();
+  const payload = { reason: selectedReportReason, comment };
+  if (reportTarget.type === "user") payload.reported_user_id = reportTarget.user_id;
+  else if (reportTarget.type === "channel") payload.reported_channel_id = reportTarget.channel_id;
+  else if (reportTarget.type === "message") payload.reported_message_id = reportTarget.message_id;
+  try { await api("/api/reports", { method: "POST", body: JSON.stringify(payload) }); closeModal("modal-report"); alert("Жалоба отправлена!"); } catch (e) { setError("modal-report-error", e.message); }
+};
+
+// АДМИНКА
+async function openAdmin() {
+  show("screen-admin");
+  currentAdminTab = "users";
+  document.querySelectorAll(".admin-tab").forEach(t => t.classList.toggle("active", t.dataset.tab === "users"));
+  try { const stats = await api("/api/admin/stats"); document.getElementById("stat-users").textContent = stats.total_users || 0; document.getElementById("stat-channels").textContent = stats.total_channels || 0; document.getElementById("stat-messages").textContent = stats.total_messages || 0; document.getElementById("stat-reports").textContent = stats.new_reports || 0; const b = document.getElementById("stat-reports-badge"); if (stats.new_reports > 0) { b.textContent = stats.new_reports; b.style.display = "block"; } else b.style.display = "none"; } catch (e) {}
+  if (currentAdminTab === "users") loadAdminUsers(); else loadAdminReports();
+}
+
+document.querySelectorAll(".admin-tab").forEach(tab => { tab.onclick = () => { document.querySelectorAll(".admin-tab").forEach(t => t.classList.remove("active")); tab.classList.add("active"); currentAdminTab = tab.dataset.tab; if (currentAdminTab === "users") loadAdminUsers(); else loadAdminReports(); }; });
+
+async function loadAdminUsers() {
+  const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
+  try { const data = await api("/api/admin/users?limit=100"); allAdminUsers = data.users; renderAdminUsers(data.me, allAdminUsers); } catch (e) { box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+}
+
+function renderAdminUsers(me, users) {
+  const box = document.getElementById("admin-list"); box.innerHTML = "";
+  const q = (document.getElementById("admin-search").value || "").toLowerCase().trim();
+  const filtered = q ? users.filter(u => (u.username || "").toLowerCase().includes(q) || (u.email || "").toLowerCase().includes(q) || (u.first_name || "").toLowerCase().includes(q)) : users;
+  if (!filtered.length) { box.innerHTML = '<div class="empty-state">Никого не найдено</div>'; return; }
+  for (const u of filtered) {
+    const el = document.createElement("div"); el.className = "admin-row";
+    const name = u.first_name || u.username || "—";
+    const roleTag = u.role === "owner" ? "👑" : u.role === "developer" ? "⚡" : u.role === "moderator" ? "🛡️" : "";
+    const bannedTag = u.banned ? " 🚫" : "";
+    const pdgTag = u.premium ? " 💎" : "";
+    const fpTag = u.file_plus ? " 📎" : "";
+    let actions = "";
+    if (me.role === "owner" && u.id !== me.id) {
+      actions = '<button class="admin-btn primary" onclick="adminChangeRole(' + u.id + ')">Роль</button>' +
+                '<button class="admin-btn" onclick="adminToggleVerified(' + u.id + ',' + (!u.verified) + ')">' + (u.verified ? "Снять ⭐" : "⭐") + '</button>' +
+                '<button class="admin-btn" onclick="adminOpenBalance(' + u.id + ',\'' + escapeHtml(name).replace(/'/g, "") + '\')">💰</button>' +
+                (u.banned ? '<button class="admin-btn success" onclick="adminUnban(' + u.id + ')">Разбан</button>' : '<button class="admin-btn danger" onclick="adminOpenBan(' + u.id + ',\'' + escapeHtml(name).replace(/'/g, "") + '\')">Бан</button>');
+    } else if (me.role === "developer" && u.role !== "owner" && u.role !== "developer") {
+      actions = (u.banned ? '<button class="admin-btn success" onclick="adminUnban(' + u.id + ')">Разбан</button>' : '<button class="admin-btn danger" onclick="adminOpenBan(' + u.id + ',\'' + escapeHtml(name).replace(/'/g, "") + '\')">Бан</button>');
+    }
+    el.innerHTML = '<div class="admin-info"><div class="admin-name">' + escapeHtml(name) + ' ' + roleTag + pdgTag + fpTag + bannedTag + verifiedMark(u.verified) + '</div><div class="admin-sub">ID ' + u.id + ' · @' + escapeHtml(u.username || "—") + ' · ' + parseFloat(u.balance || 0).toFixed(2) + ' Di<br>' + escapeHtml(u.email || "") + '</div></div><div class="admin-actions">' + actions + '</div>';
+    box.appendChild(el);
+  }
+}
+
+document.getElementById("admin-search").addEventListener("input", () => { if (currentAdminTab === "users" && allAdminUsers.length) renderAdminUsers({ role: currentUser.role, id: currentUser.id }, allAdminUsers); });
+
+async function adminChangeRole(userId) { const role = prompt("Роль (user / moderator / developer):", "moderator"); if (!role) return; if (!["user", "moderator", "developer"].includes(role)) return alert("Неверная роль"); try { await api("/api/admin/set_role", { method: "POST", body: JSON.stringify({ user_id: userId, role }) }); loadAdminUsers(); } catch (e) { alert("Ошибка: " + e.message); } }
+async function adminToggleVerified(userId, verified) { try { await api("/api/admin/set_verified", { method: "POST", body: JSON.stringify({ user_id: userId, verified }) }); loadAdminUsers(); } catch (e) { alert("Ошибка: " + e.message); } }
+async function adminUnban(userId) { if (!confirm("Разбанить?")) return; try { await api("/api/admin/unban", { method: "POST", body: JSON.stringify({ user_id: userId }) }); loadAdminUsers(); } catch (e) { alert("Ошибка: " + e.message); } }
+
+function adminOpenBalance(userId, name) { balanceTarget = userId; document.getElementById("balance-target-info").textContent = "Начислить: " + name; document.getElementById("balance-amount").value = ""; document.getElementById("balance-description").value = ""; setError("modal-balance-error", ""); openModal("modal-balance"); }
+document.getElementById("btn-confirm-balance").onclick = async () => {
+  const amount = parseInt(document.getElementById("balance-amount").value);
+  const description = document.getElementById("balance-description").value.trim();
+  if (!amount || amount <= 0) return setError("modal-balance-error", "Введи сумму");
+  try { await api("/api/admin/add_balance", { method: "POST", body: JSON.stringify({ user_id: balanceTarget, amount, description }) }); closeModal("modal-balance"); loadAdminUsers(); alert("Начислено " + amount + " Di"); } catch (e) { setError("modal-balance-error", e.message); }
+};
+
+function adminOpenBan(userId, name) { banTarget = userId; banDuration = ""; document.getElementById("ban-target-info").textContent = "Забанить: " + name; document.getElementById("ban-reason-input").value = ""; setError("modal-ban-error", ""); document.querySelectorAll("#ban-duration-list .reason-option").forEach((b, i) => b.classList.toggle("selected", i === 0)); openModal("modal-ban"); }
+
+document.querySelectorAll("#ban-duration-list .reason-option").forEach(btn => { btn.onclick = () => { document.querySelectorAll("#ban-duration-list .reason-option").forEach(b => b.classList.remove("selected")); btn.classList.add("selected"); banDuration = btn.dataset.days; }; });
+
+document.getElementById("btn-confirm-ban").onclick = async () => {
+  const reason = document.getElementById("ban-reason-input").value.trim();
+  if (!reason) return setError("modal-ban-error", "Причина обязательна");
+  const payload = { user_id: banTarget, reason };
+  if (banDuration) payload.duration_days = parseInt(banDuration);
+  try { await api("/api/admin/ban", { method: "POST", body: JSON.stringify(payload) }); closeModal("modal-ban"); loadAdminUsers(); alert("Забанен"); } catch (e) { setError("modal-ban-error", e.message); }
+};
+
+async function loadAdminReports() {
+  const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
+  try {
+    const data = await api("/api/admin/reports"); allReports = data.reports; box.innerHTML = "";
+    if (!allReports.length) { box.innerHTML = '<div class="empty-state">Жалоб нет</div>'; return; }
+    for (const r of allReports) {
+      const el = document.createElement("div"); el.className = "report-card";
+      const reporter = r.reporter ? ("@" + (r.reporter.username || "?")) : "—";
+      let target = "—";
+      if (r.reported_user) target = "На юзера @" + (r.reported_user.username || "?");
+      else if (r.reported_message_id) target = "На сообщение: " + escapeHtml(r.reported_message_text || "—");
+      else if (r.reported_channel_id) target = "На канал: " + escapeHtml(r.reported_channel_name || "—");
+      const statusMap = { new: "🆕 Новая", reviewed: "✅ Рассмотрено", rejected: "❌ Отклонено" };
+      let actions = "";
+      if (r.status === "new") {
+        actions = '<button class="admin-btn success" onclick="reportAction(' + r.id + ',\'reviewed\')">Принять</button>' + '<button class="admin-btn" onclick="reportAction(' + r.id + ',\'rejected\')">Отклонить</button>';
+        if (r.reported_user) actions += '<button class="admin-btn danger" onclick="adminOpenBan(' + r.reported_user.id + ',\'' + (r.reported_user.username || "") + '\')">Бан</button>';
+      }
+      el.innerHTML = '<div class="report-header"><span>#' + r.id + '</span><span>' + fmtTime(r.created_at) + '</span></div><div class="report-reason">' + escapeHtml(REASON_NAMES[r.reason] || r.reason) + '</div><div class="report-body"><div><b>От:</b> ' + escapeHtml(reporter) + '</div><div><b>' + target + '</b></div>' + (r.comment ? '<div style="margin-top:6px;color:#c5cdd6;">' + escapeHtml(r.comment) + '</div>' : '') + '<div style="margin-top:6px;color:#7e8b99;font-size:12px;">' + (statusMap[r.status] || r.status) + '</div></div><div class="report-actions">' + actions + '</div>';
+      box.appendChild(el);
+    }
+  } catch (e) { box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+}
+
+async function reportAction(reportId, status) { try { await api("/api/admin/reports/" + reportId + "/review", { method: "POST", body: JSON.stringify({ status }) }); loadAdminReports(); } catch (e) { alert("Ошибка: " + e.message); } }
+document.getElementById("btn-admin-back").onclick = () => { show("screen-list"); loadList(); };
+
+// ДОКУМЕНТЫ
+function openDoc(type) { if (type === "rules") show("screen-rules"); else show("screen-privacy"); }
+document.getElementById("open-rules").onclick = () => openDoc("rules");
+document.getElementById("open-privacy").onclick = () => openDoc("privacy");
+document.getElementById("btn-rules-back").onclick = () => { if (currentUser && currentUser.profile_completed) show("screen-profile-full"); else show("screen-auth"); };
+document.getElementById("btn-privacy-back").onclick = () => { if (currentUser && currentUser.profile_completed) show("screen-profile-full"); else show("screen-auth"); };
+
+// МЕНЮ
+const overlay = document.getElementById("overlay");
+const menuSheet = document.getElementById("menu-sheet");
+function openMenu() { overlay.classList.add("active"); menuSheet.classList.add("active"); }
+function closeMenu() { overlay.classList.remove("active"); menuSheet.classList.remove("active"); }
+overlay.onclick = closeMenu;
+document.getElementById("btn-menu").onclick = openMenu;
+document.getElementById("menu-profile").onclick = () => { closeMenu(); openProfile(); };
+document.getElementById("menu-shop").onclick = () => { closeMenu(); openShop(); };
+document.getElementById("menu-logout").onclick = () => { if (!confirm("Выйти?")) return; localStorage.removeItem("diogram_token"); location.reload(); };
+document.getElementById("menu-admin").onclick = () => { closeMenu(); openAdmin(); };
+document.getElementById("menu-new-channel").onclick = () => { closeMenu(); createChannelDialog(); };
+
+// ИНИЦИАЛИЗАЦИЯ
+(async function init() {
+  if (token) {
+    try { const data = await api("/api/me"); currentUser = data.user; afterLogin(); return; } catch (e) { if (e.message !== "banned") { localStorage.removeItem("diogram_token"); token = null; } }
+  }
+  show("screen-auth");
+})();
+</script>
+</body>
+</html>
