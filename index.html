@@ -11,12 +11,13 @@
   .screen { display: none; flex: 1; flex-direction: column; overflow: hidden; }
   .screen.active { display: flex; }
 
+  /* AUTH */
   .auth-container { flex: 1; display: flex; flex-direction: column; padding: 30px 24px; justify-content: center; align-items: center; overflow-y: auto; }
   .logo-big { width: 90px; height: 90px; background: linear-gradient(135deg, #5b8bff, #7b5bff); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 48px; font-weight: 800; color: #fff; margin-bottom: 20px; box-shadow: 0 10px 40px rgba(91,139,255,0.4); }
   .logo-title { font-size: 32px; font-weight: 700; margin-bottom: 6px; }
   .logo-sub { color: #7e8b99; margin-bottom: 40px; font-size: 14px; }
   .form { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; }
-  input, textarea { background: #17212b; border: 1.5px solid #242f3d; outline: none; color: #fff; font-size: 15px; padding: 14px 16px; border-radius: 12px; font-family: inherit; width: 100%; }
+  input, textarea, select { background: #17212b; border: 1.5px solid #242f3d; outline: none; color: #fff; font-size: 15px; padding: 14px 16px; border-radius: 12px; font-family: inherit; width: 100%; }
   input:focus, textarea:focus { border-color: #5b8bff; }
   input::placeholder, textarea::placeholder { color: #6d7883; }
   .btn { background: linear-gradient(135deg, #5b8bff, #4a7aff); border: none; color: #fff; font-size: 15px; font-weight: 600; padding: 14px; border-radius: 12px; cursor: pointer; font-family: inherit; width: 100%; }
@@ -32,6 +33,7 @@
   .agree-row span { font-size: 13px; color: #7e8b99; line-height: 1.5; }
   .agree-row a { color: #5b8bff; text-decoration: none; }
 
+  /* HEADER */
   .header { background: #17212b; padding: 14px 16px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #0e1621; flex-shrink: 0; min-height: 56px; }
   .header h1 { font-size: 17px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .header-info { flex: 1; min-width: 0; cursor: pointer; }
@@ -45,6 +47,7 @@
   .search-bar { padding: 8px 12px; background: #17212b; }
   .search-bar input { background: #242f3d; padding: 10px 14px; border-radius: 20px; font-size: 14px; border: none; }
 
+  /* LIST */
   .list { flex: 1; overflow-y: auto; }
   .list-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #17212b; }
   .list-item:active { background: #17212b; }
@@ -61,9 +64,9 @@
   .badge-unread { background: #5b8bff; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; min-width: 20px; text-align: center; }
   .verified { color: #5b8bff; font-size: 14px; }
   .role-icon { font-size: 13px; }
-  .premium-icon { font-size: 12px; }
   .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #4a5568; text-align: center; padding: 40px; font-size: 14px; line-height: 1.6; }
 
+  /* CHAT */
   .messages { flex: 1; overflow-y: auto; padding: 16px 12px; display: flex; flex-direction: column; gap: 6px; background: #0e1621; }
   .msg { max-width: 78%; padding: 9px 13px; border-radius: 16px; font-size: 15px; line-height: 1.35; word-wrap: break-word; animation: fadeIn 0.18s ease-out; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
@@ -100,6 +103,7 @@
   .photo-preview-info { flex: 1; font-size: 12px; color: #7e8b99; }
   .photo-preview-close { background: transparent; border: none; color: #ff5b5b; font-size: 24px; cursor: pointer; padding: 0 8px; }
 
+  /* OVERLAY & MENU */
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; z-index: 100; }
   .overlay.active { display: block; }
   .sheet { position: fixed; left: 0; right: 0; bottom: 0; background: #17212b; border-radius: 20px 20px 0 0; padding: 20px; z-index: 101; transform: translateY(100%); transition: transform 0.25s ease-out; max-height: 85vh; overflow-y: auto; }
@@ -110,6 +114,7 @@
   .menu-item:active { opacity: 0.6; }
   .menu-item .icon { font-size: 20px; width: 24px; text-align: center; }
 
+  /* PROFILE */
   .profile-screen { flex: 1; overflow-y: auto; padding-bottom: 20px; }
   .profile-top { display: flex; flex-direction: column; align-items: center; padding: 30px 20px 20px; gap: 12px; }
   .profile-big-avatar { width: 110px; height: 110px; border-radius: 50%; background: linear-gradient(135deg, #5b8bff, #7b5bff); display: flex; align-items: center; justify-content: center; font-size: 48px; font-weight: 700; color: #fff; box-shadow: 0 8px 30px rgba(91,139,255,0.35); overflow: hidden; position: relative; cursor: pointer; }
@@ -133,34 +138,47 @@
   .profile-btn.secondary { background: #242f3d; color: #fff; }
   .profile-btn:active { transform: scale(0.98); }
 
+  /* BALANCE & ICONS */
   .balance-block { background: linear-gradient(135deg, #5b8bff, #7b5bff); margin: 12px 16px; border-radius: 14px; padding: 18px; text-align: center; }
   .balance-label { font-size: 12px; opacity: 0.85; margin-bottom: 4px; }
-  .balance-value { font-size: 32px; font-weight: 800; }
+  .balance-value { font-size: 32px; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 8px; }
   .balance-sub { font-size: 12px; opacity: 0.85; margin-top: 4px; }
+  .di-icon { width: 24px; height: 24px; vertical-align: middle; border-radius: 50%; object-fit: cover; box-shadow: 0 0 10px rgba(91,139,255,0.4); }
+  .di-icon-big { width: 80px; height: 80px; margin-bottom: 12px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 30px rgba(91,139,255,0.6); }
 
+  /* SHOP */
   .shop-tabs { display: flex; gap: 6px; padding: 12px; background: #17212b; overflow-x: auto; }
   .shop-tab { padding: 8px 16px; border-radius: 20px; font-size: 13px; white-space: nowrap; cursor: pointer; background: #242f3d; color: #fff; border: none; font-family: inherit; }
   .shop-tab.active { background: #5b8bff; }
-
   .shop-item { background: #17212b; margin: 8px 12px; border-radius: 14px; padding: 16px; display: flex; align-items: center; gap: 12px; }
   .shop-item-info { flex: 1; }
   .shop-item-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
   .shop-item-meta { font-size: 12px; color: #7e8b99; }
-  .shop-item-price { font-size: 18px; font-weight: 800; color: #5b8bff; margin-right: 10px; }
+  .shop-item-price { font-size: 18px; font-weight: 800; color: #5b8bff; margin-right: 10px; display: flex; align-items: center; gap: 4px; }
   .shop-buy { background: linear-gradient(135deg, #5b8bff, #4a7aff); border: none; color: #fff; padding: 8px 16px; border-radius: 10px; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; }
   .shop-buy:disabled { background: #242f3d; cursor: not-allowed; opacity: 0.6; }
   .shop-buy:active:not(:disabled) { transform: scale(0.97); }
 
-  .doc-screen { flex: 1; overflow-y: auto; padding: 20px 16px 40px; line-height: 1.6; }
-  .doc-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; color: #fff; }
-  .doc-date { font-size: 12px; color: #7e8b99; margin-bottom: 24px; }
-  .doc-section { margin-bottom: 22px; }
-  .doc-section h3 { font-size: 16px; font-weight: 700; color: #5b8bff; margin-bottom: 8px; }
-  .doc-section p, .doc-section li { font-size: 14px; color: #c5cdd6; margin-bottom: 6px; }
-  .doc-section ul { padding-left: 20px; margin-bottom: 8px; }
-  .doc-contact { background: #17212b; border-radius: 12px; padding: 14px 18px; margin: 10px 0; }
-  .doc-contact a { color: #5b8bff; text-decoration: none; }
+  /* SETTINGS */
+  .settings-row { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px; border-bottom: 1px solid #242f3d; }
+  .settings-row:last-child { border-bottom: none; }
+  .settings-label { font-size: 15px; }
+  .settings-desc { font-size: 12px; color: #7e8b99; margin-top: 4px; }
+  .toggle { position: relative; width: 46px; height: 26px; background: #242f3d; border-radius: 13px; cursor: pointer; transition: background 0.2s; flex-shrink: 0; }
+  .toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; background: #fff; border-radius: 50%; transition: transform 0.2s; }
+  .toggle.active { background: #4dd964; }
+  .toggle.active::after { transform: translateX(20px); }
 
+  /* FRIGDMANT */
+  .frig-card { background: #17212b; margin: 8px 12px; border-radius: 14px; padding: 16px; border-left: 4px solid #5b8bff; }
+  .frig-card.auction { border-left-color: #ffb800; }
+  .frig-card.sold { border-left-color: #ff5b5b; opacity: 0.6; }
+  .frig-title { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+  .frig-price { font-size: 16px; font-weight: 600; color: #5b8bff; margin-bottom: 8px; display: flex; align-items: center; gap: 4px; }
+  .frig-meta { font-size: 12px; color: #7e8b99; margin-bottom: 12px; line-height: 1.5; }
+  .frig-actions { display: flex; gap: 8px; }
+
+  /* ADMIN & DOCS */
   .admin-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 16px; }
   .stat-card { background: #17212b; border-radius: 12px; padding: 16px; position: relative; }
   .stat-value { font-size: 28px; font-weight: 700; color: #5b8bff; }
@@ -186,6 +204,7 @@
   .report-body { font-size: 14px; margin-bottom: 10px; }
   .report-actions { display: flex; gap: 8px; }
 
+  /* BAN & DOCS */
   .ban-screen { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; overflow-y: auto; }
   .ban-content { max-width: 480px; width: 100%; }
   .ban-icon { font-size: 72px; text-align: center; margin-bottom: 20px; }
@@ -202,6 +221,17 @@
   .ban-contact { font-size: 13px; color: #7e8b99; text-align: center; margin-top: 16px; line-height: 1.7; }
   .ban-contact a { color: #5b8bff; text-decoration: none; }
 
+  .doc-screen { flex: 1; overflow-y: auto; padding: 20px 16px 40px; line-height: 1.6; }
+  .doc-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; color: #fff; }
+  .doc-date { font-size: 12px; color: #7e8b99; margin-bottom: 24px; }
+  .doc-section { margin-bottom: 22px; }
+  .doc-section h3 { font-size: 16px; font-weight: 700; color: #5b8bff; margin-bottom: 8px; }
+  .doc-section p, .doc-section li { font-size: 14px; color: #c5cdd6; margin-bottom: 6px; }
+  .doc-section ul { padding-left: 20px; margin-bottom: 8px; }
+  .doc-contact { background: #17212b; border-radius: 12px; padding: 14px 18px; margin: 10px 0; }
+  .doc-contact a { color: #5b8bff; text-decoration: none; }
+
+  /* MODALS */
   .modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
   .modal.active { display: flex; }
   .modal-bg { position: absolute; inset: 0; background: rgba(0,0,0,0.7); }
@@ -209,7 +239,6 @@
   .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; text-align: center; }
   .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
   .modal-actions .btn { flex: 1; }
-
   .reason-option { display: block; width: 100%; background: #242f3d; color: #fff; border: 2px solid transparent; padding: 12px 16px; border-radius: 10px; font-size: 14px; text-align: left; cursor: pointer; font-family: inherit; margin-bottom: 8px; }
   .reason-option.selected { border-color: #5b8bff; background: #1c2a48; }
 
@@ -293,7 +322,7 @@
       <button class="header-icon" id="btn-menu">☰</button>
       <h1>Diogram</h1>
       <button class="header-icon" id="btn-shop" title="Магазин">🛒</button>
-      <button class="header-icon" id="btn-new-channel" title="Новый канал">📢</button>
+      <button class="header-icon" id="btn-frigdmant" title="Frigdmant">🏷️</button>
       <button class="header-icon" id="btn-new-chat" title="Найти людей">➕</button>
     </div>
     <div class="search-bar">
@@ -346,11 +375,12 @@
     </div>
   </div>
 
-  <!-- PROFILE -->
+  <!-- PROFILE (СВОЙ) -->
   <div class="screen" id="screen-profile-full">
     <div class="header">
       <button class="header-icon" id="btn-profile-back">←</button>
       <h1>Профиль</h1>
+      <button class="header-icon" id="btn-settings" title="Настройки">⚙️</button>
     </div>
     <div class="profile-screen">
       <div class="profile-top">
@@ -358,34 +388,34 @@
         <div class="profile-name"><span id="profile-name">Имя</span></div>
         <div class="profile-status" id="profile-status">@username</div>
       </div>
+      
       <div class="balance-block">
         <div class="balance-label">Баланс</div>
-        <div class="balance-value" id="profile-balance">0 Di</div>
+        <div class="balance-value" id="profile-balance"><img src="https://ltpduienoflklktunihc.supabase.co/storage/v1/object/public/chat-photos/Diogram.coin.di.jpg" class="di-icon"> 0 Di</div>
         <div class="balance-sub" id="profile-balance-rub">~0₽</div>
       </div>
+
       <div id="profile-subs-block"></div>
+
+      <!-- ЮЗЕРНЕЙМЫ -->
       <div class="profile-block">
         <div class="profile-row">
           <div class="profile-row-icon">👤</div>
-          <div class="profile-row-content"><div class="profile-row-label">Имя</div><div class="profile-row-value" id="profile-fullname">—</div></div>
-          <div class="profile-row-edit" id="edit-name">✏️</div>
-        </div>
-        <div class="profile-row">
-          <div class="profile-row-icon">@</div>
-          <div class="profile-row-content"><div class="profile-row-label">Username</div><div class="profile-row-value" id="profile-username-show">—</div></div>
+          <div class="profile-row-content">
+            <div class="profile-row-label">Активный юзернейм</div>
+            <div class="profile-row-value" id="profile-username-show">—</div>
+          </div>
           <div class="profile-row-edit" id="edit-username">✏️</div>
         </div>
-        <div class="profile-row">
-          <div class="profile-row-icon">📝</div>
-          <div class="profile-row-content"><div class="profile-row-label">О себе</div><div class="profile-row-value" id="profile-bio">Не указано</div></div>
-          <div class="profile-row-edit" id="edit-bio">✏️</div>
-        </div>
+        <div id="profile-collection-block"></div>
       </div>
+
       <div class="profile-block">
         <div class="profile-row"><div class="profile-row-icon">🆔</div><div class="profile-row-content"><div class="profile-row-label">ID</div><div class="profile-row-value" id="profile-id">—</div></div></div>
-        <div class="profile-row"><div class="profile-row-icon">📧</div><div class="profile-row-content"><div class="profile-row-label">Email</div><div class="profile-row-value" id="profile-email">—</div></div></div>
         <div class="profile-row"><div class="profile-row-icon">🎭</div><div class="profile-row-content"><div class="profile-row-label">Роль</div><div class="profile-row-value" id="profile-role">—</div></div></div>
+        <div class="profile-row" id="open-frig-my" style="cursor:pointer;"><div class="profile-row-icon">🏷️</div><div class="profile-row-content"><div class="profile-row-value">Мои лоты на Frigdmant</div></div></div>
       </div>
+
       <div class="profile-block">
         <div class="profile-row" id="open-rules" style="cursor:pointer;"><div class="profile-row-icon">📋</div><div class="profile-row-content"><div class="profile-row-value">Правила мессенджера</div></div></div>
         <div class="profile-row" id="open-privacy" style="cursor:pointer;"><div class="profile-row-icon">📄</div><div class="profile-row-content"><div class="profile-row-value">Политика конфиденциальности</div></div></div>
@@ -394,75 +424,70 @@
     </div>
   </div>
 
-  <!-- USER PROFILE -->
-  <div class="screen" id="screen-user-profile">
+  <!-- НАСТРОЙКИ -->
+  <div class="screen" id="screen-settings">
     <div class="header">
-      <button class="header-icon" id="btn-user-back">←</button>
-      <h1>Профиль</h1>
+      <button class="header-icon" id="btn-settings-back">←</button>
+      <h1>⚙️ Настройки</h1>
     </div>
     <div class="profile-screen">
-      <div class="profile-top">
-        <div class="profile-big-avatar" id="user-avatar">D</div>
-        <div class="profile-name"><span id="user-name">Имя</span><span id="user-verified" style="display:none;color:#5b8bff;font-size:20px;">✓</span></div>
-        <div class="profile-status" id="user-status">@username</div>
+      <div class="profile-block">
+        <div class="profile-row" style="padding:12px 18px;"><div class="profile-row-label" style="font-size:14px; font-weight:700;">Приватность</div></div>
+        <div class="settings-row">
+          <div><div class="settings-label">Скрывать дату захода</div><div class="settings-desc">Скрыть "был(а) недавно" (PDG)</div></div>
+          <div class="toggle" id="toggle-hide-seen"></div>
+        </div>
+        <div class="settings-row" id="who-can-msg-row">
+          <div><div class="settings-label">Кто может писать</div><div class="settings-desc" id="who-can-msg-val">Все</div></div>
+          <button class="admin-btn" onclick="changeWhoCanMessage()">Изменить</button>
+        </div>
       </div>
       <div class="profile-block">
-        <div class="profile-row"><div class="profile-row-icon">📝</div><div class="profile-row-content"><div class="profile-row-label">О себе</div><div class="profile-row-value" id="user-bio">—</div></div></div>
-        <div class="profile-row"><div class="profile-row-icon">🆔</div><div class="profile-row-content"><div class="profile-row-label">ID</div><div class="profile-row-value" id="user-id">—</div></div></div>
-        <div class="profile-row"><div class="profile-row-icon">🎭</div><div class="profile-row-content"><div class="profile-row-label">Роль</div><div class="profile-row-value" id="user-role">—</div></div></div>
+        <div class="profile-row" style="padding:12px 18px;"><div class="profile-row-label" style="font-size:14px; font-weight:700;">Активные сессии</div></div>
+        <div id="sessions-list"></div>
       </div>
-      <button class="profile-btn primary" id="btn-user-message">💬 Написать сообщение</button>
-      <button class="profile-btn danger" id="btn-user-report">⚠️ Пожаловаться</button>
+      <div class="profile-block">
+        <div class="profile-row"><div class="profile-row-icon">ℹ️</div><div class="profile-row-content"><div class="profile-row-label">Версия</div><div class="profile-row-value">1.0.1</div></div></div>
+        <div class="profile-row"><div class="profile-row-icon">💬</div><div class="profile-row-content"><div class="profile-row-label">Поддержка</div><div class="profile-row-value"><a href="https://t.me/Dipxex" target="_blank" style="color:#5b8bff;text-decoration:none;">@Dipxex</a></div></div></div>
+      </div>
     </div>
   </div>
 
-  <!-- CHANNEL INFO -->
-  <div class="screen" id="screen-channel-info">
+  <!-- FRIGDMANT -->
+  <div class="screen" id="screen-frigdmant">
     <div class="header">
-      <button class="header-icon" id="btn-ch-info-back">←</button>
-      <h1>Информация о канале</h1>
+      <button class="header-icon" id="btn-frig-back">←</button>
+      <h1>🏷️ Frigdmant</h1>
+      <button class="header-icon" id="btn-frig-new">➕</button>
     </div>
-    <div class="ch-info-screen">
-      <div class="ch-info-top">
-        <div class="ch-info-avatar" id="ch-info-avatar">📢</div>
-        <div class="ch-info-name" id="ch-info-name">Канал</div>
-        <div class="ch-info-username" id="ch-info-username">@username</div>
-        <div class="ch-info-type" id="ch-info-type">📢 Публичный</div>
-        <div class="ch-info-subs" id="ch-info-subs">0 подписчиков</div>
-      </div>
-      <button class="profile-btn primary" id="btn-ch-info-edit" style="display:none;">✏️ Редактировать канал</button>
-      <button class="profile-btn secondary" id="btn-ch-info-subscribe" style="display:none;">➕ Подписаться</button>
-      <button class="profile-btn secondary" id="btn-ch-info-unsubscribe" style="display:none;">🔕 Отписаться</button>
-      <button class="profile-btn danger" id="btn-ch-info-delete" style="display:none;">🗑️ Удалить канал</button>
+    <div class="shop-tabs">
+      <button class="shop-tab active" data-frig="market">Витрина</button>
+      <button class="shop-tab" data-frig="my">Мои лоты</button>
     </div>
+    <div class="list" id="frig-list"><div class="spinner"></div></div>
   </div>
 
-  <!-- SHOP -->
+  <!-- SHOP (Магазин) -->
   <div class="screen" id="screen-shop">
-    <div class="header">
-      <button class="header-icon" id="btn-shop-back">←</button>
-      <h1>🛒 Магазин</h1>
-    </div>
+    <div class="header"><button class="header-icon" id="btn-shop-back">←</button><h1>🛒 Магазин</h1></div>
     <div class="balance-block">
       <div class="balance-label">Твой баланс</div>
-      <div class="balance-value" id="shop-balance">0 Di</div>
+      <div class="balance-value" id="shop-balance"><img src="https://ltpduienoflklktunihc.supabase.co/storage/v1/object/public/chat-photos/Diogram.coin.di.jpg" class="di-icon"> 0 Di</div>
       <div class="balance-sub" id="shop-balance-rub">~0₽</div>
     </div>
     <div class="shop-tabs">
-      <button class="shop-tab active" data-cat="pdg">💎 PDG</button>
-      <button class="shop-tab" data-cat="file_plus">📎 File Plus</button>
-      <button class="shop-tab" data-cat="mb">📦 МБ</button>
-      <button class="shop-tab" data-cat="history">📜 История</button>
+      <button class="shop-tab" data-cat="di">Купить Di</button>
+      <button class="shop-tab active" data-cat="pdg">PDG</button>
+      <button class="shop-tab" data-cat="file_plus">File Plus</button>
+      <button class="shop-tab" data-cat="mb">МБ</button>
+      <button class="shop-tab" data-cat="history">История</button>
     </div>
     <div class="list" id="shop-list"><div class="spinner"></div></div>
   </div>
 
   <!-- ADMIN -->
   <div class="screen" id="screen-admin">
-    <div class="header">
-      <button class="header-icon" id="btn-admin-back">←</button>
-      <h1>👑 Админка</h1>
-    </div>
+    <div class="header"><button class="header-icon" id="btn-admin-back">←</button><h1>👑 Админка</h1></div>
     <div class="admin-stats">
       <div class="stat-card"><div class="stat-value" id="stat-users">—</div><div class="stat-label">Юзеров</div></div>
       <div class="stat-card"><div class="stat-value" id="stat-channels">—</div><div class="stat-label">Каналов</div></div>
@@ -473,35 +498,44 @@
       <button class="admin-tab active" data-tab="users">👥 Юзеры</button>
       <button class="admin-tab" data-tab="reports">📩 Жалобы</button>
     </div>
-    <div class="search-bar">
-      <input type="text" id="admin-search" placeholder="Поиск по @username или email">
-    </div>
+    <div class="search-bar"><input type="text" id="admin-search" placeholder="Поиск по @username или email"></div>
     <div class="list" id="admin-list"><div class="spinner"></div></div>
   </div>
 
-  <!-- RULES -->
+  <!-- RULES & PRIVACY -->
   <div class="screen" id="screen-rules">
     <div class="header"><button class="header-icon" id="btn-rules-back">←</button><h1>📋 Правила</h1></div>
     <div class="doc-screen">
       <div class="doc-title">Правила мессенджера Diogram</div>
       <div class="doc-date">Дата последнего обновления: 11.10.2026</div>
-      <div class="doc-section"><h3>1. О чём это</h3><p>Это правила использования Diogram. Используя Diogram, ты соглашаешься с этими правилами.</p></div>
-      <div class="doc-section"><h3>2. Кто может пользоваться</h3><p>Diogram доступен с 12 лет.</p></div>
-      <div class="doc-section"><h3>3. Что запрещено</h3><p><b>Незаконный контент:</b> мошенничество, фишинг, экстремизм, детская опасность, пиратство.</p><p><b>Вред другим:</b> оскорбления, травля, спам, реклама без разрешения.</p><p><b>Обман:</b> фейковые аккаунты, выдача себя за других.</p></div>
-      <div class="doc-section"><h3>4. Что за нарушение</h3><p>⚠️ Предупреждение → 🔒 Временный бан → 🚫 Бан навсегда.</p></div>
-      <div class="doc-section"><h3>5. Контакты</h3><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a></div></div>
+      <div class="doc-section"><h3>1. О чём это</h3><p>Это правила использования Diogram. Они существуют, чтобы мессенджер был безопасным и удобным для всех. Используя Diogram, ты соглашаешься с этими правилами.</p></div>
+      <div class="doc-section"><h3>2. Кто может пользоваться</h3><p>Diogram доступен с 12 лет. Если ты младше — нужно разрешение родителей.</p></div>
+      <div class="doc-section"><h3>3. Что можно</h3><ul><li>Общаться с друзьями в личных чатах</li><li>Создавать свои каналы</li><li>Делиться фото и мыслями</li><li>Находить новых людей по @username</li><li>Выражать своё мнение (уважительно)</li></ul></div>
+      <div class="doc-section"><h3>4. Что запрещено</h3><p><b>4.1. Незаконный контент:</b></p><ul><li>Мошенничество и скам</li><li>Фишинг и кража данных</li><li>Продажа запрещённых товаров</li><li>Экстремизм и терроризм</li><li>Детская опасность</li><li>Пиратство</li></ul><p><b>4.2. Вред другим:</b></p><ul><li>Оскорбления и травля</li><li>Угрозы и запугивание</li><li>Разжигание ненависти</li><li>Спам и массовые рассылки</li><li>Реклама без разрешения</li></ul><p><b>4.3. Обман:</b></p><ul><li>Фейковые аккаунты</li><li>Выдача себя за других</li><li>Поддельные фото/документы</li></ul><p><b>4.4. Другое:</b></p><ul><li>18+ контент без пометки</li><li>Вирусы и вредоносные ссылки</li><li>Попытки взломать Diogram</li><li>Любое другое незаконное действие</li></ul></div>
+      <div class="doc-section"><h3>5. Что за нарушение</h3><p><b>⚠️ 1. Предупреждение</b> — за мелкие нарушения.</p><p><b>🔒 2. Временный бан</b> — за повторное нарушение.</p><p><b>🚫 3. Бан навсегда</b> — за серьёзные нарушения.</p></div>
+      <div class="doc-section"><h3>6. Как пожаловаться</h3><p>1. Открой профиль/сообщение/канал</p><p>2. Нажми "Пожаловаться"</p><p>3. Выбери причину и опиши ситуацию</p><p>Жалоба попадёт к модераторам. Рассмотрим в течение 24-48 часов.</p><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a></div></div>
+      <div class="doc-section"><h3>7. Удаление аккаунта</h3><p>Напиши владельцу:</p><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a></div></div>
+      <div class="doc-section"><h3>8. Контакты</h3><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a></div></div>
+      <div class="doc-section" style="text-align:center;padding-top:20px;color:#7e8b99;">Спасибо, что ты с нами 💙</div>
     </div>
   </div>
 
-  <!-- PRIVACY -->
   <div class="screen" id="screen-privacy">
     <div class="header"><button class="header-icon" id="btn-privacy-back">←</button><h1>📄 Политика</h1></div>
     <div class="doc-screen">
       <div class="doc-title">Политика конфиденциальности</div>
       <div class="doc-date">Дата последнего обновления: 11.10.2026</div>
-      <div class="doc-section"><h3>1. Какие данные собираем</h3><p>При регистрации: email, пароль. В профиле: имя, @username, bio, аватарку. В процессе: сообщения, фото, дата входа.</p><p><b>НЕ собираем:</b> IP, устройство, геолокацию.</p></div>
-      <div class="doc-section"><h3>2. Кому передаём</h3><p>Supabase (БД), Railway (хостинг), Mail.ru (отправка кодов). НЕ продаём третьим лицам.</p></div>
-      <div class="doc-section"><h3>3. Контакты</h3><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a></div></div>
+      <div class="doc-section"><h3>1. О чём это</h3><p>Эта политика объясняет, какие данные Diogram собирает, зачем, где хранит и как защищает.</p></div>
+      <div class="doc-section"><h3>2. Какие данные собираем</h3><p><b>При регистрации:</b> email, пароль (зашифрован).</p><p><b>В профиле:</b> имя, фамилия, @username, bio, аватарка.</p><p><b>В процессе:</b> сообщения, фото, дата входа.</p><p><b>НЕ собираем:</b> IP, устройство, геолокацию, контакты.</p></div>
+      <div class="doc-section"><h3>3. Зачем</h3><ul><li>Email — для входа</li><li>Профиль — чтобы тебя нашли</li><li>Сообщения — чтобы работал мессенджер</li><li>Дата входа — "был(а) недавно"</li></ul></div>
+      <div class="doc-section"><h3>4. Кто имеет доступ</h3><p><b>Ты</b> — видишь свои данные в профиле.</p><p><b>Владелец</b> (<a href="https://t.me/Dipxex" style="color:#5b8bff;">@Dipxex</a>) — видит email, ID, дату регистрации, роль. Использует только для модерации.</p><p><b>Другие юзеры</b> — видят только публичный профиль (имя, @username, bio, аватарку).</p></div>
+      <div class="doc-section"><h3>5. Кому передаём</h3><ul><li><b>Supabase</b> — БД</li><li><b>Railway</b> — хостинг</li><li><b>Mail.ru</b> — отправка кодов</li></ul><p>НЕ продаём и НЕ передаём третьим лицам.</p></div>
+      <div class="doc-section"><h3>6. Срок хранения</h3><p>Бессрочно, пока работает Diogram. Хочешь удалить — напиши владельцу.</p></div>
+      <div class="doc-section"><h3>7. Безопасность</h3><ul><li>Пароли в bcrypt-хешах</li><li>HTTPS</li><li>JWT-токены</li></ul></div>
+      <div class="doc-section"><h3>8. Твои права</h3><ul><li>Посмотреть свои данные</li><li>Изменить имя, @username, bio</li><li>Запросить удаление</li></ul></div>
+      <div class="doc-section"><h3>9. Контакты</h3><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a></div></div>
+      <div class="doc-section"><h3>10. Возраст</h3><p>Diogram с 12 лет. Младше — нужно согласие родителей.</p></div>
+      <div class="doc-section"><h3>11. Изменения</h3><p>Можем обновлять политику. О серьёзных изменениях сообщим в мессенджере.</p></div>
     </div>
   </div>
 
@@ -527,11 +561,13 @@
 
 </div>
 
+<!-- МОДАЛКИ -->
 <div class="overlay" id="overlay"></div>
 <div class="sheet" id="menu-sheet">
   <div class="menu-title">Меню</div>
   <div class="menu-item" id="menu-profile"><span class="icon">👤</span> Профиль</div>
   <div class="menu-item" id="menu-shop"><span class="icon">🛒</span> Магазин</div>
+  <div class="menu-item" id="menu-frig"><span class="icon">🏷️</span> Frigdmant</div>
   <div class="menu-item" id="menu-new-channel"><span class="icon">📢</span> Новый канал</div>
   <div class="menu-item" id="menu-admin" style="display:none;"><span class="icon">👑</span> Админка <span id="menu-admin-badge" style="display:none;background:#ff5b5b;color:#fff;font-size:10px;padding:2px 6px;border-radius:8px;margin-left:auto;">0</span></div>
   <div class="menu-item" id="menu-logout"><span class="icon">🚪</span> Выйти</div>
@@ -558,11 +594,11 @@
 <div class="photo-viewer" id="photo-viewer">
   <button class="photo-viewer-close" onclick="closePhotoViewer()">✕</button>
   <img id="photo-viewer-img">
-</div>
-
-<script>
+     </div>
+     <script>
 const API = location.origin;
 const RATE = 1.59;
+const COIN_URL = "https://ltpduienoflklktunihc.supabase.co/storage/v1/object/public/chat-photos/Diogram.coin.di.jpg";
 let token = localStorage.getItem("diogram_token") || null;
 let currentUser = null;
 let currentChat = null;
@@ -571,8 +607,12 @@ let currentUserProfile = null;
 let currentChInfo = null;
 let chEditType = "public";
 let newAvatarFile = null;
-let currentShopCategory = "pdg";
+let currentShopCategory = "di";
 let shopItems = [];
+let currentFrigTab = "market";
+let frigListings = [];
+let myListings = [];
+let myUsernames = [];
 let currentAdminTab = "users";
 let allAdminUsers = [];
 let allReports = [];
@@ -591,6 +631,7 @@ let reportTarget = null;
 let banTarget = null;
 let banDuration = null;
 let balanceTarget = null;
+let frigListingType = "buyout";
 
 async function api(path, opts = {}) {
   const headers = { ...(opts.headers || {}) };
@@ -614,6 +655,7 @@ function statusText(u) { if (!u) return "—"; if (u.is_online) return "онла
 function fmtSize(bytes) { if (bytes < 1024) return bytes + " Б"; if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " КБ"; return (bytes / 1048576).toFixed(2) + " МБ"; }
 function openModal(id) { document.getElementById(id).classList.add("active"); }
 function closeModal(id) { document.getElementById(id).classList.remove("active"); }
+function fmtDate(iso) { if (!iso) return ""; return new Date(iso).toLocaleDateString("ru-RU"); }
 
 function linkify(text) {
   const escaped = escapeHtml(text || "");
@@ -627,19 +669,12 @@ async function openUserByUsername(username) {
     const data = await api("/api/users/by_username/" + encodeURIComponent(username));
     if (data.exists && data.user) openUserProfile(data.user.id);
     else alert("Аккаунт не найден, юзернейм @" + username + " свободен");
-  } catch (e) {
-    if (e.message !== "banned") alert("Аккаунт не найден, юзернейм @" + username + " свободен");
-  }
+  } catch (e) { if (e.message !== "banned") alert("Аккаунт не найден, юзернейм @" + username + " свободен"); }
 }
 
 document.addEventListener("click", function(e) {
   const el = e.target.closest(".mention");
-  if (el) {
-    e.preventDefault();
-    e.stopPropagation();
-    const uname = el.getAttribute("data-username");
-    if (uname) openUserByUsername(uname);
-  }
+  if (el) { e.preventDefault(); e.stopPropagation(); const uname = el.getAttribute("data-username"); if (uname) openUserByUsername(uname); }
 });
 
 function showBanScreen(data) {
@@ -648,9 +683,7 @@ function showBanScreen(data) {
   document.getElementById("ban-name").textContent = ((u.first_name || "") + " " + (u.last_name || "")).trim() || "—";
   document.getElementById("ban-id").textContent = u.id || "—";
   document.getElementById("ban-username").textContent = u.username ? "@" + u.username : "—";
-  localStorage.removeItem("diogram_token");
-  token = null; currentUser = null;
-  show("screen-ban");
+  localStorage.removeItem("diogram_token"); token = null; currentUser = null; show("screen-ban");
 }
 
 document.getElementById("btn-copy-ban").onclick = () => {
@@ -670,9 +703,7 @@ document.getElementById("btn-login").onclick = async () => {
   try {
     setError("auth-error", "");
     const data = await api("/api/login", { method: "POST", body: JSON.stringify({ email, password }) });
-    token = data.token; localStorage.setItem("diogram_token", token);
-    currentUser = data.user;
-    afterLogin();
+    token = data.token; localStorage.setItem("diogram_token", token); currentUser = data.user; afterLogin();
   } catch (e) { if (e.message !== "banned") setError("auth-error", e.message); }
 };
 
@@ -689,9 +720,7 @@ document.getElementById("btn-register").onclick = async () => {
     pendingReg = { email, password };
     document.getElementById("verify-email-label").textContent = email;
     document.getElementById("register-fields").style.display = "none";
-    document.getElementById("verify-fields").style.display = "flex";
-    document.getElementById("verify-fields").style.flexDirection = "column";
-    document.getElementById("verify-fields").style.gap = "12px";
+    document.getElementById("verify-fields").style.display = "flex"; document.getElementById("verify-fields").style.flexDirection = "column"; document.getElementById("verify-fields").style.gap = "12px";
   } catch (e) { setError("auth-error", e.message); }
 };
 
@@ -701,21 +730,15 @@ document.getElementById("btn-verify").onclick = async () => {
   try {
     setError("auth-error", "");
     const data = await api("/api/verify", { method: "POST", body: JSON.stringify({ email: pendingReg.email, code, password: pendingReg.password }) });
-    token = data.token; localStorage.setItem("diogram_token", token);
-    currentUser = data.user;
-    afterLogin();
+    token = data.token; localStorage.setItem("diogram_token", token); currentUser = data.user; afterLogin();
   } catch (e) { setError("auth-error", e.message); }
 };
 
 function afterLogin() {
   if (!currentUser.profile_completed) { show("screen-profile-setup"); return; }
-  startHeartbeat();
-  show("screen-list");
-  loadList();
-  startListPolling();
+  startHeartbeat(); show("screen-list"); loadList(); startListPolling();
   if (currentUser.role === "owner" || currentUser.role === "developer") {
-    document.getElementById("menu-admin").style.display = "flex";
-    startAdminPoll();
+    document.getElementById("menu-admin").style.display = "flex"; startAdminPoll();
   }
 }
 
@@ -727,16 +750,14 @@ document.getElementById("btn-save-profile").onclick = async () => {
   try {
     setError("profile-error", "");
     const data = await api("/api/profile", { method: "POST", body: JSON.stringify({ username, first_name, last_name }) });
-    currentUser = data.user;
-    afterLogin();
+    currentUser = data.user; afterLogin();
   } catch (e) { setError("profile-error", e.message); }
 };
 
 function startHeartbeat() {
   if (heartbeatInterval) clearInterval(heartbeatInterval);
   const beat = async () => { try { await api("/api/heartbeat", { method: "POST" }); } catch (e) {} };
-  beat();
-  heartbeatInterval = setInterval(beat, 30000);
+  beat(); heartbeatInterval = setInterval(beat, 30000);
 }
 
 function startAdminPoll() {
@@ -746,12 +767,10 @@ function startAdminPoll() {
       const stats = await api("/api/admin/stats");
       const n = stats.new_reports || 0;
       const badge = document.getElementById("menu-admin-badge");
-      if (n > 0) { badge.textContent = n; badge.style.display = "inline-block"; }
-      else badge.style.display = "none";
+      if (n > 0) { badge.textContent = n; badge.style.display = "inline-block"; } else badge.style.display = "none";
     } catch (e) {}
   };
-  check();
-  adminPollInterval = setInterval(check, 30000);
+  check(); adminPollInterval = setInterval(check, 30000);
 }
 
 async function loadList() {
@@ -761,8 +780,7 @@ async function loadList() {
     if (!data.items.length) { box.innerHTML = '<div class="empty-state">Пока ничего нет.<br>Нажми ➕ чтобы найти людей,<br>или 📢 чтобы создать канал.</div>'; return; }
     box.innerHTML = "";
     for (const item of data.items) {
-      const el = document.createElement("div");
-      el.className = "list-item";
+      const el = document.createElement("div"); el.className = "list-item";
       if (item.type === "chat") {
         const u = item.other_user;
         const name = u.first_name || u.username || "Без имени";
@@ -822,27 +840,22 @@ function appendMessage(m) {
   const d = document.createElement("div"); d.className = "msg " + (isOwn ? "own" : "other");
   const time = fmtTime(m.created_at);
   let content = "";
-
-  if (m.type === "photo" && m.attachment_url) {
-    content = '<img src="' + m.attachment_url + '" class="msg-photo" onclick="openPhotoViewer(\'' + m.attachment_url + '\')">';
-  } else if (m.type === "file" && m.attachment_url) {
+  if (m.type === "photo" && m.attachment_url) { content = '<img src="' + m.attachment_url + '" class="msg-photo" onclick="openPhotoViewer(\'' + m.attachment_url + '\')">'; }
+  else if (m.type === "file" && m.attachment_url) {
     const isAudio = m.file_type === "audio" || (m.file_mime && m.file_mime.startsWith("audio/"));
     const fname = escapeHtml(m.file_name || m.attachment_name || "file");
     const fsize = fmtSize(m.attachment_size || m.file_size || 0);
-    if (isAudio) {
-      content = '<div class="file-block"><div class="file-row"><div class="file-icon">🎵</div><div class="file-info"><div class="file-name">' + fname + '</div><div class="file-size">' + fsize + '</div></div></div><audio class="audio-player" controls src="' + m.attachment_url + '"></audio></div>';
-    } else {
+    if (isAudio) content = '<div class="file-block"><div class="file-row"><div class="file-icon">🎵</div><div class="file-info"><div class="file-name">' + fname + '</div><div class="file-size">' + fsize + '</div></div></div><audio class="audio-player" controls src="' + m.attachment_url + '"></audio></div>';
+    else {
       const icon = m.file_mime && m.file_mime.includes("pdf") ? "📄" : "📎";
       content = '<div class="file-block"><div class="file-row"><div class="file-icon">' + icon + '</div><div class="file-info"><div class="file-name">' + fname + '</div><div class="file-size">' + fsize + '</div></div><a class="file-dl" href="' + m.attachment_url + '" target="_blank" download>Скачать</a></div></div>';
     }
   }
-
   content += linkify(m.text || "");
   let checks = "";
   if (isOwn) checks = m.read_at ? '<span class="checks read">✓✓</span>' : '<span class="checks">✓</span>';
   d.innerHTML = content + '<span class="time">' + time + checks + '</span>';
-  box.appendChild(d);
-  box.scrollTop = box.scrollHeight;
+  box.appendChild(d); box.scrollTop = box.scrollHeight;
 }
 
 function openPhotoViewer(url) { document.getElementById("photo-viewer-img").src = url; document.getElementById("photo-viewer").classList.add("active"); }
@@ -851,18 +864,13 @@ function closePhotoViewer() { document.getElementById("photo-viewer").classList.
 document.getElementById("msg-input").addEventListener("keypress", e => { if (e.key === "Enter") handleSend(); });
 document.getElementById("send-btn").onclick = handleSend;
 
-function handleSend() {
-  if (pendingPhoto || pendingFile) return sendFile();
-  return sendMessage();
-}
+function handleSend() { if (pendingPhoto || pendingFile) return sendFile(); return sendMessage(); }
 
 document.getElementById("msg-input").addEventListener("input", () => { if (!currentChat) return; if (typingTimer) return; typingTimer = setTimeout(() => typingTimer = null, 3000); api("/api/typing", { method: "POST", body: JSON.stringify({ chat_id: currentChat.id }) }).catch(() => {}); });
 
 async function sendMessage() {
-  const input = document.getElementById("msg-input");
-  const text = input.value.trim();
-  if (!text || !currentChat) return;
-  input.value = "";
+  const input = document.getElementById("msg-input"); const text = input.value.trim();
+  if (!text || !currentChat) return; input.value = "";
   try {
     const data = await api("/api/send", { method: "POST", body: JSON.stringify({ chat_id: currentChat.id, text }) });
     appendMessage(data.message || { sender_id: currentUser.id, text, created_at: new Date().toISOString(), type: "text" });
@@ -880,9 +888,7 @@ async function sendFile() {
   fd.append("chat_id", currentChat.id);
   if (isPhoto) fd.append("caption", caption);
   document.getElementById("photo-preview").classList.remove("active");
-  input.value = "";
-  const endpoint = isPhoto ? "/api/upload/photo" : "/api/upload/file";
-  pendingPhoto = null; pendingFile = null;
+  input.value = ""; const endpoint = isPhoto ? "/api/upload/photo" : "/api/upload/file"; pendingPhoto = null; pendingFile = null;
   try {
     const data = await api(endpoint, { method: "POST", body: fd });
     if (data.message) appendMessage(data.message);
@@ -891,28 +897,17 @@ async function sendFile() {
 
 document.getElementById("btn-attach-photo").onclick = () => {
   if (!currentChat) return;
-  const isPremium = currentUser.premium;
   const isFilePlus = currentUser.file_plus;
   let choice = prompt("Что отправить?\n1 — Фото" + (isFilePlus ? "\n2 — Файл (PDF, DOCX, музыка...)" : ""), "1");
-  if (choice === "2" && isFilePlus) {
-    document.getElementById("photo-file-input").accept = "audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt";
-    document.getElementById("photo-file-input").click();
-  } else {
-    document.getElementById("photo-file-input").accept = "image/*";
-    document.getElementById("photo-file-input").click();
-  }
+  if (choice === "2" && isFilePlus) { document.getElementById("photo-file-input").accept = "audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"; document.getElementById("photo-file-input").click(); }
+  else { document.getElementById("photo-file-input").accept = "image/*"; document.getElementById("photo-file-input").click(); }
 };
 
 document.getElementById("photo-file-input").onchange = (e) => {
   const file = e.target.files[0]; if (!file) return;
   const isImage = file.type.startsWith("image/");
-  if (isImage) {
-    if (file.size > 5 * 1024 * 1024) { alert("Фото больше 5 МБ"); e.target.value = ""; return; }
-    pendingPhoto = file; pendingFile = null;
-  } else {
-    if (file.size > 3 * 1024 * 1024) { alert("Файл больше 3 МБ"); e.target.value = ""; return; }
-    pendingFile = file; pendingPhoto = null;
-  }
+  if (isImage) { if (file.size > 5 * 1024 * 1024) { alert("Фото больше 5 МБ"); e.target.value = ""; return; } pendingPhoto = file; pendingFile = null; }
+  else { if (file.size > 3 * 1024 * 1024) { alert("Файл больше 3 МБ"); e.target.value = ""; return; } pendingFile = file; pendingPhoto = null; }
   const reader = new FileReader();
   reader.onload = (ev) => {
     document.getElementById("photo-preview-img").src = isImage ? ev.target.result : "";
@@ -923,12 +918,7 @@ document.getElementById("photo-file-input").onchange = (e) => {
     document.getElementById("photo-preview").classList.add("active");
   };
   if (isImage) reader.readAsDataURL(file);
-  else {
-    document.getElementById("photo-preview-img").style.display = "none";
-    document.getElementById("photo-preview-name").textContent = file.name;
-    document.getElementById("photo-preview-size").textContent = fmtSize(file.size);
-    document.getElementById("photo-preview").classList.add("active");
-  }
+  else { document.getElementById("photo-preview-img").style.display = "none"; document.getElementById("photo-preview-name").textContent = file.name; document.getElementById("photo-preview-size").textContent = fmtSize(file.size); document.getElementById("photo-preview").classList.add("active"); }
   e.target.value = "";
 };
 
@@ -956,8 +946,7 @@ document.getElementById("btn-chat-report").onclick = () => { if (!currentChat) r
 async function openChannel(channelId) {
   currentChannel = { id: channelId };
   lastChannelMessageTime = "1970-01-01T00:00:00+00:00";
-  document.getElementById("channel-messages").innerHTML = '<div class="spinner"></div>';
-  show("screen-channel");
+  document.getElementById("channel-messages").innerHTML = '<div class="spinner"></div>'; show("screen-channel");
   try {
     const data = await api("/api/channels/" + channelId + "/messages");
     const ch = data.channel; currentChannel = ch;
@@ -1031,8 +1020,7 @@ document.getElementById("btn-ch-info-edit").onclick = () => {
   document.getElementById("ch-edit-username-row").style.display = currentChInfo.type === "public" ? "block" : "none";
   document.getElementById("ch-edit-type-public").classList.toggle("selected", currentChInfo.type === "public");
   document.getElementById("ch-edit-type-secret").classList.toggle("selected", currentChInfo.type === "secret");
-  setError("modal-ch-edit-error", "");
-  openModal("modal-ch-edit");
+  setError("modal-ch-edit-error", ""); openModal("modal-ch-edit");
 };
 
 document.getElementById("ch-edit-avatar").onclick = () => document.getElementById("ch-edit-avatar-file").click();
@@ -1043,8 +1031,7 @@ document.getElementById("ch-edit-avatar-file").onchange = (e) => {
   newAvatarFile = file;
   const reader = new FileReader();
   reader.onload = (ev) => { document.getElementById("ch-edit-avatar").innerHTML = '<img src="' + ev.target.result + '">'; };
-  reader.readAsDataURL(file);
-  e.target.value = "";
+  reader.readAsDataURL(file); e.target.value = "";
 };
 
 document.getElementById("ch-edit-type-public").onclick = () => { chEditType = "public"; document.getElementById("ch-edit-type-public").classList.add("selected"); document.getElementById("ch-edit-type-secret").classList.remove("selected"); document.getElementById("ch-edit-username-row").style.display = "block"; };
@@ -1065,10 +1052,7 @@ document.getElementById("btn-ch-save").onclick = async () => {
       const fd = new FormData(); fd.append("file", newAvatarFile);
       try { await api("/api/channels/" + currentChInfo.id + "/avatar", { method: "POST", body: fd }); } catch (e) { alert("Аватар: " + e.message); }
     }
-    closeModal("modal-ch-edit");
-    alert("Канал обновлён!");
-    newAvatarFile = null;
-    openChannelInfo(currentChInfo.id);
+    closeModal("modal-ch-edit"); alert("Канал обновлён!"); newAvatarFile = null; openChannelInfo(currentChInfo.id);
     if (currentChannel) { currentChannel.name = name; document.getElementById("channel-title").textContent = name; }
   } catch (e) { setError("modal-ch-edit-error", e.message); }
 };
@@ -1091,72 +1075,187 @@ document.getElementById("btn-ch-info-delete").onclick = async () => {
   try { await api("/api/channels/" + currentChInfo.id, { method: "DELETE" }); alert("Удалён"); currentChannel = null; currentChInfo = null; show("screen-list"); loadList(); } catch (e) { alert("Ошибка: " + e.message); }
 };
 
-document.getElementById("global-search").addEventListener("input", async (e) => {
-  const q = e.target.value.trim();
-  if (q.length < 2) { loadList(); return; }
+// НАСТРОЙКИ
+async function openSettings() {
+  show("screen-settings");
   try {
-    const box = document.getElementById("list-container"); box.innerHTML = '<div class="spinner"></div>';
-    const [users, channels] = await Promise.all([api("/api/users/search?q=" + encodeURIComponent(q)).catch(() => ({ users: [] })), api("/api/channels/search?q=" + encodeURIComponent(q)).catch(() => ({ channels: [] }))]);
-    box.innerHTML = "";
-    if (!users.users.length && !channels.channels.length) { box.innerHTML = '<div class="empty-state">Ничего не найдено</div>'; return; }
-    for (const ch of channels.channels) { const el = document.createElement("div"); el.className = "list-item"; el.innerHTML = '<div class="avatar channel">📢</div><div class="list-info"><div class="list-name">' + escapeHtml(ch.name) + ' <span style="color:#7e8b99;font-size:12px;">@' + escapeHtml(ch.username || "") + '</span></div><div class="list-last">' + (ch.subscribers_count || 0) + ' подписчиков</div></div>'; el.onclick = () => openChannel(ch.id); box.appendChild(el); }
-    for (const u of users.users) { const el = document.createElement("div"); el.className = "list-item"; const name = u.first_name || u.username || "—"; el.innerHTML = '<div class="avatar">' + initial(name) + '</div><div class="list-info"><div class="list-name">' + escapeHtml(name) + roleIcon(u.role) + verifiedMark(u.verified) + '</div><div class="list-last">@' + escapeHtml(u.username || "") + '</div></div>'; el.onclick = () => openUserProfile(u.id); box.appendChild(el); }
-  } catch (e) {}
+    const me = await api("/api/me"); currentUser = me.user;
+    document.getElementById("toggle-hide-seen").classList.toggle("active", currentUser.hide_last_seen);
+    const whoMap = { "all": "Все", "contacts": "Только контакты", "nobody": "Никто" };
+    document.getElementById("who-can-msg-val").textContent = whoMap[currentUser.who_can_message] || "Все";
+    
+    const sess = await api("/api/sessions");
+    const box = document.getElementById("sessions-list"); box.innerHTML = "";
+    if (!sess.sessions.length) box.innerHTML = '<div style="padding:16px;color:#7e8b99;font-size:13px;">Нет активных сессий</div>';
+    for (const s of sess.sessions) {
+      const el = document.createElement("div"); el.className = "settings-row";
+      el.innerHTML = `<div><div class="settings-label">${escapeHtml(s.device || "Устройство")}</div><div class="settings-desc">${new Date(s.last_used).toLocaleString("ru-RU")}</div></div><button class="admin-btn danger" onclick="deleteSession(${s.id})">Выйти</button>`;
+      box.appendChild(el);
+    }
+  } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
+}
+
+document.getElementById("btn-settings").onclick = openSettings;
+document.getElementById("btn-settings-back").onclick = () => { show("screen-profile-full"); openProfile(); };
+
+document.getElementById("toggle-hide-seen").onclick = async () => {
+  if (!currentUser.premium) return alert("Эта функция доступна только с подпиской PDG!");
+  const newState = !document.getElementById("toggle-hide-seen").classList.contains("active");
+  document.getElementById("toggle-hide-seen").classList.toggle("active", newState);
+  try { await api("/api/settings/privacy", { method: "POST", body: JSON.stringify({ hide_last_seen: newState }) }); currentUser.hide_last_seen = newState; } catch(e) { alert(e.message); }
+};
+
+async function changeWhoCanMessage() {
+  if (!currentUser.premium) return alert("Эта функция доступна только с подпиской PDG!");
+  const cur = currentUser.who_can_message;
+  const choice = prompt("Кто может тебе писать?\n1 — Все\n2 — Только контакты\n3 — Никто", cur === "all" ? "1" : cur === "contacts" ? "2" : "3");
+  if (!choice) return;
+  const val = choice === "1" ? "all" : choice === "2" ? "contacts" : "nobody";
+  try { await api("/api/settings/privacy", { method: "POST", body: JSON.stringify({ who_can_message: val }) }); currentUser.who_can_message = val; openSettings(); } catch(e) { alert(e.message); }
+}
+
+async function deleteSession(sid) {
+  if (!confirm("Завершить эту сессию?")) return;
+  try { await api("/api/sessions/" + sid, { method: "DELETE" }); openSettings(); } catch(e) { alert(e.message); }
+}
+
+// FRIGDMANT
+async function openFrigdmant() {
+  show("screen-frigdmant");
+  currentFrigTab = "market";
+  document.querySelectorAll(".shop-tab[data-frig]").forEach(t => t.classList.toggle("active", t.dataset.frig === "market"));
+  document.getElementById("frig-list").innerHTML = '<div class="spinner"></div>';
+  try {
+    const data = await api("/api/frigdmant/listings");
+    frigListings = data.market; myListings = data.my_listings; renderFrig();
+  } catch(e) { document.getElementById("frig-list").innerHTML = 'Ошибка'; }
+}
+
+document.querySelectorAll(".shop-tab[data-frig]").forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll(".shop-tab[data-frig]").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active"); currentFrigTab = tab.dataset.frig; renderFrig();
+  };
 });
 
-// MENU
-const overlay = document.getElementById("overlay");
-const menuSheet = document.getElementById("menu-sheet");
-function openMenu() { overlay.classList.add("active"); menuSheet.classList.add("active"); }
-function closeMenu() { overlay.classList.remove("active"); menuSheet.classList.remove("active"); }
-overlay.onclick = closeMenu;
-document.getElementById("btn-menu").onclick = openMenu;
-document.getElementById("menu-profile").onclick = () => { closeMenu(); openProfile(); };
-document.getElementById("menu-logout").onclick = () => { if (!confirm("Выйти?")) return; localStorage.removeItem("diogram_token"); location.reload(); };
-document.getElementById("menu-admin").onclick = () => { closeMenu(); openAdmin(); };
-document.getElementById("menu-new-channel").onclick = () => { closeMenu(); createChannelDialog(); };
-document.getElementById("menu-shop").onclick = () => { closeMenu(); openShop(); };
+function renderFrig() {
+  const box = document.getElementById("frig-list"); box.innerHTML = "";
+  const items = currentFrigTab === "market" ? frigListings : myListings;
+  if (!items.length) { box.innerHTML = '<div class="empty-state">Здесь пока пусто</div>'; return; }
+  for (const l of items) {
+    const el = document.createElement("div"); el.className = "frig-card" + (l.listing_type === "auction" ? " auction" : "");
+    const isAuction = l.listing_type === "auction";
+    const typeLabel = isAuction ? "⏳ Аукцион" : "💰 Фикс-цена";
+    const priceLabel = isAuction ? "Текущая ставка: " + l.current_bid + " Di" : "Цена: " + l.price + " Di";
+    const timeLeft = isAuction ? "До конца: " + fmtDate(l.end_time) : "";
+    const seller = l.seller_username ? "@" + l.seller_username : "скрыт";
+    let actions = "";
+    if (currentFrigTab === "market") {
+      if (isAuction) actions = '<button class="admin-btn primary" onclick="openFrigAction('+l.id+', \'bid\')">Сделать ставку</button>';
+      else actions = '<button class="admin-btn primary" onclick="openFrigAction('+l.id+', \'buy\')">Купить</button>';
+    } else { actions = '<button class="admin-btn danger" onclick="cancelFrigListing('+l.id+')">Отменить</button>'; }
+    el.innerHTML = '<div class="frig-title"><img src="'+COIN_URL+'" class="di-icon" style="width:16px;height:16px;"> @' + escapeHtml(l.username) + '</div><div class="frig-price">' + priceLabel + '</div><div class="frig-meta">' + typeLabel + '<br>Продавец: ' + escapeHtml(seller) + '<br>' + timeLeft + '</div><div class="frig-actions">' + actions + '</div>';
+    box.appendChild(el);
+  }
+}
 
-// PROFILE
-function openProfile() {
+document.getElementById("btn-frig-new").onclick = () => { document.getElementById("frig-price").value = ""; setError("modal-frig-error", ""); openModal("modal-frig-new"); };
+
+document.querySelectorAll("#modal-frig-new .reason-option").forEach(btn => {
+  btn.onclick = () => { document.querySelectorAll("#modal-frig-new .reason-option").forEach(b => b.classList.remove("selected")); btn.classList.add("selected"); frigListingType = btn.dataset.ltype; };
+});
+
+document.getElementById("btn-frig-create").onclick = async () => {
+  const price = parseInt(document.getElementById("frig-price").value);
+  if (isNaN(price) || price < 42) return setError("modal-frig-error", "Мин. цена 42 Di");
+  try {
+    await api("/api/frigdmant/list", { method: "POST", body: JSON.stringify({ target_type: "user", username: currentUser.username, price: price, listing_type: frigListingType }) });
+    closeModal("modal-frig-new"); alert("Выставлено на Frigdmant!"); openFrigdmant();
+  } catch(e) { setError("modal-frig-error", e.message); }
+};
+
+async function cancelFrigListing(id) {
+  if (!confirm("Снять лот с продажи?")) return;
+  try { await api("/api/frigdmant/cancel", { method: "POST", body: JSON.stringify({ listing_id: id }) }); openFrigdmant(); } catch(e) { alert(e.message); }
+}
+
+function openFrigAction(id, action) {
+  const listing = frigListings.find(l => l.id === id); if (!listing) return;
+  const modal = document.getElementById("modal-frig-action"); const title = document.getElementById("frig-action-title");
+  const info = document.getElementById("frig-action-info"); const inputBlock = document.getElementById("frig-action-input-block");
+  title.textContent = action === 'buy' ? "Покупка" : "Ставка на аукционе";
+  info.innerHTML = "Юзернейм: <b>@" + escapeHtml(listing.username) + "</b><br>";
+  document.getElementById("btn-frig-confirm-action").onclick = () => action === 'buy' ? buyFrigListing(id) : placeFrigBid(id);
+  if (action === 'buy') { info.innerHTML += "Цена: <b>" + listing.price + " Di</b><br>У вас: <b>" + parseFloat(currentUser.balance).toFixed(2) + " Di</b>"; inputBlock.style.display = "none"; }
+  else { info.innerHTML += "Мин. ставка: <b>" + Math.max(listing.price, listing.current_bid + 1) + " Di</b>"; inputBlock.style.display = "block"; document.getElementById("frig-bid-amount").value = Math.max(listing.price, listing.current_bid + 1); }
+  setError("modal-frig-action-error", ""); openModal("modal-frig-action");
+}
+
+async function buyFrigListing(id) {
+  try {
+    await api("/api/frigdmant/buy", { method: "POST", body: JSON.stringify({ listing_id: id }) });
+    closeModal("modal-frig-action"); alert("Куплено! Юз добавлен в профиль.");
+    const me = await api("/api/me"); currentUser = me.user; openFrigdmant();
+  } catch(e) { setError("modal-frig-action-error", e.message); }
+}
+
+async function placeFrigBid(id) {
+  const amount = parseInt(document.getElementById("frig-bid-amount").value);
+  if (isNaN(amount)) return setError("modal-frig-action-error", "Введите сумму");
+  try {
+    await api("/api/frigdmant/bid", { method: "POST", body: JSON.stringify({ listing_id: id, amount: amount }) });
+    closeModal("modal-frig-action"); alert("Ставка принята!");
+    const me = await api("/api/me"); currentUser = me.user; openFrigdmant();
+  } catch(e) { setError("modal-frig-action-error", e.message); }
+}
+
+document.getElementById("btn-frig-back").onclick = () => { show("screen-list"); loadList(); };
+document.getElementById("btn-frigdmant").onclick = openFrigdmant;
+document.getElementById("menu-frig").onclick = () => { closeMenu(); openFrigdmant(); };
+document.getElementById("open-frig-my").onclick = () => { currentFrigTab = "my"; document.querySelectorAll(".shop-tab[data-frig]").forEach(t => t.classList.toggle("active", t.dataset.frig === "my")); openFrigdmant(); };
+
+// ПРОФИЛЬ
+async function openProfile() {
   if (!currentUser) return;
   const name = ((currentUser.first_name || "") + " " + (currentUser.last_name || "")).trim() || "Без имени";
   const av = document.getElementById("profile-avatar");
   if (currentUser.avatar_url) av.innerHTML = '<img src="' + currentUser.avatar_url + '"><div class="avatar-edit-hint">📷</div>';
   else av.innerHTML = initial(name) + '<div class="avatar-edit-hint">📷</div>';
   document.getElementById("profile-name").textContent = name;
-  document.getElementById("profile-fullname").textContent = name;
   document.getElementById("profile-username-show").textContent = currentUser.username ? "@" + currentUser.username : "—";
-  document.getElementById("profile-bio").textContent = currentUser.bio || "Не указано";
   document.getElementById("profile-id").textContent = currentUser.id;
-  document.getElementById("profile-email").textContent = currentUser.email || "—";
-  const roleMap = { owner: "👑 Владелец", developer: "⚡ Разработчик", moderator: "🛡️ Модератор", user: "Пользователь" };
-  document.getElementById("profile-role").textContent = roleMap[currentUser.role] || "Пользователь";
+  document.getElementById("profile-role").textContent = currentUser.role;
 
   const bal = parseFloat(currentUser.balance || 0);
-  document.getElementById("profile-balance").textContent = bal.toFixed(2) + " Di";
+  document.getElementById("profile-balance").innerHTML = '<img src="' + COIN_URL + '" class="di-icon"> ' + bal.toFixed(2) + " Di";
   document.getElementById("profile-balance-rub").textContent = "~" + Math.round(bal * RATE) + "₽";
 
   let subsHtml = "";
-  if (currentUser.premium) {
-    const until = currentUser.premium_until ? new Date(currentUser.premium_until).toLocaleDateString("ru-RU") : "";
-    subsHtml += '<div class="profile-block"><div class="profile-row"><div class="profile-row-icon">💎</div><div class="profile-row-content"><div class="profile-row-label">PDG Premium</div><div class="profile-row-value">Активна до ' + until + '</div></div></div></div>';
-  }
-  if (currentUser.file_plus) {
-    const until = currentUser.file_plus_until ? new Date(currentUser.file_plus_until).toLocaleDateString("ru-RU") : "";
-    subsHtml += '<div class="profile-block"><div class="profile-row"><div class="profile-row-icon">📎</div><div class="profile-row-content"><div class="profile-row-label">File Plus</div><div class="profile-row-value">Активна до ' + until + '</div></div></div></div>';
-  }
+  if (currentUser.premium) subsHtml += '<div class="profile-block"><div class="profile-row"><div class="profile-row-icon">💎</div><div class="profile-row-content"><div class="profile-row-label">PDG Premium</div><div class="profile-row-value">Активна до ' + fmtDate(currentUser.premium_until) + '</div></div></div></div>';
+  if (currentUser.file_plus) subsHtml += '<div class="profile-block"><div class="profile-row"><div class="profile-row-icon">📎</div><div class="profile-row-content"><div class="profile-row-label">File Plus</div><div class="profile-row-value">Активна до ' + fmtDate(currentUser.file_plus_until) + '</div></div></div></div>';
   document.getElementById("profile-subs-block").innerHTML = subsHtml;
 
-  const status = document.getElementById("profile-status");
-  status.textContent = currentUser.username ? "@" + currentUser.username : "";
-  status.classList.toggle("online", !!currentUser.is_online);
+  try {
+    const uData = await api("/api/usernames/my"); myUsernames = uData.collection || [];
+    let colHtml = "";
+    if (myUsernames.length > 0) {
+      for (const u of myUsernames) {
+        colHtml += '<div class="profile-row"><div class="profile-row-icon">⭐</div><div class="profile-row-content"><div class="profile-row-value">@' + escapeHtml(u.username) + '</div></div><button class="admin-btn" style="padding:4px 8px;font-size:11px;" onclick="activateMyUsername(\''+u.username+'\')">Активировать</button></div>';
+      }
+    }
+    document.getElementById("profile-collection-block").innerHTML = colHtml;
+  } catch(e) {}
+
   show("screen-profile-full");
+}
+
+async function activateMyUsername(uname) {
+  if (!confirm("Сделать @" + uname + " вашим активным юзернеймом?")) return;
+  try { await api("/api/usernames/activate", { method: "POST", body: JSON.stringify({ username: uname }) }); const me = await api("/api/me"); currentUser = me.user; openProfile(); } catch (e) { alert(e.message); }
 }
 
 document.getElementById("btn-profile-back").onclick = () => { show("screen-list"); loadList(); };
 document.getElementById("btn-logout").onclick = () => { if (!confirm("Выйти?")) return; localStorage.removeItem("diogram_token"); location.reload(); };
-
 document.getElementById("profile-avatar").onclick = () => {
   const input = document.createElement("input"); input.type = "file"; input.accept = "image/*";
   input.onchange = async (e) => {
@@ -1170,22 +1269,24 @@ document.getElementById("profile-avatar").onclick = () => {
 
 document.getElementById("edit-name").onclick = () => { document.getElementById("modal-name-first").value = currentUser.first_name || ""; document.getElementById("modal-name-last").value = currentUser.last_name || ""; setError("modal-name-error", ""); openModal("modal-name"); };
 document.getElementById("btn-save-name").onclick = async () => {
-  const first_name = document.getElementById("modal-name-first").value.trim();
-  const last_name = document.getElementById("modal-name-last").value.trim();
+  const first_name = document.getElementById("modal-name-first").value.trim(); const last_name = document.getElementById("modal-name-last").value.trim();
   if (!first_name) return setError("modal-name-error", "Имя обязательно");
   try { const data = await api("/api/profile/name", { method: "POST", body: JSON.stringify({ first_name, last_name }) }); currentUser = data.user; closeModal("modal-name"); openProfile(); } catch (e) { setError("modal-name-error", e.message); }
 };
 
 document.getElementById("edit-username").onclick = async () => {
-  document.getElementById("modal-username-input").value = currentUser.username || "";
-  setError("modal-username-error", "");
+  document.getElementById("modal-username-input").value = currentUser.username || ""; setError("modal-username-error", "");
   try { const data = await api("/api/profile/username-limit"); document.getElementById("username-limit-info").textContent = "Осталось смен сегодня: " + data.left + " / " + data.limit; } catch (e) { document.getElementById("username-limit-info").textContent = ""; }
   openModal("modal-username");
 };
+
 document.getElementById("btn-save-username").onclick = async () => {
   const username = document.getElementById("modal-username-input").value.trim().replace("@", "");
   if (!username) return setError("modal-username-error", "Username обязателен");
-  try { const data = await api("/api/profile/username", { method: "POST", body: JSON.stringify({ username }) }); currentUser = data.user; closeModal("modal-username"); openProfile(); alert("Username изменён! Осталось смен: " + data.changes_left); } catch (e) { setError("modal-username-error", e.message); }
+  try {
+    const data = await api("/api/profile/username", { method: "POST", body: JSON.stringify({ username }) });
+    currentUser = data.user; closeModal("modal-username"); openProfile(); alert("Username изменён!");
+  } catch (e) { setError("modal-username-error", e.message); }
 };
 
 document.getElementById("edit-bio").onclick = () => { document.getElementById("modal-bio-input").value = currentUser.bio || ""; setError("modal-bio-error", ""); openModal("modal-bio"); };
@@ -1197,20 +1298,12 @@ document.getElementById("btn-save-bio").onclick = async () => {
 async function openUserProfile(userId) {
   try {
     const data = await api("/api/users/" + userId);
-    currentUserProfile = data.user;
-    const u = data.user;
-    const name = ((u.first_name || "") + " " + (u.last_name || "")).trim() || "Без имени";
-    const av = document.getElementById("user-avatar");
-    if (u.avatar_url) av.innerHTML = '<img src="' + u.avatar_url + '">';
-    else av.textContent = initial(name);
-    document.getElementById("user-name").textContent = name;
-    document.getElementById("user-verified").style.display = u.verified ? "inline" : "none";
-    document.getElementById("user-status").textContent = (u.username ? "@" + u.username + " · " : "") + statusText(u);
-    document.getElementById("user-status").classList.toggle("online", !!u.is_online);
-    document.getElementById("user-bio").textContent = u.bio || "—";
-    document.getElementById("user-id").textContent = u.id;
-    const roleMap = { owner: "👑 Владелец", developer: "⚡ Разработчик", moderator: "🛡️ Модератор", user: "Пользователь" };
-    document.getElementById("user-role").textContent = roleMap[u.role] || "Пользователь";
+    const u = data.user; const name = ((u.first_name || "") + " " + (u.last_name || "")).trim() || "Без имени";
+    const av = document.getElementById("user-avatar"); if (u.avatar_url) av.innerHTML = '<img src="' + u.avatar_url + '">'; else av.textContent = initial(name);
+    document.getElementById("user-name").textContent = name; document.getElementById("user-verified").style.display = u.verified ? "inline" : "none";
+    document.getElementById("user-status").textContent = (u.username ? "@" + u.username + " · " : "") + statusText(u); document.getElementById("user-status").classList.toggle("online", !!u.is_online);
+    document.getElementById("user-bio").textContent = u.bio || "—"; document.getElementById("user-id").textContent = u.id;
+    document.getElementById("user-role").textContent = u.role;
     document.getElementById("btn-user-message").onclick = async () => { try { const r = await api("/api/chats", { method: "POST", body: JSON.stringify({ user_id: u.id }) }); openChat(r.chat_id, u); } catch (e) { alert("Ошибка: " + e.message); } };
     document.getElementById("btn-user-report").onclick = () => { reportTarget = { type: "user", user_id: u.id, name: name }; openReportModal(); };
     show("screen-user-profile");
@@ -1218,43 +1311,58 @@ async function openUserProfile(userId) {
 }
 document.getElementById("btn-user-back").onclick = () => { show("screen-list"); loadList(); };
 
-// SHOP
+// МАГАЗИН
 async function openShop() {
   show("screen-shop");
-  currentShopCategory = "pdg";
-  document.querySelectorAll(".shop-tab").forEach(t => t.classList.toggle("active", t.dataset.cat === "pdg"));
+  currentShopCategory = "di";
+  document.querySelectorAll(".shop-tab").forEach(t => t.classList.toggle("active", t.dataset.cat === "di"));
   try {
-    const data = await api("/api/shop/items");
-    shopItems = data.items;
-    document.getElementById("shop-balance").textContent = parseFloat(data.balance).toFixed(2) + " Di";
+    const data = await api("/api/shop/items"); shopItems = data.items;
+    document.getElementById("shop-balance").innerHTML = '<img src="' + COIN_URL + '" class="di-icon"> ' + parseFloat(data.balance).toFixed(2) + " Di";
     document.getElementById("shop-balance-rub").textContent = "~" + Math.round(data.balance * RATE) + "₽";
     renderShop();
   } catch (e) { document.getElementById("shop-list").innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
 }
 
 document.querySelectorAll(".shop-tab").forEach(tab => {
-  tab.onclick = () => {
-    document.querySelectorAll(".shop-tab").forEach(t => t.classList.remove("active"));
-    tab.classList.add("active");
-    currentShopCategory = tab.dataset.cat;
-    renderShop();
-  };
+  tab.onclick = () => { document.querySelectorAll(".shop-tab").forEach(t => t.classList.remove("active")); tab.classList.add("active"); currentShopCategory = tab.dataset.cat; renderShop(); };
 });
 
 function renderShop() {
   const box = document.getElementById("shop-list");
   if (currentShopCategory === "history") return renderHistory();
+  if (currentShopCategory === "di") {
+    box.innerHTML = `
+      <div style="padding: 20px 16px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <img src="${COIN_URL}" class="di-icon-big">
+          <h2 style="font-size: 22px; margin-bottom: 6px;">Покупка Di</h2>
+          <p style="color: #7e8b99; font-size: 14px;">Внутренняя валюта Diogram</p>
+        </div>
+        <div style="background: #17212b; border-radius: 14px; padding: 18px; margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 12px;"><span style="color: #7e8b99;">💱 Курс:</span><span style="font-weight: 700; color: #5b8bff;">1 Di = 1.59 ₽</span></div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 12px;"><span style="color: #7e8b99;">💳 Мин. оплата:</span><span style="font-weight: 700;">95 ₽</span></div>
+          <div style="display: flex; justify-content: space-between;"><span style="color: #7e8b99;">🎁 Пример:</span><span style="font-weight: 700;">159 ₽ = 100 Di</span></div>
+        </div>
+        <div style="background: #1c2a48; border: 1px solid #2a3f6a; border-radius: 14px; padding: 18px; margin-bottom: 20px;">
+          <div style="font-weight: 700; margin-bottom: 8px; color: #5b8bff;">📝 Как купить:</div>
+          <div style="font-size: 14px; line-height: 1.6; color: #c5cdd6;">1. Нажми на кнопку ниже<br>2. Напиши разработчику сумму<br>3. Оплати удобным способом (СБП / карта)<br>4. Di зачислятся на баланс в течение 5 минут</div>
+        </div>
+        <a href="https://t.me/Dipxex" target="_blank" class="btn" style="display: block; text-align: center; text-decoration: none; font-size: 16px; padding: 16px;">💬 Написать @Dipxex</a>
+        <div style="text-align: center; font-size: 12px; color: #7e8b99; margin-top: 16px;">После оплаты напиши свой @username разработчику</div>
+      </div>
+    `;
+    return;
+  }
   box.innerHTML = "";
   const filtered = shopItems.filter(i => i.category === currentShopCategory);
   if (!filtered.length) { box.innerHTML = '<div class="empty-state">Товаров нет</div>'; return; }
   const bal = parseFloat(currentUser.balance || 0);
   for (const item of filtered) {
     const el = document.createElement("div"); el.className = "shop-item";
-    let meta = "";
-    if (item.days) meta = item.days + " дней";
-    if (item.mb) meta = item.mb + " МБ";
+    let meta = ""; if (item.days) meta = item.days + " дней"; if (item.mb) meta = item.mb + " МБ";
     const canBuy = bal >= item.price;
-    el.innerHTML = '<div class="shop-item-info"><div class="shop-item-name">' + escapeHtml(item.name) + '</div><div class="shop-item-meta">' + meta + '</div></div><div class="shop-item-price">' + item.price + ' Di</div><button class="shop-buy" ' + (canBuy ? "" : "disabled") + '>Купить</button>';
+    el.innerHTML = '<div class="shop-item-info"><div class="shop-item-name">' + escapeHtml(item.name) + '</div><div class="shop-item-meta">' + meta + '</div></div><div class="shop-item-price"><img src="' + COIN_URL + '" class="di-icon"> ' + item.price + '</div><button class="shop-buy" ' + (canBuy ? "" : "disabled") + '>Купить</button>';
     el.querySelector(".shop-buy").onclick = () => buyItem(item);
     box.appendChild(el);
   }
@@ -1265,24 +1373,20 @@ async function buyItem(item) {
   try {
     const data = await api("/api/shop/buy", { method: "POST", body: JSON.stringify({ item_id: item.id }) });
     currentUser = data.user;
-    document.getElementById("shop-balance").textContent = parseFloat(currentUser.balance).toFixed(2) + " Di";
+    document.getElementById("shop-balance").innerHTML = '<img src="' + COIN_URL + '" class="di-icon"> ' + parseFloat(currentUser.balance).toFixed(2) + " Di";
     document.getElementById("shop-balance-rub").textContent = "~" + Math.round(currentUser.balance * RATE) + "₽";
-    alert("Куплено! ✅");
-    renderShop();
+    alert("Куплено! ✅"); renderShop();
   } catch (e) { alert("Ошибка: " + e.message); }
 }
 
 async function renderHistory() {
-  const box = document.getElementById("shop-list");
-  box.innerHTML = '<div class="spinner"></div>';
+  const box = document.getElementById("shop-list"); box.innerHTML = '<div class="spinner"></div>';
   try {
-    const data = await api("/api/transactions");
-    box.innerHTML = "";
+    const data = await api("/api/transactions"); box.innerHTML = "";
     if (!data.transactions.length) { box.innerHTML = '<div class="empty-state">История пуста</div>'; return; }
     for (const t of data.transactions) {
       const el = document.createElement("div"); el.className = "shop-item";
-      const color = t.amount > 0 ? "#4dd964" : "#ff5b5b";
-      const sign = t.amount > 0 ? "+" : "";
+      const color = t.amount > 0 ? "#4dd964" : "#ff5b5b"; const sign = t.amount > 0 ? "+" : "";
       el.innerHTML = '<div class="shop-item-info"><div class="shop-item-name">' + escapeHtml(t.description || t.type) + '</div><div class="shop-item-meta">' + new Date(t.created_at).toLocaleString("ru-RU") + '</div></div><div class="shop-item-price" style="color:' + color + '">' + sign + t.amount + ' Di</div>';
       box.appendChild(el);
     }
@@ -1292,7 +1396,7 @@ async function renderHistory() {
 document.getElementById("btn-shop-back").onclick = () => { show("screen-list"); loadList(); };
 document.getElementById("btn-shop").onclick = openShop;
 
-// CREATE CHANNEL
+// СОЗДАНИЕ КАНАЛА
 function createChannelDialog() {
   const name = prompt("Название канала:");
   if (!name || !name.trim()) return;
@@ -1306,7 +1410,7 @@ function createChannelDialog() {
 document.getElementById("btn-new-channel").onclick = createChannelDialog;
 document.getElementById("btn-new-chat").onclick = () => { const q = prompt("Найди @username:"); if (q) { document.getElementById("global-search").value = q; document.getElementById("global-search").dispatchEvent(new Event("input")); } };
 
-// REPORTS
+// ЖАЛОБЫ
 const REASON_NAMES = { spam: "Спам", abuse: "Оскорбления", scam: "Мошенничество", "18+": "18+ контент", fake: "Фейк", other: "Другое" };
 
 function openReportModal() {
@@ -1315,9 +1419,7 @@ function openReportModal() {
   selectedReportReason = null;
   const box = document.getElementById("report-reasons-list"); box.innerHTML = "";
   for (const [key, name] of Object.entries(REASON_NAMES)) { const b = document.createElement("button"); b.className = "reason-option"; b.textContent = name; b.onclick = () => { document.querySelectorAll("#report-reasons-list .reason-option").forEach(x => x.classList.remove("selected")); b.classList.add("selected"); selectedReportReason = key; }; box.appendChild(b); }
-  document.getElementById("report-comment").value = "";
-  setError("modal-report-error", "");
-  openModal("modal-report");
+  document.getElementById("report-comment").value = ""; setError("modal-report-error", ""); openModal("modal-report");
 }
 
 document.getElementById("btn-send-report").onclick = async () => {
@@ -1330,7 +1432,7 @@ document.getElementById("btn-send-report").onclick = async () => {
   try { await api("/api/reports", { method: "POST", body: JSON.stringify(payload) }); closeModal("modal-report"); alert("Жалоба отправлена!"); } catch (e) { setError("modal-report-error", e.message); }
 };
 
-// ADMIN
+// АДМИНКА
 async function openAdmin() {
   show("screen-admin");
   currentAdminTab = "users";
@@ -1401,9 +1503,7 @@ document.getElementById("btn-confirm-ban").onclick = async () => {
 async function loadAdminReports() {
   const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
   try {
-    const data = await api("/api/admin/reports");
-    allReports = data.reports;
-    box.innerHTML = "";
+    const data = await api("/api/admin/reports"); allReports = data.reports; box.innerHTML = "";
     if (!allReports.length) { box.innerHTML = '<div class="empty-state">Жалоб нет</div>'; return; }
     for (const r of allReports) {
       const el = document.createElement("div"); el.className = "report-card";
@@ -1427,14 +1527,27 @@ async function loadAdminReports() {
 async function reportAction(reportId, status) { try { await api("/api/admin/reports/" + reportId + "/review", { method: "POST", body: JSON.stringify({ status }) }); loadAdminReports(); } catch (e) { alert("Ошибка: " + e.message); } }
 document.getElementById("btn-admin-back").onclick = () => { show("screen-list"); loadList(); };
 
-// DOCS
+// ДОКУМЕНТЫ
 function openDoc(type) { if (type === "rules") show("screen-rules"); else show("screen-privacy"); }
 document.getElementById("open-rules").onclick = () => openDoc("rules");
 document.getElementById("open-privacy").onclick = () => openDoc("privacy");
 document.getElementById("btn-rules-back").onclick = () => { if (currentUser && currentUser.profile_completed) show("screen-profile-full"); else show("screen-auth"); };
 document.getElementById("btn-privacy-back").onclick = () => { if (currentUser && currentUser.profile_completed) show("screen-profile-full"); else show("screen-auth"); };
 
-// INIT
+// МЕНЮ
+const overlay = document.getElementById("overlay");
+const menuSheet = document.getElementById("menu-sheet");
+function openMenu() { overlay.classList.add("active"); menuSheet.classList.add("active"); }
+function closeMenu() { overlay.classList.remove("active"); menuSheet.classList.remove("active"); }
+overlay.onclick = closeMenu;
+document.getElementById("btn-menu").onclick = openMenu;
+document.getElementById("menu-profile").onclick = () => { closeMenu(); openProfile(); };
+document.getElementById("menu-shop").onclick = () => { closeMenu(); openShop(); };
+document.getElementById("menu-logout").onclick = () => { if (!confirm("Выйти?")) return; localStorage.removeItem("diogram_token"); location.reload(); };
+document.getElementById("menu-admin").onclick = () => { closeMenu(); openAdmin(); };
+document.getElementById("menu-new-channel").onclick = () => { closeMenu(); createChannelDialog(); };
+
+// ИНИЦИАЛИЗАЦИЯ
 (async function init() {
   if (token) {
     try { const data = await api("/api/me"); currentUser = data.user; afterLogin(); return; } catch (e) { if (e.message !== "banned") { localStorage.removeItem("diogram_token"); token = null; } }
@@ -1443,4 +1556,4 @@ document.getElementById("btn-privacy-back").onclick = () => { if (currentUser &&
 })();
 </script>
 </body>
-                         </html>
+</html>
