@@ -37,6 +37,10 @@ from db import (
     count_reports_by_user_24h, create_report, get_reports,
     update_report_status, count_new_reports,
     ban_user, unban_user, is_ban_expired,
+    update_privacy_settings, get_user_sessions, delete_session,
+    get_user_usernames, activate_username, is_username_on_frigdmant,
+    create_frigdmant_listing, get_frigdmant_listings, get_user_listings,
+    cancel_listing, buy_frigdmant_listing, place_frigdmant_bid,
     supabase
 )
 from email_service import generate_code
@@ -59,49 +63,31 @@ MAX_DIMENSION = 1600
 COMPRESS_THRESHOLD = 4 * 1024 * 1024
 ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
-# ===== FILE PLUS =====
-MAX_FILE_SIZE = 3 * 1024 * 1024  # 3 МБ
-FILE_QUOTA_BASE = 42 * 1024 * 1024  # 42 МБ / месяц
+MAX_FILE_SIZE = 3 * 1024 * 1024
+FILE_QUOTA_BASE = 42 * 1024 * 1024
 ALLOWED_FILE_MIME = {
-    # Документы
-    "application/pdf": "pdf",
-    "application/msword": "doc",
+    "application/pdf": "pdf", "application/msword": "doc",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
-    "application/vnd.ms-excel": "xls",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
-    "application/vnd.ms-powerpoint": "ppt",
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
-    "text/plain": "txt",
-    # Музыка
-    "audio/mpeg": "mp3",
-    "audio/mp3": "mp3",
-    "audio/wav": "wav",
-    "audio/x-wav": "wav",
-    "audio/wave": "wav",
-    "audio/mp4": "m4a",
-    "audio/x-m4a": "m4a",
-    "audio/m4a": "m4a",
+    "application/vnd.ms-excel": "xls", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/vnd.ms-powerpoint": "ppt", "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "text/plain": "txt", "audio/mpeg": "mp3", "audio/mp3": "mp3",
+    "audio/wav": "wav", "audio/x-wav": "wav", "audio/wave": "wav",
+    "audio/mp4": "m4a", "audio/x-m4a": "m4a", "audio/m4a": "m4a",
 }
 
 REPORT_REASONS = ["spam", "abuse", "scam", "18+", "fake", "other"]
 
-# ===== МАГАЗИН =====
 SHOP_ITEMS = {
-    # PDG
     "pdg_1d": {"category": "pdg", "name": "PDG 1 день", "price": 4.30, "days": 1},
     "pdg_30d": {"category": "pdg", "name": "PDG 30 дней", "price": 99, "days": 30},
     "pdg_3m": {"category": "pdg", "name": "PDG 3 месяца", "price": 290, "days": 90},
     "pdg_6m": {"category": "pdg", "name": "PDG 6 месяцев", "price": 585, "days": 180},
     "pdg_9m": {"category": "pdg", "name": "PDG 9 месяцев", "price": 875, "days": 270},
     "pdg_12m": {"category": "pdg", "name": "PDG 12 месяцев", "price": 1152, "days": 365},
-
-    # File Plus
     "fp_1m": {"category": "file_plus", "name": "File Plus 1 месяц", "price": 100, "days": 30},
     "fp_3m": {"category": "file_plus", "name": "File Plus 3 месяца", "price": 280, "days": 90},
     "fp_6m": {"category": "file_plus", "name": "File Plus 6 месяцев", "price": 550, "days": 180},
     "fp_12m": {"category": "file_plus", "name": "File Plus 12 месяцев", "price": 1125, "days": 365},
-
-    # Докупка МБ
     "mb_10": {"category": "mb", "name": "10 МБ", "price": 50, "mb": 10},
     "mb_50": {"category": "mb", "name": "50 МБ", "price": 232, "mb": 50},
     "mb_100": {"category": "mb", "name": "100 МБ", "price": 464, "mb": 100},
@@ -187,7 +173,8 @@ def user_to_dict(u):
         "premium_until": u.get("premium_until"),
         "file_plus": check_file_plus(u),
         "file_plus_until": u.get("file_plus_until"),
-        "file_quota_extra": u.get("file_quota_bytes", 0) or 0,
+        "hide_last_seen": u.get("hide_last_seen", False),
+        "who_can_message": u.get("who_can_message", "all")
     }
 
 
@@ -195,7 +182,7 @@ def user_public_dict(u):
     from db import is_online
     if not u:
         return None
-    return {
+    res = {
         "id": u["id"],
         "username": u.get("username"),
         "first_name": u.get("first_name"),
@@ -206,8 +193,12 @@ def user_public_dict(u):
         "bio": u.get("bio"),
         "last_seen": u.get("last_seen"),
         "is_online": is_online(u),
-        "banned": u.get("banned", False),
+        "banned": u.get("banned", False)
     }
+    if u.get("hide_last_seen"):
+        res["last_seen"] = None
+        res["is_online"] = False
+    return res
 
 
 def check_banned(user):
@@ -371,7 +362,7 @@ def api_heartbeat():
     return jsonify({"ok": True})
 
 
-# ==================== PROFILE ====================
+# ==================== PROFILE & SETTINGS ====================
 
 @app.route("/api/profile", methods=["POST"])
 def api_profile():
@@ -424,16 +415,15 @@ def api_profile_username():
     if not user:
         return jsonify({"error": "Не авторизован"}), 401
 
-    used = count_username_changes_24h(user["id"])
-    if used >= USERNAME_CHANGE_LIMIT_24H:
-        return jsonify({
-            "error": f"Лимит {USERNAME_CHANGE_LIMIT_24H} смен @username за 24 часа",
-            "limit_reached": True,
-            "used": used,
-        }), 429
-
     data = request.get_json() or {}
     username = (data.get("username") or "").strip().lstrip("@")
+
+    min_len = 1 if user.get("role") in ("owner", "developer") else 4
+    if len(username) < min_len:
+        return jsonify({
+            "error": f"Такие редкие юзернеймы (до {min_len} символов) можно купить на Frigdmant",
+            "rare_username": True
+        }), 400
 
     ok, err = validate_username(username, user.get("role", "user"))
     if not ok:
@@ -444,7 +434,19 @@ def api_profile_username():
 
     existing = get_user_by_username(username)
     if existing and existing["id"] != user["id"]:
-        return jsonify({"error": "Этот @username занят"}), 400
+        return jsonify({"error": "Этот @username уже занят"}), 400
+
+    on_market = is_username_on_frigdmant(username)
+    if on_market:
+        return jsonify({
+            "error": "Этот юзернейм сейчас на продаже",
+            "on_frigdmant": True,
+            "price": on_market["price"]
+        }), 400
+
+    used = count_username_changes_24h(user["id"])
+    if used >= USERNAME_CHANGE_LIMIT_24H and user.get("role") not in ("owner", "developer"):
+        return jsonify({"error": f"Лимит {USERNAME_CHANGE_LIMIT_24H} смен @username за 24 часа"}), 429
 
     updated = update_user_username(user["id"], username)
     register_username_change(user["id"])
@@ -487,6 +489,34 @@ def api_username_limit():
         "limit": USERNAME_CHANGE_LIMIT_24H,
         "left": max(0, USERNAME_CHANGE_LIMIT_24H - used),
     })
+
+
+@app.route("/api/settings/privacy", methods=["POST"])
+def api_privacy():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+
+    data = request.get_json() or {}
+    update_privacy_settings(user["id"], data.get("hide_last_seen"), data.get("who_can_message"))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/sessions", methods=["GET"])
+def api_sessions_get():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+    return jsonify({"sessions": get_user_sessions(user["id"])})
+
+
+@app.route("/api/sessions/<int:sid>", methods=["DELETE"])
+def api_sessions_del(sid):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+    delete_session(sid, user["id"])
+    return jsonify({"ok": True})
 
 
 # ==================== USERS ====================
@@ -536,6 +566,88 @@ def api_user_profile(user_id):
         return jsonify({"error": "Юзер не найден"}), 404
 
     return jsonify({"user": user_public_dict(target)})
+
+
+# ==================== FRIGDMANT & INVENTORY ====================
+
+@app.route("/api/usernames/my")
+def api_usernames_my():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+    return jsonify({"active": user.get("username"), "collection": get_user_usernames(user["id"])})
+
+
+@app.route("/api/usernames/activate", methods=["POST"])
+def api_usernames_activate():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+    if activate_username(user["id"], (request.get_json() or {}).get("username", "").strip()):
+        return jsonify({"ok": True})
+    return jsonify({"error": "Не удалось активировать"}), 400
+
+
+@app.route("/api/frigdmant/listings")
+def api_frig_listings():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+    return jsonify({"market": get_frigdmant_listings(), "my_listings": get_user_listings(user["id"])})
+
+
+@app.route("/api/frigdmant/list", methods=["POST"])
+def api_frig_list():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+    data = request.get_json() or {}
+    price = int(data.get("price", 0))
+    if price < 42:
+        return jsonify({"error": "Мин. цена 42 Di"}), 400
+
+    owned = [u["username"] for u in get_user_usernames(user["id"])]
+    if user["username"] == data.get("username"):
+        owned.append(user["username"])
+    if data.get("username") not in owned:
+        return jsonify({"error": "Вы не владеете этим юзернеймом"}), 403
+
+    supabase.table("owned_usernames").delete().eq("user_id", user["id"]).eq("username", data["username"]).execute()
+    create_frigdmant_listing(user["id"], "user", user["id"], data["username"], price, data.get("listing_type", "buyout"))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/frigdmant/buy", methods=["POST"])
+def api_frig_buy():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+    success, err = buy_frigdmant_listing((request.get_json() or {}).get("listing_id"), user["id"])
+    if success:
+        return jsonify({"ok": True})
+    return jsonify({"error": err}), 400
+
+
+@app.route("/api/frigdmant/bid", methods=["POST"])
+def api_frig_bid():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+    data = request.get_json() or {}
+    success, err = place_frigdmant_bid(data.get("listing_id"), user["id"], int(data.get("amount", 0)))
+    if success:
+        return jsonify({"ok": True})
+    return jsonify({"error": err}), 400
+
+
+@app.route("/api/frigdmant/cancel", methods=["POST"])
+def api_frig_cancel():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Не авторизован"}), 401
+    if cancel_listing((request.get_json() or {}).get("listing_id"), user["id"]):
+        return jsonify({"ok": True})
+    return jsonify({"error": "Ошибка отмены"}), 400
 
 
 # ==================== SHOP ====================
@@ -606,8 +718,7 @@ def api_transactions():
     user = get_current_user()
     if not user:
         return jsonify({"error": "Не авторизован"}), 401
-    transactions = get_user_transactions(user["id"], limit=50)
-    return jsonify({"transactions": transactions})
+    return jsonify({"transactions": get_user_transactions(user["id"], limit=50)})
 
 
 # ==================== CHATS ====================
@@ -617,7 +728,6 @@ def api_chats():
     user = get_current_user()
     if not user:
         return jsonify({"error": "Не авторизован"}), 401
-
     if not user.get("profile_completed"):
         return jsonify({"error": "Заполни профиль"}), 403
 
@@ -631,7 +741,6 @@ def api_all_list():
     user = get_current_user()
     if not user:
         return jsonify({"error": "Не авторизован"}), 401
-
     if not user.get("profile_completed"):
         return jsonify({"error": "Заполни профиль"}), 403
 
@@ -654,7 +763,6 @@ def api_chats_create():
     other_id = data.get("user_id")
     if not other_id:
         return jsonify({"error": "user_id обязателен"}), 400
-
     if other_id == user["id"]:
         return jsonify({"error": "Нельзя чатиться с самим собой"}), 400
 
@@ -675,7 +783,6 @@ def api_chat_messages(chat_id):
     chat = get_chat_by_id(chat_id)
     if not chat:
         return jsonify({"error": "Чат не найден"}), 404
-
     if user["id"] not in (chat["user1_id"], chat["user2_id"]):
         return jsonify({"error": "Нет доступа"}), 403
 
@@ -742,7 +849,6 @@ def api_message_delete(message_id):
     msg = get_message_by_id(message_id)
     if not msg:
         return jsonify({"error": "Сообщение не найдено"}), 404
-
     if msg["sender_id"] != user["id"]:
         return jsonify({"error": "Можно удалять только свои"}), 403
 
@@ -984,7 +1090,6 @@ def api_upload_file():
     if size > MAX_FILE_SIZE:
         return jsonify({"error": "Файл больше 3 МБ"}), 400
 
-    # Проверка квоты
     base_quota = FILE_QUOTA_BASE
     extra_quota = user.get("file_quota_bytes", 0) or 0
     total_quota = base_quota + extra_quota
