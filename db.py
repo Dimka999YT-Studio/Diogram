@@ -913,3 +913,118 @@ def is_ban_expired(user: dict) -> bool:
         return datetime.now(timezone.utc) > until_dt
     except Exception:
         return False
+# ============ НАСТРОЙКИ (PRIVACY PLUS) И СЕССИИ ============
+
+def update_privacy_settings(user_id: int, hide_last_seen: bool = None, who_can_message: str = None):
+    data = {}
+    if hide_last_seen is not None:
+        data["hide_last_seen"] = hide_last_seen
+    if who_can_message is not None:
+        data["who_can_message"] = who_can_message
+    if not data:
+        return False
+    supabase.table("users").update(data).eq("id", user_id).execute()
+    return True
+
+
+def get_user_sessions(user_id: int):
+    res = supabase.table("user_sessions").select("*").eq("user_id", user_id).order("last_used", desc=True).execute()
+    return res.data or []
+
+
+def delete_session(session_id: int, user_id: int):
+    supabase.table("user_sessions").delete().eq("id", session_id).eq("user_id", user_id).execute()
+
+
+# ============ FRIGDMANT И ИНВЕНТАРЬ ============
+
+def get_user_usernames(user_id: int) -> list:
+    res = supabase.table("owned_usernames").select("*").eq("user_id", user_id).order("purchased_at", desc=True).execute()
+    return res.data or []
+
+
+def activate_username(user_id: int, username: str) -> bool:
+    res = supabase.table("owned_usernames").select("*").eq("user_id", user_id).eq("username", username).execute()
+    if not res.data:
+        return False
+    existing = get_user_by_username(username)
+    if existing and existing["id"] != user_id:
+        return False
+    old_user = get_user_by_id(user_id)
+    old_name = old_user.get("username")
+    
+    supabase.table("users").update({"username": username}).eq("id", user_id).execute()
+    supabase.table("owned_usernames").delete().eq("user_id", user_id).eq("username", username).execute()
+    
+    if old_name and not old_name.startswith("user_") and not old_name.startswith("ch_"):
+        supabase.table("owned_usernames").insert({"user_id": user_id, "username": old_name}).execute()
+    return True
+
+
+def is_username_on_frigdmant(username: str) -> dict:
+    res = supabase.table("frigdmant_listings").select("*").eq("username", username).eq("status", "active").execute()
+    return res.data[0] if res.data else None
+
+
+def create_frigdmant_listing(seller_id: int, target_type: str, target_id: int, username: str, price: int, listing_type: str) -> dict:
+    end_time = None
+    if listing_type == "auction":
+        end_time = (datetime.now(timezone.utc) + timedelta(days=14)).isoformat()
+    data = {
+        "seller_id": seller_id,
+        "target_type": target_type,
+        "target_id": target_id,
+        "username": username,
+        "price": price,
+        "listing_type": listing_type,
+        "end_time": end_time
+    }
+    res = supabase.table("frigdmant_listings").insert(data).execute()
+    return res.data[0] if res.data else None
+
+
+def get_frigdmant_listings() -> list:
+    now = datetime.now(timezone.utc).isoformat()
+    expired = supabase.table("frigdmant_listings").select("id").eq("status", "active").eq("listing_type", "auction").lt("end_time", now).execute()
+    for item in (expired.data or []):
+        supabase.rpc("close_auction_atomic", {"p_listing_id": item["id"]}).execute()
+    
+    res = supabase.table("frigdmant_listings").select("*").eq("status", "active").order("created_at", desc=True).execute()
+    listings = res.data or []
+    for l in listings:
+        seller = get_user_by_id(l["seller_id"])
+        l["seller_username"] = seller.get("username") if seller else "unknown"
+    return listings
+
+
+def get_user_listings(user_id: int) -> list:
+    res = supabase.table("frigdmant_listings").select("*").eq("seller_id", user_id).eq("status", "active").execute()
+    return res.data or []
+
+
+def cancel_listing(listing_id: int, user_id: int) -> bool:
+    res = supabase.table("frigdmant_listings").update({"status": "cancelled"}).eq("id", listing_id).eq("seller_id", user_id).eq("status", "active").execute()
+    if res.data:
+        supabase.table("owned_usernames").insert({"user_id": user_id, "username": res.data[0]["username"]}).execute()
+        return True
+    return False
+
+
+def buy_frigdmant_listing(listing_id: int, buyer_id: int) -> tuple:
+    try:
+        res = supabase.rpc("buy_username_atomic", {"p_listing_id": listing_id, "p_buyer_id": buyer_id}).execute()
+        if res.data and res.data[0]["success"]:
+            return True, None
+        return False, res.data[0]["error_msg"] if res.data else "Ошибка"
+    except Exception as e:
+        return False, str(e)
+
+
+def place_frigdmant_bid(listing_id: int, bidder_id: int, amount: int) -> tuple:
+    try:
+        res = supabase.rpc("place_bid_atomic", {"p_listing_id": listing_id, "p_bidder_id": bidder_id, "p_amount": amount}).execute()
+        if res.data and res.data[0]["success"]:
+            return True, None
+        return False, res.data[0]["error_msg"] if res.data else "Ошибка"
+    except Exception as e:
+        return False, str(e)
