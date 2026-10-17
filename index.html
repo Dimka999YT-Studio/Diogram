@@ -424,6 +424,49 @@
     </div>
   </div>
 
+  <!-- USER PROFILE (ЧУЖОЙ) -->
+  <div class="screen" id="screen-user-profile">
+    <div class="header">
+      <button class="header-icon" id="btn-user-back">←</button>
+      <h1>Профиль</h1>
+    </div>
+    <div class="profile-screen">
+      <div class="profile-top">
+        <div class="profile-big-avatar" id="user-avatar">D</div>
+        <div class="profile-name"><span id="user-name">Имя</span><span id="user-verified" style="display:none;color:#5b8bff;font-size:20px;">✓</span></div>
+        <div class="profile-status" id="user-status">@username</div>
+      </div>
+      <div class="profile-block">
+        <div class="profile-row"><div class="profile-row-icon">📝</div><div class="profile-row-content"><div class="profile-row-label">О себе</div><div class="profile-row-value" id="user-bio">—</div></div></div>
+        <div class="profile-row"><div class="profile-row-icon">🆔</div><div class="profile-row-content"><div class="profile-row-label">ID</div><div class="profile-row-value" id="user-id">—</div></div></div>
+        <div class="profile-row"><div class="profile-row-icon">🎭</div><div class="profile-row-content"><div class="profile-row-label">Роль</div><div class="profile-row-value" id="user-role">—</div></div></div>
+      </div>
+      <button class="profile-btn primary" id="btn-user-message">💬 Написать сообщение</button>
+      <button class="profile-btn danger" id="btn-user-report">⚠️ Пожаловаться</button>
+    </div>
+  </div>
+
+  <!-- CHANNEL INFO -->
+  <div class="screen" id="screen-channel-info">
+    <div class="header">
+      <button class="header-icon" id="btn-ch-info-back">←</button>
+      <h1>Информация о канале</h1>
+    </div>
+    <div class="ch-info-screen">
+      <div class="ch-info-top">
+        <div class="ch-info-avatar" id="ch-info-avatar">📢</div>
+        <div class="ch-info-name" id="ch-info-name">Канал</div>
+        <div class="ch-info-username" id="ch-info-username">@username</div>
+        <div class="ch-info-type" id="ch-info-type">📢 Публичный</div>
+        <div class="ch-info-subs" id="ch-info-subs">0 подписчиков</div>
+      </div>
+      <button class="profile-btn primary" id="btn-ch-info-edit" style="display:none;">✏️ Редактировать канал</button>
+      <button class="profile-btn secondary" id="btn-ch-info-subscribe" style="display:none;">➕ Подписаться</button>
+      <button class="profile-btn secondary" id="btn-ch-info-unsubscribe" style="display:none;">🔕 Отписаться</button>
+      <button class="profile-btn danger" id="btn-ch-info-delete" style="display:none;">🗑️ Удалить канал</button>
+    </div>
+  </div>
+
   <!-- НАСТРОЙКИ -->
   <div class="screen" id="screen-settings">
     <div class="header">
@@ -591,11 +634,32 @@
 
 <div class="modal" id="modal-ch-edit"><div class="modal-bg" onclick="closeModal('modal-ch-edit')"></div><div class="modal-content"><div class="modal-title">✏️ Редактировать канал</div><div style="text-align:center;margin-bottom:16px;"><div class="ch-info-avatar" id="ch-edit-avatar" style="width:80px;height:80px;font-size:36px;border-radius:20px;margin:0 auto;cursor:pointer;">📢</div><div style="font-size:12px;color:#7e8b99;margin-top:6px;">Нажми чтобы изменить аватарку</div><input type="file" id="ch-edit-avatar-file" accept="image/*" style="display:none;"></div><div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">Название</div><input type="text" id="ch-edit-name" placeholder="Название" maxlength="64" style="margin-bottom:12px;"><div id="ch-edit-username-row"><div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">@username</div><input type="text" id="ch-edit-username" placeholder="username" maxlength="32" style="margin-bottom:12px;"></div><div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">Тип канала</div><div style="display:flex;gap:6px;margin-bottom:12px;"><button class="reason-option" data-type="public" id="ch-edit-type-public" style="flex:1;text-align:center;margin:0;">📢 Публичный</button><button class="reason-option" data-type="secret" id="ch-edit-type-secret" style="flex:1;text-align:center;margin:0;">🌍 Глобальный</button></div><div class="error" id="modal-ch-edit-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-ch-edit')">Отмена</button><button class="btn" id="btn-ch-save">Сохранить</button></div></div></div>
 
+<div class="modal" id="modal-frig-new"><div class="modal-bg" onclick="closeModal('modal-frig-new')"></div><div class="modal-content"><div class="modal-title">🏷️ Выставить на Frigdmant</div>
+<div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">Что продаём?</div>
+<select id="frig-target" style="margin-bottom:12px; width: 100%; padding: 14px; border-radius: 12px; background: #17212b; color: #fff; border: 1.5px solid #242f3d; font-size: 15px;">
+  <option value="user">Мой личный @username</option>
+</select>
+<div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">Тип продажи</div>
+<div style="display:flex;gap:6px;margin-bottom:12px;">
+  <button class="reason-option selected" data-ltype="buyout" id="frig-type-buyout" style="flex:1;text-align:center;margin:0;">Фикс-цена</button>
+  <button class="reason-option" data-ltype="auction" id="frig-type-auction" style="flex:1;text-align:center;margin:0;">Аукцион (14 дней)</button>
+</div>
+<div style="font-size:12px;color:#7e8b99;margin-bottom:4px;">Цена (в Di)</div>
+<input type="number" id="frig-price" placeholder="Мин. 42" min="42" style="margin-bottom:12px;">
+<div style="font-size:12px;color:#ff5b5b;margin-bottom:8px;line-height:1.4;">Внимание: после продажи вы потеряете этот юз, а комиссия составит 17% (сжигается) + 3% (если цена > 5200 Di).</div>
+<div class="error" id="modal-frig-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-frig-new')">Отмена</button><button class="btn" id="btn-frig-create">Выставить</button></div></div></div>
+
+<div class="modal" id="modal-frig-action"><div class="modal-bg" onclick="closeModal('modal-frig-action')"></div><div class="modal-content"><div class="modal-title" id="frig-action-title">Купить</div>
+<div id="frig-action-info" style="font-size:14px;margin-bottom:16px;text-align:center;"></div>
+<div id="frig-action-input-block"><input type="number" id="frig-bid-amount" placeholder="Ваша ставка" style="margin-bottom:12px;"></div>
+<div class="error" id="modal-frig-action-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-frig-action')">Отмена</button><button class="btn" id="btn-frig-confirm-action">Подтвердить</button></div></div></div>
+
 <div class="photo-viewer" id="photo-viewer">
   <button class="photo-viewer-close" onclick="closePhotoViewer()">✕</button>
   <img id="photo-viewer-img">
-     </div>
-     <script>
+</div>
+
+<script>
 const API = location.origin;
 const RATE = 1.59;
 const COIN_URL = "https://ltpduienoflklktunihc.supabase.co/storage/v1/object/public/chat-photos/Diogram.coin.di.jpg";
@@ -1556,4 +1620,4 @@ document.getElementById("menu-new-channel").onclick = () => { closeMenu(); creat
 })();
 </script>
 </body>
-</html>
+     </html>
