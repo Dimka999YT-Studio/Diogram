@@ -6,3 +6,4 @@ bcrypt
 pyjwt
 requests
 Pillow
+groq
