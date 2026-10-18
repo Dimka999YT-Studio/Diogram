@@ -54,11 +54,16 @@ JWT_EXP_DAYS = 30
 WORKER_KEY = os.environ.get("WORKER_KEY", "").strip()
 
 # ==================== AI (GROQ) ====================
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
-groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+import httpx
 
-# ID аккаунта Дио в базе данных (юзер 'Robot')
-DIO_BOT_ID = 1000011
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+
+if GROQ_API_KEY:
+    # Создаём http-клиент, который игнорирует прокси Railway
+    http_client = httpx.Client(trust_env=False, timeout=30.0)
+    groq_client = Groq(api_key=GROQ_API_KEY, http_client=http_client)
+else:
+    groq_client = None
 # ===================================================
 
 ALLOWED_DOMAINS = ["gmail.com", "yandex.com", "yandex.ru", "mail.ru", "outlook.com", "list.ru", "bk.ru", "inbox.ru"]
