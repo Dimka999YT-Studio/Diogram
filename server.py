@@ -4,12 +4,14 @@ import time
 import io
 import re
 import random
+import threading
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from PIL import Image
 from groq import Groq
+import httpx
 
 from db import (
     email_exists, create_user, get_user_by_email,
@@ -54,16 +56,17 @@ JWT_EXP_DAYS = 30
 WORKER_KEY = os.environ.get("WORKER_KEY", "").strip()
 
 # ==================== AI (GROQ) ====================
-import httpx
-
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 
 if GROQ_API_KEY:
-    # Создаём http-клиент, который игнорирует прокси Railway
+    # trust_env=False отключает попытки использовать прокси Railway
     http_client = httpx.Client(trust_env=False, timeout=30.0)
     groq_client = Groq(api_key=GROQ_API_KEY, http_client=http_client)
 else:
     groq_client = None
+
+# ID аккаунта Дио в базе данных (юзер 'Robot')
+DIO_BOT_ID = 1000011
 # ===================================================
 
 ALLOWED_DOMAINS = ["gmail.com", "yandex.com", "yandex.ru", "mail.ru", "outlook.com", "list.ru", "bk.ru", "inbox.ru"]
@@ -268,6 +271,7 @@ def get_chat_history_for_ai(chat_id, bot_id, limit=15):
 def get_dio_reply(history, user_text):
     """Стучится в Groq и получает ответ от Дио"""
     if not groq_client:
+        print("[AI] Groq клиент не инициализирован (нет ключа?)")
         return "Брат, у меня инет отвалился, подожди немного 😅"
     
     system_prompt = (
@@ -287,16 +291,38 @@ def get_dio_reply(history, user_text):
         messages.append({"role": "user", "content": user_text})
     
     try:
+        print(f"[AI] Отправляю запрос в Groq: {user_text[:50]}...")
         response = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=messages,
             temperature=0.9,
             max_tokens=250,
         )
+        print("[AI] Успешный ответ от Groq")
         return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"[AI] Groq error: {e}")
+        print(f"[AI] Groq error: {type(e).__name__}: {e}")
         return "Слушай, что-то у меня интернет тупит. Давай позже 😅"
+
+
+def process_ai_reply(chat_id, user_text):
+    """Фоновая задача для ответа Дио (чтобы не блокировать сервер)"""
+    try:
+        # Задержка, чтобы казалось, что он "думает"
+        time.sleep(random.uniform(2, 4))
+        
+        # Получаем контекст
+        history = get_chat_history_for_ai(chat_id, DIO_BOT_ID, limit=15)
+        
+        # Спрашиваем Groq
+        ai_text = get_dio_reply(history, user_text)
+        
+        # Сохраняем ответ
+        if ai_text:
+            save_message(chat_id, DIO_BOT_ID, ai_text, "text")
+            print(f"[AI] Ответ Дио сохранён в чат {chat_id}")
+    except Exception as e:
+        print(f"[AI] Ошибка в фоновом процессе: {e}")
 
 
 # ==================== STATIC ====================
@@ -916,28 +942,17 @@ def api_send():
     # 2. Проверяем, не пишет ли пользователь Дио
     other_id = chat["user2_id"] if chat["user1_id"] == user["id"] else chat["user1_id"]
 
-    # Если собеседник — Дио и пишет не Дио сам себе
     if other_id == DIO_BOT_ID and user["id"] != DIO_BOT_ID:
-        # Человеческое поведение: не отвечает на короткие/пустые сообщения
         stripped = text.strip().lower()
         should_reply = len(stripped) >= 2 and stripped not in ("ок", "ok", "ага", "угу", "да", "нет")
         
         if should_reply:
-            try:
-                # Имитация "печатает..." — задержка 3-6 секунд
-                time.sleep(random.uniform(3, 6))
-                
-                # Получаем контекст диалога
-                history = get_chat_history_for_ai(chat_id, DIO_BOT_ID, limit=15)
-                
-                # Спрашиваем Groq
-                ai_text = get_dio_reply(history, text)
-                
-                # Сохраняем ответ от лица Дио
-                if ai_text:
-                    save_message(chat_id, DIO_BOT_ID, ai_text, "text")
-            except Exception as e:
-                print(f"[AI] Ошибка ответа: {e}")
+            # ЗАПУСКАЕМ В ФОНЕ! Сервер не блокируется
+            threading.Thread(
+                target=process_ai_reply,
+                args=(chat_id, text),
+                daemon=True
+            ).start()
     
     return jsonify({"ok": True, "message": msg})
 
