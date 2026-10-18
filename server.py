@@ -1920,10 +1920,3 @@ def worker_task_done():
     if email:
         supabase.table("pending_codes").update({"sent": True}).eq("email", email.lower()).execute()
     return jsonify({"ok": True})
-
-
-# ==================== RUN ====================
-
-port = int(os.environ.get("PORT", 8080))
-print("Server on " + str(port))
-app.run(host="0.0.0.0", port=port, debug=False)
