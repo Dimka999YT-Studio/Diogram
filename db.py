@@ -187,7 +187,6 @@ def get_user_transactions(user_id: int, limit: int = 50) -> list:
 # ============ ПОДПИСКИ ============
 
 def activate_premium(user_id: int, days: int, cost: int, description: str) -> tuple:
-    """Активирует PDG на N дней. Списывает balance."""
     success, err = spend_balance(user_id, cost, description)
     if not success:
         return False, err
@@ -195,7 +194,6 @@ def activate_premium(user_id: int, days: int, cost: int, description: str) -> tu
     user = get_user_by_id(user_id)
     now = datetime.now(timezone.utc)
     
-    # Если уже есть активная подписка — продлеваем
     current_until = user.get("premium_until")
     if current_until:
         try:
@@ -218,7 +216,6 @@ def activate_premium(user_id: int, days: int, cost: int, description: str) -> tu
 
 
 def activate_file_plus(user_id: int, days: int, cost: int, description: str) -> tuple:
-    """Активирует File Plus на N дней."""
     success, err = spend_balance(user_id, cost, description)
     if not success:
         return False, err
@@ -239,10 +236,6 @@ def activate_file_plus(user_id: int, days: int, cost: int, description: str) -> 
     else:
         new_until = now + timedelta(days=days)
     
-    # Добавляем квоту 42 МБ × месяцев
-    months = max(1, days // 30)
-    extra_quota = 42 * 1024 * 1024 * months
-    
     supabase.table("users").update({
         "file_plus": True,
         "file_plus_until": new_until.isoformat()
@@ -252,7 +245,6 @@ def activate_file_plus(user_id: int, days: int, cost: int, description: str) -> 
 
 
 def add_file_quota(user_id: int, bytes_amount: int) -> bool:
-    """Добавляет квоту байтов к file_quota_bytes"""
     try:
         user = get_user_by_id(user_id)
         current = user.get("file_quota_bytes", 0) or 0
@@ -265,7 +257,6 @@ def add_file_quota(user_id: int, bytes_amount: int) -> bool:
 
 
 def check_premium(user: dict) -> bool:
-    """Проверяет активна ли PDG подписка"""
     if not user or not user.get("premium"):
         return False
     until = user.get("premium_until")
@@ -279,7 +270,6 @@ def check_premium(user: dict) -> bool:
 
 
 def check_file_plus(user: dict) -> bool:
-    """Проверяет активна ли File Plus"""
     if not user or not user.get("file_plus"):
         return False
     until = user.get("file_plus_until")
@@ -295,7 +285,6 @@ def check_file_plus(user: dict) -> bool:
 # ============ ЛИМИТЫ ФОТО И АВАТАРОК ============
 
 def can_change_avatar(user_id: int) -> tuple:
-    """Может ли юзер сменить аватарку. Возвращает (can, next_date_or_none)"""
     user = get_user_by_id(user_id)
     if not user:
         return False, None
@@ -316,7 +305,6 @@ def can_change_avatar(user_id: int) -> tuple:
 
 
 def can_upload_photo(user_id: int) -> tuple:
-    """Может ли юзер отправить фото. (can, next_date_or_none)"""
     user = get_user_by_id(user_id)
     if not user:
         return False, None
@@ -355,7 +343,6 @@ def register_photo_upload(user_id: int) -> None:
 # ============ ФАЙЛЫ ============
 
 def get_file_quota_used(user_id: int) -> int:
-    """Сколько байт истрачено за последний месяц"""
     cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     res = supabase.table("file_uploads").select("size_bytes").eq("user_id", user_id).gt(
         "uploaded_at", cutoff
@@ -496,8 +483,8 @@ def save_message(chat_id: int, sender_id: int, text: str, msg_type: str = "text"
         data["attachment_name"] = attachment_name
     if file_type:
         data["file_type"] = file_type
-    if file_size := attachment_size:
-        data["file_size"] = file_size
+    if attachment_size:
+        data["file_size"] = attachment_size
     if attachment_name:
         data["file_name"] = attachment_name
     if file_mime:
@@ -913,6 +900,8 @@ def is_ban_expired(user: dict) -> bool:
         return datetime.now(timezone.utc) > until_dt
     except Exception:
         return False
+
+
 # ============ НАСТРОЙКИ (PRIVACY PLUS) И СЕССИИ ============
 
 def update_privacy_settings(user_id: int, hide_last_seen: bool = None, who_can_message: str = None):
@@ -1027,24 +1016,34 @@ def place_frigdmant_bid(listing_id: int, bidder_id: int, amount: int) -> tuple:
             return True, None
         return False, res.data[0]["error_msg"] if res.data else "Ошибка"
     except Exception as e:
-        return Faltimezone.ut
-        def create_group_chat(owner_id, name, member_ids):
+        return False, str(e)
+
+
+# ============ ГРУППЫ И КОЛЛЕКЦИИ ============
+
+def create_group_chat(owner_id, name, member_ids):
     res = supabase.table("chats").insert({
-        "is_group": True, "name": name, "owner_id": owner_id
+        "is_group": True, 
+        "name": name, 
+        "owner_id": owner_id
     }).execute()
-    if not res.data: return None
+    if not res.data: 
+        return None
     chat_id = res.data[0]["id"]
     members = [{"chat_id": chat_id, "user_id": uid} for uid in set(member_ids + [owner_id])]
     supabase.table("chat_members").insert(members).execute()
     return res.data[0]
 
+
 def get_chat_members(chat_id):
     res = supabase.table("chat_members").select("user_id").eq("chat_id", chat_id).execute()
     return [m["user_id"] for m in (res.data or [])]
 
+
 def is_chat_member(chat_id, user_id):
     res = supabase.table("chat_members").select("id").eq("chat_id", chat_id).eq("user_id", user_id).execute()
     return len(res.data or []) > 0
+
 
 def get_username_purchase_info(username):
     res = supabase.table("frigdmant_listings").select("*").eq("username", username).eq("status", "sold").order("created_at", desc=True).limit(1).execute()
