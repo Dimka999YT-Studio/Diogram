@@ -372,6 +372,7 @@
     </div>
     <div class="messages" id="channel-messages"></div>
     <div class="input-area" id="channel-input-area" style="display:none;">
+      <button class="input-btn" id="btn-channel-attach">📎</button>
       <input id="channel-input" placeholder="Сообщение в канал..." autocomplete="off">
       <button class="send-btn" id="channel-send-btn">➤</button>
     </div>
@@ -457,7 +458,6 @@
         <div class="profile-status" id="user-status">@username</div>
       </div>
       
-      <!-- Блок коллекции -->
       <div class="profile-block" id="user-collection-block" style="display:none;">
         <div class="profile-row">
           <div class="profile-row-icon">⭐</div>
@@ -1025,7 +1025,6 @@ function appendMessage(m) {
   }
   content += linkify(m.text || "");
   
-  // Показываем имя отправителя в группах (если это не мы)
   if (currentChat.other && currentChat.other.is_group && !isOwn && m.sender_name) {
       content = '<div style="font-size:11px;color:#5b8bff;margin-bottom:2px;font-weight:600;">' + escapeHtml(m.sender_name) + '</div>' + content;
   }
@@ -1039,7 +1038,7 @@ function appendMessage(m) {
 function openPhotoViewer(url) { document.getElementById("photo-viewer-img").src = url; document.getElementById("photo-viewer").classList.add("active"); }
 function closePhotoViewer() { document.getElementById("photo-viewer").classList.remove("active"); }
 
-// Textarea авто-ростconst msgInput = document.getElementById("msg-input");
+const msgInput = document.getElementById("msg-input");
 msgInput.addEventListener("input", function() {
   this.style.height = "auto";
   this.style.height = (this.scrollHeight) + "px";
@@ -1174,6 +1173,14 @@ function startChannelPolling() {
 document.getElementById("btn-back-channel").onclick = () => { if (channelPollInterval) clearInterval(channelPollInterval); currentChannel = null; show("screen-list"); loadList(); };
 document.getElementById("channel-header-info").onclick = () => { if (currentChannel) openChannelInfo(currentChannel.id); };
 document.getElementById("btn-channel-report").onclick = () => { if (!currentChannel) return; reportTarget = { type: "channel", channel_id: currentChannel.id, name: currentChannel.name }; openReportModal(); };
+
+// Attach file in channel
+document.getElementById("btn-channel-attach").onclick = () => {
+    if (!currentChannel) return;
+    // В каналах пока разрешим только фото, чтобы не усложнять
+    document.getElementById("photo-file-input").accept = "image/*";
+    document.getElementById("photo-file-input").click();
+};
 
 async function openChannelInfo(channelId) {
   try {
@@ -1812,4 +1819,4 @@ document.getElementById("menu-new-channel").onclick = () => { closeMenu(); creat
 })();
 </script>
 </body>
- </html>
+                                                                                                                                                 </html>
