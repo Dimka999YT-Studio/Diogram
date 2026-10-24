@@ -1027,4 +1027,28 @@ def place_frigdmant_bid(listing_id: int, bidder_id: int, amount: int) -> tuple:
             return True, None
         return False, res.data[0]["error_msg"] if res.data else "Ошибка"
     except Exception as e:
-        return False, str(e)
+        return Faltimezone.ut
+        def create_group_chat(owner_id, name, member_ids):
+    res = supabase.table("chats").insert({
+        "is_group": True, "name": name, "owner_id": owner_id
+    }).execute()
+    if not res.data: return None
+    chat_id = res.data[0]["id"]
+    members = [{"chat_id": chat_id, "user_id": uid} for uid in set(member_ids + [owner_id])]
+    supabase.table("chat_members").insert(members).execute()
+    return res.data[0]
+
+def get_chat_members(chat_id):
+    res = supabase.table("chat_members").select("user_id").eq("chat_id", chat_id).execute()
+    return [m["user_id"] for m in (res.data or [])]
+
+def is_chat_member(chat_id, user_id):
+    res = supabase.table("chat_members").select("id").eq("chat_id", chat_id).eq("user_id", user_id).execute()
+    return len(res.data or []) > 0
+
+def get_username_purchase_info(username):
+    res = supabase.table("frigdmant_listings").select("*").eq("username", username).eq("status", "sold").order("created_at", desc=True).limit(1).execute()
+    if res.data:
+        listing = res.data[0]
+        return {"price": listing.get("price", 0), "date": listing.get("updated_at") or listing.get("created_at")}
+    return None
