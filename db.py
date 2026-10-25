@@ -69,15 +69,21 @@ def get_user_by_username(username: str) -> dict:
 
 def search_users(query: str, current_user_id: int, limit: int = 20) -> list:
     query = query.lower().lstrip("@")
-    query = query.replace("%", "").replace("_", " ").strip()
+    query = query.replace("%", "").replace("*", "").replace("\\", "").replace("_", " ").strip()[:64]
     if not query:
         return []
-    res = supabase.table("users").select(
-        "id, username, first_name, last_name, verified, role, avatar_url"
-    ).or_(
-        f"username.ilike.%{query}%,first_name.ilike.%{query}%"
-    ).neq("id", current_user_id).eq("banned", False).limit(limit).execute()
-    return res.data or []
+    # Важно: НЕ собираем строку для .or_() из пользовательского ввода — запятая/скобки в ней
+    # позволяли бы подмешивать произвольные условия (угадывание email, баланса и т.д.).
+    # Каждый .ilike() передаёт значение как один параметр, поэтому инъекция невозможна.
+    pattern = f"%{query}%"
+    found = {}
+    for column in ("username", "first_name"):
+        res = supabase.table("users").select(
+            "id, username, first_name, last_name, verified, role, avatar_url"
+        ).ilike(column, pattern).neq("id", current_user_id).eq("banned", False).limit(limit).execute()
+        for row in (res.data or []):
+            found.setdefault(row["id"], row)
+    return list(found.values())[:limit]
 
 
 def update_user_profile(user_id: int, username: str, first_name: str, last_name: str = None) -> dict:
