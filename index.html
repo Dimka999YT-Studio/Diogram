@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Diogram</title>
+<title>Diogram 1.0.3</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0e1621; color: #fff; overflow: hidden; }
@@ -326,13 +326,24 @@
       <button class="header-icon" id="btn-frigdmant" title="Frigdmant">🏷️</button>
       <button class="header-icon" id="btn-new-channel" title="Новый канал">📢</button>
       <button class="header-icon" id="btn-new-group" title="Новая группа">👥</button>
-      <button class="header-icon" id="btn-new-chat" title="Найти людей">➕</button>
+      <button class="header-icon" id="btn-new-chat" title="Поиск">🔍</button>
     </div>
     <div class="search-bar">
       <input type="text" id="global-search" placeholder="Поиск людей и каналов по @username">
     </div>
     <div class="list" id="list-container">
       <div class="empty-state">Загрузка...</div>
+    </div>
+  </div>
+
+  <!-- SEARCH (NEW) -->
+  <div class="screen" id="screen-search">
+    <div class="header">
+      <button class="header-icon" id="btn-search-back">←</button>
+      <input type="text" id="search-input" placeholder="Введите @username или имя..." style="flex:1; background: transparent; border: none; font-size: 16px; padding: 8px;">
+    </div>
+    <div class="list" id="search-results">
+      <div class="empty-state">Начни вводить имя...</div>
     </div>
   </div>
 
@@ -401,7 +412,6 @@
 
       <div id="profile-subs-block"></div>
 
-      <!-- ИМЯ И BIO (добавлено для фикса) -->
       <div class="profile-block">
         <div class="profile-row" id="edit-name" style="cursor:pointer;">
           <div class="profile-row-icon">✏️</div>
@@ -421,7 +431,6 @@
         </div>
       </div>
 
-      <!-- ЮЗЕРНЕЙМЫ -->
       <div class="profile-block">
         <div class="profile-row">
           <div class="profile-row-icon">👤</div>
@@ -460,7 +469,7 @@
         <div class="profile-name"><span id="user-name">Имя</span><span id="user-verified" style="display:none;color:#5b8bff;font-size:20px;">✓</span></div>
         <div class="profile-status" id="user-status">@username</div>
       </div>
-      <!-- Коллекция (для чужого профиля) -->
+      
       <div class="profile-block" id="user-collection-block" style="display:none;">
         <div class="profile-row">
           <div class="profile-row-icon">⭐</div>
@@ -470,6 +479,7 @@
           </div>
         </div>
       </div>
+
       <div class="profile-block">
         <div class="profile-row"><div class="profile-row-icon">📝</div><div class="profile-row-content"><div class="profile-row-label">О себе</div><div class="profile-row-value" id="user-bio">—</div></div></div>
         <div class="profile-row"><div class="profile-row-icon">🆔</div><div class="profile-row-content"><div class="profile-row-label">ID</div><div class="profile-row-value" id="user-id">—</div></div></div>
@@ -524,7 +534,7 @@
         <div id="sessions-list"></div>
       </div>
       <div class="profile-block">
-        <div class="profile-row"><div class="profile-row-icon">ℹ️</div><div class="profile-row-content"><div class="profile-row-label">Версия</div><div class="profile-row-value">1.0.2</div></div></div>
+        <div class="profile-row"><div class="profile-row-icon">ℹ️</div><div class="profile-row-content"><div class="profile-row-label">Версия</div><div class="profile-row-value">1.0.3</div></div></div>
         <div class="profile-row"><div class="profile-row-icon">💬</div><div class="profile-row-content"><div class="profile-row-label">Поддержка</div><div class="profile-row-value"><a href="https://t.me/Dipxex" target="_blank" style="color:#5b8bff;text-decoration:none;">@Dipxex</a></div></div></div>
       </div>
     </div>
@@ -573,7 +583,6 @@
       <div class="stat-card"><div class="stat-value" id="stat-reports">—</div><div class="stat-label">Жалоб</div><div class="stat-badge" id="stat-reports-badge" style="display:none;">new</div></div>
     </div>
     
-    <!-- График актива -->
     <div style="background: #17212b; margin: 0 16px 16px 16px; border-radius: 12px; padding: 16px;">
         <div style="font-size: 14px; font-weight: 700; margin-bottom: 12px; color: #fff;">Актив регистраций (7 дней)</div>
         <div id="admin-activity-chart"></div>
@@ -664,7 +673,6 @@
 
 <div class="modal" id="modal-bio"><div class="modal-bg" onclick="closeModal('modal-bio')"></div><div class="modal-content"><div class="modal-title">О себе</div><textarea id="modal-bio-input" placeholder="Расскажи о себе..." maxlength="200" rows="4" style="resize:none;"></textarea><div class="error" id="modal-bio-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-bio')">Отмена</button><button class="btn" id="btn-save-bio">Сохранить</button></div></div></div>
 
-<!-- Модалка инфы о юзернейме -->
 <div class="modal" id="modal-username-info">
   <div class="modal-bg" onclick="closeModal('modal-username-info')"></div>
   <div class="modal-content" style="text-align: center;">
@@ -683,7 +691,6 @@
   </div>
 </div>
 
-<!-- Модалка группы -->
 <div class="modal" id="modal-group">
   <div class="modal-bg" onclick="closeModal('modal-group')"></div>
   <div class="modal-content">
@@ -704,7 +711,6 @@
   </div>
 </div>
 
-<!-- Остальные модалки -->
 <div class="modal" id="modal-report"><div class="modal-bg" onclick="closeModal('modal-report')"></div><div class="modal-content"><div class="modal-title">⚠️ Жалоба</div><div id="report-target-info" style="font-size:13px;color:#7e8b99;margin-bottom:12px;text-align:center;"></div><div id="report-reasons-list"></div><textarea id="report-comment" placeholder="Опиши ситуацию (необязательно)" maxlength="500" rows="3" style="resize:none;margin-top:8px;"></textarea><div class="error" id="modal-report-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-report')">Отмена</button><button class="btn" id="btn-send-report">Отправить</button></div></div></div>
 
 <div class="modal" id="modal-ban"><div class="modal-bg" onclick="closeModal('modal-ban')"></div><div class="modal-content"><div class="modal-title">🚫 Забанить</div><div id="ban-target-info" style="font-size:13px;color:#7e8b99;margin-bottom:12px;text-align:center;"></div><textarea id="ban-reason-input" placeholder="Причина бана" maxlength="500" rows="3" style="resize:none;"></textarea><div style="margin-top:12px;font-size:13px;color:#7e8b99;">Срок:</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;" id="ban-duration-list">
@@ -780,6 +786,7 @@ let banDuration = null;
 let balanceTarget = null;
 let frigListingType = "buyout";
 let groupAvatarFile = null;
+let searchTimeout = null;
 
 async function api(path, opts = {}) {
   const headers = { ...(opts.headers || {}) };
@@ -931,11 +938,24 @@ async function loadList() {
   const box = document.getElementById("list-container");
   try {
     const data = await api("/api/all_list");
-    if (!data.items.length) { box.innerHTML = '<div class="empty-state">Пока ничего нет.<br>Нажми ➕ чтобы найти людей,<br>или 📢 чтобы создать канал.</div>'; return; }
+    if (!data.items.length) { box.innerHTML = '<div class="empty-state">Пока ничего нет.<br>Нажми 🔍 чтобы найти людей,<br>или 👥 чтобы создать группу.</div>'; return; }
     box.innerHTML = "";
     for (const item of data.items) {
       const el = document.createElement("div"); el.className = "list-item";
-      if (item.type === "chat") {
+      
+      // Если это группа
+      if (item.type === "group") {
+        const av = document.createElement("div"); av.className = "avatar group";
+        if (item.avatar_url) av.innerHTML = '<img src="' + item.avatar_url + '">';
+        else av.textContent = "👥";
+        el.innerHTML = ''; el.appendChild(av);
+        const info = document.createElement("div"); info.className = "list-info";
+        info.innerHTML = '<div class="list-name">' + escapeHtml(item.name) + ' <span style="font-size:12px;color:#7e8b99;">(группа)</span></div><div class="list-last">' + (item.subscribers_count || 0) + ' участников</div>';
+        el.appendChild(info);
+        el.onclick = () => openChat(item.chat_id, { is_group: true, name: item.name, avatar_url: item.avatar_url });
+      }
+      // Если это личный чат
+      else if (item.type === "chat") {
         const u = item.other_user;
         const name = u.first_name || u.username || "Без имени";
         const av = document.createElement("div"); av.className = "avatar";
@@ -951,7 +971,9 @@ async function loadList() {
         meta.innerHTML = '<div class="list-time">' + fmtTime(item.last_message_at) + '</div>' + (item.unread_count > 0 ? '<div class="badge-unread">' + item.unread_count + '</div>' : '');
         el.appendChild(meta);
         el.onclick = () => openChat(item.chat_id, u);
-      } else {
+      }
+      // Если это канал
+      else {
         const av = document.createElement("div"); av.className = "avatar " + (item.channel_type === "secret" ? "secret-channel" : "channel");
         if (item.avatar_url) av.innerHTML = '<img src="' + item.avatar_url + '">';
         else av.textContent = item.channel_type === "secret" ? "🌍" : "📢";
@@ -971,15 +993,15 @@ function startListPolling() { if (listPollInterval) clearInterval(listPollInterv
 async function openChat(chatId, otherUser) {
   currentChat = { id: chatId, other: otherUser };
   lastMessageTime = "1970-01-01T00:00:00+00:00";
-  const name = otherUser.first_name || otherUser.username || "Чат";
-  document.getElementById("chat-title").innerHTML = escapeHtml(name) + roleIcon(otherUser.role) + verifiedMark(otherUser.verified);
-  document.getElementById("chat-status").textContent = statusText(otherUser);
+  const name = otherUser.name || otherUser.first_name || otherUser.username || "Чат";
+  document.getElementById("chat-title").innerHTML = escapeHtml(name) + (otherUser.is_group ? "" : roleIcon(otherUser.role) + verifiedMark(otherUser.verified));
+  document.getElementById("chat-status").textContent = otherUser.is_group ? "группа" : statusText(otherUser);
   document.getElementById("messages").innerHTML = '<div class="spinner"></div>';
   show("screen-chat");
   try {
     const data = await api("/api/chats/" + chatId + "/messages");
     renderMessages(data.messages);
-    if (data.other_user) { currentChat.other = data.other_user; document.getElementById("chat-status").textContent = statusText(data.other_user); }
+    if (data.other_user) { currentChat.other = data.other_user; document.getElementById("chat-status").textContent = data.other_user.is_group ? "группа" : statusText(data.other_user); }
     if (data.messages.length) lastMessageTime = data.messages[data.messages.length - 1].created_at;
     startChatPolling();
   } catch (e) { if (e.message !== "banned") document.getElementById("messages").innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
@@ -994,6 +1016,7 @@ function appendMessage(m) {
   const d = document.createElement("div"); d.className = "msg " + (isOwn ? "own" : "other");
   const time = fmtTime(m.created_at);
   let content = "";
+  
   if (m.type === "photo" && m.attachment_url) { content = '<img src="' + m.attachment_url + '" class="msg-photo" onclick="openPhotoViewer(\'' + m.attachment_url + '\')">'; }
   else if (m.type === "file" && m.attachment_url) {
     const isAudio = m.file_type === "audio" || (m.file_mime && m.file_mime.startsWith("audio/"));
@@ -1006,6 +1029,11 @@ function appendMessage(m) {
     }
   }
   content += linkify(m.text || "");
+  
+  if (currentChat.other && currentChat.other.is_group && !isOwn && m.sender_name) {
+      content = '<div style="font-size:11px;color:#5b8bff;margin-bottom:2px;font-weight:600;">' + escapeHtml(m.sender_name) + '</div>' + content;
+  }
+
   let checks = "";
   if (isOwn) checks = m.read_at ? '<span class="checks read">✓✓</span>' : '<span class="checks">✓</span>';
   d.innerHTML = content + '<span class="time">' + time + checks + '</span>';
@@ -1094,7 +1122,7 @@ function startChatPolling() {
 }
 
 document.getElementById("btn-back-chat").onclick = () => { if (chatPollInterval) clearInterval(chatPollInterval); currentChat = null; show("screen-list"); loadList(); };
-document.getElementById("chat-header-info").onclick = () => { if (currentChat && currentChat.other) openUserProfile(currentChat.other.id); };
+document.getElementById("chat-header-info").onclick = () => { if (currentChat && currentChat.other && !currentChat.other.is_group) openUserProfile(currentChat.other.id); };
 document.getElementById("btn-chat-report").onclick = () => { if (!currentChat) return; reportTarget = { type: "user", user_id: currentChat.other.id, name: currentChat.other.first_name || currentChat.other.username }; openReportModal(); };
 
 async function openChannel(channelId) {
@@ -1125,7 +1153,6 @@ async function sendChannelMessage() {
   try { await api("/api/channels/" + currentChannel.id + "/send", { method: "POST", body: JSON.stringify({ text }) }); } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
 }
 
-// Отправка фото в канал (используем тот же photo-file-input)
 document.getElementById("btn-channel-attach").onclick = () => {
     if (!currentChannel) return;
     document.getElementById("photo-file-input").accept = "image/*";
@@ -1291,6 +1318,65 @@ document.getElementById("btn-create-group-submit").onclick = async () => {
   }
 };
 
+// НОВЫЙ ПОИСК (1.0.3)
+document.getElementById("btn-new-chat").onclick = () => {
+    show("screen-search");
+    document.getElementById("search-input").value = "";
+    document.getElementById("search-results").innerHTML = '<div class="empty-state">Начни вводить имя...</div>';
+    document.getElementById("search-input").focus();
+};
+
+document.getElementById("btn-search-back").onclick = () => show("screen-list");
+
+document.getElementById("search-input").addEventListener("input", (e) => {
+    const q = e.target.value.trim();
+    if (searchTimeout) clearTimeout(searchTimeout);
+    if (q.length < 2) { document.getElementById("search-results").innerHTML = '<div class="empty-state">Начни вводить имя...</div>'; return; }
+    searchTimeout = setTimeout(async () => {
+        try {
+            const data = await api("/api/users/search?q=" + encodeURIComponent(q));
+            const box = document.getElementById("search-results");
+            box.innerHTML = "";
+            let found = false;
+            
+            if (data.users && data.users.length > 0) {
+                found = true;
+                const h = document.createElement("div"); h.className = "profile-row-label"; h.style.padding = "8px 16px"; h.textContent = "Пользователи"; box.appendChild(h);
+                for (const u of data.users) {
+                    const el = document.createElement("div"); el.className = "list-item";
+                    const name = u.first_name || u.username || "Без имени";
+                    const av = document.createElement("div"); av.className = "avatar";
+                    if (u.avatar_url) av.innerHTML = '<img src="' + u.avatar_url + '">'; else av.textContent = initial(name);
+                    el.appendChild(av);
+                    const info = document.createElement("div"); info.className = "list-info";
+                    info.innerHTML = '<div class="list-name">' + escapeHtml(name) + '</div><div class="list-last">@' + escapeHtml(u.username || "—") + '</div>';
+                    el.appendChild(info);
+                    el.onclick = () => openUserProfile(u.id);
+                    box.appendChild(el);
+                }
+            }
+            
+            if (data.channels && data.channels.length > 0) {
+                found = true;
+                const h = document.createElement("div"); h.className = "profile-row-label"; h.style.padding = "8px 16px"; h.textContent = "Каналы"; box.appendChild(h);
+                for (const c of data.channels) {
+                    const el = document.createElement("div"); el.className = "list-item";
+                    const av = document.createElement("div"); av.className = "avatar channel";
+                    if (c.avatar_url) av.innerHTML = '<img src="' + c.avatar_url + '">'; else av.textContent = "📢";
+                    el.appendChild(av);
+                    const info = document.createElement("div"); info.className = "list-info";
+                    info.innerHTML = '<div class="list-name">' + escapeHtml(c.name) + '</div><div class="list-last">@' + escapeHtml(c.username || "—") + ' • ' + (c.subscribers_count || 0) + ' подписчиков</div>';
+                    el.appendChild(info);
+                    el.onclick = () => openChannel(c.id);
+                    box.appendChild(el);
+                }
+            }
+            
+            if (!found) box.innerHTML = '<div class="empty-state">Ничего не найдено</div>';
+        } catch (e) { document.getElementById("search-results").innerHTML = '<div class="empty-state">Ошибка поиска</div>'; }
+    }, 300);
+});
+
 // НАСТРОЙКИ
 async function openSettings() {
   show("screen-settings");
@@ -1334,101 +1420,6 @@ async function deleteSession(sid) {
   if (!confirm("Завершить эту сессию?")) return;
   try { await api("/api/sessions/" + sid, { method: "DELETE" }); openSettings(); } catch(e) { alert(e.message); }
 }
-
-// FRIGDMANT
-async function openFrigdmant() {
-  show("screen-frigdmant");
-  currentFrigTab = "market";
-  document.querySelectorAll(".shop-tab[data-frig]").forEach(t => t.classList.toggle("active", t.dataset.frig === "market"));
-  document.getElementById("frig-list").innerHTML = '<div class="spinner"></div>';
-  try {
-    const data = await api("/api/frigdmant/listings");
-    frigListings = data.market; myListings = data.my_listings; renderFrig();
-  } catch(e) { document.getElementById("frig-list").innerHTML = 'Ошибка'; }
-}
-
-document.querySelectorAll(".shop-tab[data-frig]").forEach(tab => {
-  tab.onclick = () => {
-    document.querySelectorAll(".shop-tab[data-frig]").forEach(t => t.classList.remove("active"));
-    tab.classList.add("active"); currentFrigTab = tab.dataset.frig; renderFrig();
-  };
-});
-
-function renderFrig() {
-  const box = document.getElementById("frig-list"); box.innerHTML = "";
-  const items = currentFrigTab === "market" ? frigListings : myListings;
-  if (!items.length) { box.innerHTML = '<div class="empty-state">Здесь пока пусто</div>'; return; }
-  for (const l of items) {
-    const el = document.createElement("div"); el.className = "frig-card" + (l.listing_type === "auction" ? " auction" : "");
-    const isAuction = l.listing_type === "auction";
-    const typeLabel = isAuction ? "⏳ Аукцион" : "💰 Фикс-цена";
-    const priceLabel = isAuction ? "Текущая ставка: " + l.current_bid + " Di" : "Цена: " + l.price + " Di";
-    const timeLeft = isAuction ? "До конца: " + fmtDate(l.end_time) : "";
-    const seller = l.seller_username ? "@" + l.seller_username : "скрыт";
-    let actions = "";
-    if (currentFrigTab === "market") {
-      if (isAuction) actions = '<button class="admin-btn primary" onclick="openFrigAction('+l.id+', \'bid\')">Сделать ставку</button>';
-      else actions = '<button class="admin-btn primary" onclick="openFrigAction('+l.id+', \'buy\')">Купить</button>';
-    } else { actions = '<button class="admin-btn danger" onclick="cancelFrigListing('+l.id+')">Отменить</button>'; }
-    el.innerHTML = '<div class="frig-title"><img src="'+COIN_URL+'" class="di-icon" style="width:16px;height:16px;"> @' + escapeHtml(l.username) + '</div><div class="frig-price">' + priceLabel + '</div><div class="frig-meta">' + typeLabel + '<br>Продавец: ' + escapeHtml(seller) + '<br>' + timeLeft + '</div><div class="frig-actions">' + actions + '</div>';
-    box.appendChild(el);
-  }
-}
-
-document.getElementById("btn-frig-new").onclick = () => { document.getElementById("frig-price").value = ""; setError("modal-frig-error", ""); openModal("modal-frig-new"); };
-
-document.querySelectorAll("#modal-frig-new .reason-option").forEach(btn => {
-  btn.onclick = () => { document.querySelectorAll("#modal-frig-new .reason-option").forEach(b => b.classList.remove("selected")); btn.classList.add("selected"); frigListingType = btn.dataset.ltype; };
-});
-
-document.getElementById("btn-frig-create").onclick = async () => {
-  const price = parseInt(document.getElementById("frig-price").value);
-  if (isNaN(price) || price < 42) return setError("modal-frig-error", "Мин. цена 42 Di");
-  try {
-    await api("/api/frigdmant/list", { method: "POST", body: JSON.stringify({ target_type: "user", username: currentUser.username, price: price, listing_type: frigListingType }) });
-    closeModal("modal-frig-new"); alert("Выставлено на Frigdmant!"); openFrigdmant();
-  } catch(e) { setError("modal-frig-error", e.message); }
-};
-
-async function cancelFrigListing(id) {
-  if (!confirm("Снять лот с продажи?")) return;
-  try { await api("/api/frigdmant/cancel", { method: "POST", body: JSON.stringify({ listing_id: id }) }); openFrigdmant(); } catch(e) { alert(e.message); }
-}
-
-function openFrigAction(id, action) {
-  const listing = frigListings.find(l => l.id === id); if (!listing) return;
-  const modal = document.getElementById("modal-frig-action"); const title = document.getElementById("frig-action-title");
-  const info = document.getElementById("frig-action-info"); const inputBlock = document.getElementById("frig-action-input-block");
-  title.textContent = action === 'buy' ? "Покупка" : "Ставка на аукционе";
-  info.innerHTML = "Юзернейм: <b>@" + escapeHtml(listing.username) + "</b><br>";
-  document.getElementById("btn-frig-confirm-action").onclick = () => action === 'buy' ? buyFrigListing(id) : placeFrigBid(id);
-  if (action === 'buy') { info.innerHTML += "Цена: <b>" + listing.price + " Di</b><br>У вас: <b>" + parseFloat(currentUser.balance).toFixed(2) + " Di</b>"; inputBlock.style.display = "none"; }
-  else { info.innerHTML += "Мин. ставка: <b>" + Math.max(listing.price, listing.current_bid + 1) + " Di</b>"; inputBlock.style.display = "block"; document.getElementById("frig-bid-amount").value = Math.max(listing.price, listing.current_bid + 1); }
-  setError("modal-frig-action-error", ""); openModal("modal-frig-action");
-}
-
-async function buyFrigListing(id) {
-  try {
-    await api("/api/frigdmant/buy", { method: "POST", body: JSON.stringify({ listing_id: id }) });
-    closeModal("modal-frig-action"); alert("Куплено! Юз добавлен в профиль.");
-    const me = await api("/api/me"); currentUser = me.user; openFrigdmant();
-  } catch(e) { setError("modal-frig-action-error", e.message); }
-}
-
-async function placeFrigBid(id) {
-  const amount = parseInt(document.getElementById("frig-bid-amount").value);
-  if (isNaN(amount)) return setError("modal-frig-action-error", "Введите сумму");
-  try {
-    await api("/api/frigdmant/bid", { method: "POST", body: JSON.stringify({ listing_id: id, amount: amount }) });
-    closeModal("modal-frig-action"); alert("Ставка принята!");
-    const me = await api("/api/me"); currentUser = me.user; openFrigdmant();
-  } catch(e) { setError("modal-frig-action-error", e.message); }
-}
-
-document.getElementById("btn-frig-back").onclick = () => { show("screen-list"); loadList(); };
-document.getElementById("btn-frigdmant").onclick = openFrigdmant;
-document.getElementById("menu-frig").onclick = () => { closeMenu(); openFrigdmant(); };
-document.getElementById("open-frig-my").onclick = () => { currentFrigTab = "my"; document.querySelectorAll(".shop-tab[data-frig]").forEach(t => t.classList.toggle("active", t.dataset.frig === "my")); openFrigdmant(); };
 
 // ПРОФИЛЬ
 async function openProfile() {
@@ -1519,14 +1510,40 @@ document.getElementById("btn-save-bio").onclick = async () => {
 async function openUserProfile(userId) {
   try {
     const data = await api("/api/users/" + userId);
-    const u = data.user; const name = ((u.first_name || "") + " " + (u.last_name || "")).trim() || "Без имени";
-    const av = document.getElementById("user-avatar"); if (u.avatar_url) av.innerHTML = '<img src="' + u.avatar_url + '">'; else av.textContent = initial(name);
-    document.getElementById("user-name").textContent = name; document.getElementById("user-verified").style.display = u.verified ? "inline" : "none";
-    document.getElementById("user-status").textContent = (u.username ? "@" + u.username + " · " : "") + statusText(u); document.getElementById("user-status").classList.toggle("online", !!u.is_online);
-    document.getElementById("user-bio").textContent = u.bio || "—"; document.getElementById("user-id").textContent = u.id;
+    const u = data.user; 
+    const name = ((u.first_name || "") + " " + (u.last_name || "")).trim() || "Без имени";
+    
+    const av = document.getElementById("user-avatar"); 
+    if (u.avatar_url) av.innerHTML = '<img src="' + u.avatar_url + '">'; 
+    else av.textContent = initial(name);
+    
+    document.getElementById("user-name").textContent = name; 
+    document.getElementById("user-verified").style.display = u.verified ? "inline" : "none";
+    
+    const statusEl = document.getElementById("user-status");
+    if (u.banned) {
+        statusEl.textContent = "🚫 Забанен";
+        statusEl.style.color = "#ff5b5b";
+    } else {
+        statusEl.textContent = (u.username ? "@" + u.username + " · " : "") + statusText(u); 
+        statusEl.style.color = ""; 
+        statusEl.classList.toggle("online", !!u.is_online);
+    }
+    
+    const msgBtn = document.getElementById("btn-user-message");
+    if (u.banned) {
+        msgBtn.style.display = "none";
+        document.getElementById("user-bio").style.color = "#ff5b5b"; 
+    } else {
+        msgBtn.style.display = "block";
+        document.getElementById("user-bio").style.color = "";
+    }
+
+    document.getElementById("user-bio").textContent = u.bio || "—"; 
+    document.getElementById("user-id").textContent = u.id;
     document.getElementById("user-role").textContent = u.role;
     
-    // Коллекция в чужом профиле
+    // Коллекция
     const collectionBox = document.getElementById("user-usernames-list");
     const collectionBlock = document.getElementById("user-collection-block");
     if (data.collection && data.collection.length > 0) {
@@ -1668,7 +1685,6 @@ function createChannelDialog() {
   api("/api/channels", { method: "POST", body: JSON.stringify({ name: name.trim(), username, description, type }) }).then(() => { alert("Канал создан!"); loadList(); }).catch(e => alert("Ошибка: " + e.message));
 }
 document.getElementById("btn-new-channel").onclick = createChannelDialog;
-document.getElementById("btn-new-chat").onclick = () => { const q = prompt("Найди @username:"); if (q) { document.getElementById("global-search").value = q; document.getElementById("global-search").dispatchEvent(new Event("input")); } };
 
 // ЖАЛОБЫ
 const REASON_NAMES = { spam: "Спам", abuse: "Оскорбления", scam: "Мошенничество", "18+": "18+ контент", fake: "Фейк", other: "Другое" };
@@ -1849,4 +1865,4 @@ document.getElementById("menu-new-channel").onclick = () => { closeMenu(); creat
 })();
 </script>
 </body>
-       </html>
+     </html>
