@@ -45,7 +45,6 @@ from db import (
     get_user_usernames, activate_username, is_username_on_frigdmant,
     create_frigdmant_listing, get_frigdmant_listings, get_user_listings,
     cancel_listing, buy_frigdmant_listing, place_frigdmant_bid,
-    # Новые функции для групп и коллекций
     create_group_chat, get_chat_members, is_chat_member, get_username_purchase_info,
     supabase
 )
@@ -549,15 +548,14 @@ def api_all_list():
     update_last_seen(user["id"])
     chats = get_user_chats(user["id"])
     channels = get_user_channels(user["id"])
+    
     # Добавляем группы в общий список
     try:
         group_res = supabase.table("chat_members").select("chat_id").eq("user_id", user["id"]).execute()
         for gm in (group_res.data or []):
             chat = get_chat_by_id(gm["chat_id"])
             if chat and chat.get("is_group"):
-                # Проверяем, нет ли уже в списке
-                if not any(c.get("id") == chat["id"] for c in chats):
-                    # Формируем объект для списка
+                if not any(c.get("chat_id") == chat["id"] for c in chats):
                     last_msg = supabase.table("messages").select("*").eq("chat_id", chat["id"]).order("created_at", desc=True).limit(1).execute()
                     last = last_msg.data[0] if last_msg.data else None
                     chats.append({
@@ -569,6 +567,7 @@ def api_all_list():
                     })
     except Exception as e:
         print(f"[ALL_LIST] Ошибка групп: {e}")
+    
     items = chats + channels
     items.sort(key=lambda x: x.get("last_message_at") or "", reverse=True)
     return jsonify({"items": items})
@@ -1149,13 +1148,21 @@ def api_admin_ban():
     target = get_user_by_id(target_id)
     if not target: return jsonify({"error": "Юзер не найден"}), 404
     if not can_ban(admin, target): return jsonify({"error": "Недостаточно прав"}), 403
-    # Отмена лотов
+    # Отмена лотов и возврат юзернеймов
     try:
         listings = supabase.table("frigdmant_listings").select("*").eq("seller_id", target_id).eq("status", "active").execute()
         for lot in (listings.data or []):
             if lot.get("listing_type") == "auction" and lot.get("current_bid", 0) > 0 and lot.get("highest_bidder_id"):
                 add_balance(lot["highest_bidder_id"], lot["current_bid"], "Возврат ставки (продавец забанен)", admin["id"])
             supabase.table("frigdmant_listings").update({"status": "cancelled"}).eq("id", lot["id"]).execute()
+            # Возвращаем юзернейм в коллекцию владельцу
+            try:
+                supabase.table("owned_usernames").insert({
+                    "user_id": lot["seller_id"],
+                    "username": lot["username"]
+                }).execute()
+            except Exception as e:
+                print(f"[BAN] Не удалось вернуть юзернейм: {e}")
     except Exception as e: print(f"[BAN] Ошибка отмены лотов: {e}")
     until = None
     if duration_days:
@@ -1195,5 +1202,3 @@ def worker_task_done():
     email = data.get("email")
     if email: supabase.table("pending_codes").update({"sent": True}).eq("email", email.lower()).execute()
     return jsonify({"ok": True})
-
-# Запуск через Gunicorn (Procfile) 
