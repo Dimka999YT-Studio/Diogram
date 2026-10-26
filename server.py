@@ -1,4 +1,6 @@
 import os
+import hmac
+import secrets
 import jwt
 import time
 import io
@@ -105,7 +107,9 @@ SHOP_ITEMS = {
     "mb_100": {"category": "mb", "name": "100 МБ", "price": 464, "mb": 100},
 }
 
-app = Flask(__name__, static_folder=".")
+# static_folder=None: раньше static_folder="." отдавал файлы из корня проекта (server.py, .env, .git...)
+# при запросе вида /./server.py. Главная страница отдаётся отдельным маршрутом "/".
+app = Flask(__name__, static_folder=None)
 CORS(app)
 
 typing_store = defaultdict(dict)
@@ -130,6 +134,12 @@ def check_rate_limit(key, max_attempts, window_sec):
     if len(rate_limit_store[key]) >= max_attempts: return False
     rate_limit_store[key].append(now)
     return True
+
+def worker_authorized():
+    """Проверка X-Worker-Key. Если WORKER_KEY не задан — доступ закрыт для всех (fail closed)."""
+    if not WORKER_KEY: return False
+    provided = request.headers.get("X-Worker-Key") or ""
+    return hmac.compare_digest(provided.encode("utf-8"), WORKER_KEY.encode("utf-8"))
 
 def is_valid_email(email):
     email = email.lower().strip()
@@ -789,7 +799,8 @@ def api_upload_photo():
     try:
         file_bytes = file.read(); processed, ext = _process_image(file_bytes, mime)
     except ValueError as e: return jsonify({"error": str(e)}), 400
-    filename = f"photo_{user['id']}_{int(time.time())}.{ext}"
+    # Случайное имя: раньше user_id + время легко перебирались, а бакет публичный
+    filename = f"photo_{secrets.token_urlsafe(24)}.{ext}"
     try:
         supabase.storage.from_("chat-photos").upload(filename, processed, file_options={"content-type": f"image/{ext if ext != 'jpg' else 'jpeg'}"})
         public_url = supabase.storage.from_("chat-photos").get_public_url(filename)
@@ -821,7 +832,7 @@ def api_upload_file():
         return jsonify({"error": f"Лимит исчерпан. Осталось {max(0, (total_quota - used) // (1024 * 1024))} МБ. Докупи в магазине!", "used": used, "total": total_quota}), 429
     ext = ALLOWED_FILE_MIME[mime]
     safe_name = re.sub(r"[^\w\-_.]", "_", file.filename or f"file.{ext}")
-    filename = f"file_{user['id']}_{int(time.time())}.{ext}"
+    filename = f"file_{secrets.token_urlsafe(24)}.{ext}"
     try:
         supabase.storage.from_("chat-photos").upload(filename, file_bytes, file_options={"content-type": mime})
         public_url = supabase.storage.from_("chat-photos").get_public_url(filename)
@@ -1187,7 +1198,7 @@ def api_admin_unban():
 # ==================== WORKER ====================
 @app.route("/api/worker/get_pending")
 def worker_get_pending():
-    if request.headers.get("X-Worker-Key") != WORKER_KEY: return jsonify({"error": "Unauthorized"}), 401
+    if not worker_authorized(): return jsonify({"error": "Unauthorized"}), 401
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
     supabase.table("pending_codes").delete().lt("created_at", cutoff).execute()
     res = supabase.table("pending_codes").select("*").eq("sent", False).order("created_at").limit(1).execute()
@@ -1197,7 +1208,7 @@ def worker_get_pending():
 
 @app.route("/api/worker/task_done", methods=["POST"])
 def worker_task_done():
-    if request.headers.get("X-Worker-Key") != WORKER_KEY: return jsonify({"error": "Unauthorized"}), 401
+    if not worker_authorized(): return jsonify({"error": "Unauthorized"}), 401
     data = request.get_json() or {}
     email = data.get("email")
     if email: supabase.table("pending_codes").update({"sent": True}).eq("email", email.lower()).execute()

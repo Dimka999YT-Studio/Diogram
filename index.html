@@ -802,6 +802,17 @@ async function api(path, opts = {}) {
 function show(id) { document.querySelectorAll(".screen").forEach(s => s.classList.remove("active")); document.getElementById(id).classList.add("active"); }
 function setError(id, msg) { document.getElementById(id).textContent = msg || ""; }
 function escapeHtml(t) { const d = document.createElement("div"); d.textContent = t || ""; return d.innerHTML; }
+// escapeHtml НЕ экранирует кавычки, поэтому для значений внутри атрибутов (src="", data-x="") нужен escapeAttr.
+// Никогда не вставляй пользовательские данные в inline onclick="...('...')" — используй data-атрибуты.
+function escapeAttr(t) { return escapeHtml(t).replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
+// Имя пользователя по id для админ-окон (берём из уже загруженных списков, а не из inline-атрибута)
+function adminLookupName(userId) {
+  const u = (typeof allAdminUsers !== "undefined" ? allAdminUsers : []).find(x => x.id === userId);
+  if (u) return u.first_name || u.username || ("ID " + userId);
+  const r = (typeof allReports !== "undefined" ? allReports : []).find(x => x.reported_user && x.reported_user.id === userId);
+  if (r) return r.reported_user.first_name || r.reported_user.username || ("ID " + userId);
+  return "ID " + userId;
+}
 function initial(name) { return (name && name[0] ? name[0] : "?").toUpperCase(); }
 function roleIcon(role) { return role === "owner" ? '<span class="role-icon">👑</span>' : role === "developer" ? '<span class="role-icon">⚡</span>' : role === "moderator" ? '<span class="role-icon">🛡️</span>' : ""; }
 function verifiedMark(v) { return v ? '<span class="verified">✓</span>' : ""; }
@@ -946,7 +957,7 @@ async function loadList() {
       // Если это группа
       if (item.type === "group") {
         const av = document.createElement("div"); av.className = "avatar group";
-        if (item.avatar_url) av.innerHTML = '<img src="' + item.avatar_url + '">';
+        if (item.avatar_url) av.innerHTML = '<img src="' + escapeAttr(item.avatar_url) + '">';
         else av.textContent = "👥";
         el.innerHTML = ''; el.appendChild(av);
         const info = document.createElement("div"); info.className = "list-info";
@@ -959,7 +970,7 @@ async function loadList() {
         const u = item.other_user;
         const name = u.first_name || u.username || "Без имени";
         const av = document.createElement("div"); av.className = "avatar";
-        if (u.avatar_url) av.innerHTML = '<img src="' + u.avatar_url + '">';
+        if (u.avatar_url) av.innerHTML = '<img src="' + escapeAttr(u.avatar_url) + '">';
         else av.textContent = initial(name);
         if (u.is_online) { const dot = document.createElement("div"); dot.className = "online-dot"; av.appendChild(dot); }
         const last = item.last_message_type === "photo" ? "📷 Фото" : item.last_message_type === "file" ? "📎 Файл" : (item.last_message || "Нет сообщений");
@@ -975,7 +986,7 @@ async function loadList() {
       // Если это канал
       else {
         const av = document.createElement("div"); av.className = "avatar " + (item.channel_type === "secret" ? "secret-channel" : "channel");
-        if (item.avatar_url) av.innerHTML = '<img src="' + item.avatar_url + '">';
+        if (item.avatar_url) av.innerHTML = '<img src="' + escapeAttr(item.avatar_url) + '">';
         else av.textContent = item.channel_type === "secret" ? "🌍" : "📢";
         el.innerHTML = ''; el.appendChild(av);
         const info = document.createElement("div"); info.className = "list-info";
@@ -1017,15 +1028,15 @@ function appendMessage(m) {
   const time = fmtTime(m.created_at);
   let content = "";
   
-  if (m.type === "photo" && m.attachment_url) { content = '<img src="' + m.attachment_url + '" class="msg-photo" onclick="openPhotoViewer(\'' + m.attachment_url + '\')">'; }
+  if (m.type === "photo" && m.attachment_url) { content = '<img src="' + escapeAttr(m.attachment_url) + '" class="msg-photo" onclick="openPhotoViewer(this.src)">'; }
   else if (m.type === "file" && m.attachment_url) {
     const isAudio = m.file_type === "audio" || (m.file_mime && m.file_mime.startsWith("audio/"));
     const fname = escapeHtml(m.file_name || m.attachment_name || "file");
     const fsize = fmtSize(m.attachment_size || m.file_size || 0);
-    if (isAudio) content = '<div class="file-block"><div class="file-row"><div class="file-icon">🎵</div><div class="file-info"><div class="file-name">' + fname + '</div><div class="file-size">' + fsize + '</div></div></div><audio class="audio-player" controls src="' + m.attachment_url + '"></audio></div>';
+    if (isAudio) content = '<div class="file-block"><div class="file-row"><div class="file-icon">🎵</div><div class="file-info"><div class="file-name">' + fname + '</div><div class="file-size">' + fsize + '</div></div></div><audio class="audio-player" controls src="' + escapeAttr(m.attachment_url) + '"></audio></div>';
     else {
       const icon = m.file_mime && m.file_mime.includes("pdf") ? "📄" : "📎";
-      content = '<div class="file-block"><div class="file-row"><div class="file-icon">' + icon + '</div><div class="file-info"><div class="file-name">' + fname + '</div><div class="file-size">' + fsize + '</div></div><a class="file-dl" href="' + m.attachment_url + '" target="_blank" download>Скачать</a></div></div>';
+      content = '<div class="file-block"><div class="file-row"><div class="file-icon">' + icon + '</div><div class="file-info"><div class="file-name">' + fname + '</div><div class="file-size">' + fsize + '</div></div><a class="file-dl" href="' + escapeAttr(m.attachment_url) + '" target="_blank" download>Скачать</a></div></div>';
     }
   }
   content += linkify(m.text || "");
@@ -1178,7 +1189,7 @@ async function openChannelInfo(channelId) {
     currentChInfo = ch;
     const av = document.getElementById("ch-info-avatar");
     av.className = "ch-info-avatar" + (ch.type === "secret" ? " secret" : "");
-    if (ch.avatar_url) av.innerHTML = '<img src="' + ch.avatar_url + '">';
+    if (ch.avatar_url) av.innerHTML = '<img src="' + escapeAttr(ch.avatar_url) + '">';
     else av.textContent = ch.type === "secret" ? "🌍" : "📢";
     document.getElementById("ch-info-name").textContent = ch.name;
     document.getElementById("ch-info-username").textContent = ch.username ? "@" + ch.username : "🌍 Глобальный канал";
@@ -1201,7 +1212,7 @@ document.getElementById("btn-ch-info-edit").onclick = () => {
   newAvatarFile = null; chEditType = currentChInfo.type;
   const av = document.getElementById("ch-edit-avatar");
   av.className = "ch-info-avatar" + (currentChInfo.type === "secret" ? " secret" : "");
-  if (currentChInfo.avatar_url) av.innerHTML = '<img src="' + currentChInfo.avatar_url + '">';
+  if (currentChInfo.avatar_url) av.innerHTML = '<img src="' + escapeAttr(currentChInfo.avatar_url) + '">';
   else av.textContent = currentChInfo.type === "secret" ? "🌍" : "📢";
   document.getElementById("ch-edit-name").value = currentChInfo.name || "";
   document.getElementById("ch-edit-username").value = currentChInfo.username || "";
@@ -1346,7 +1357,7 @@ document.getElementById("search-input").addEventListener("input", (e) => {
                     const el = document.createElement("div"); el.className = "list-item";
                     const name = u.first_name || u.username || "Без имени";
                     const av = document.createElement("div"); av.className = "avatar";
-                    if (u.avatar_url) av.innerHTML = '<img src="' + u.avatar_url + '">'; else av.textContent = initial(name);
+                    if (u.avatar_url) av.innerHTML = '<img src="' + escapeAttr(u.avatar_url) + '">'; else av.textContent = initial(name);
                     el.appendChild(av);
                     const info = document.createElement("div"); info.className = "list-info";
                     info.innerHTML = '<div class="list-name">' + escapeHtml(name) + '</div><div class="list-last">@' + escapeHtml(u.username || "—") + '</div>';
@@ -1362,7 +1373,7 @@ document.getElementById("search-input").addEventListener("input", (e) => {
                 for (const c of data.channels) {
                     const el = document.createElement("div"); el.className = "list-item";
                     const av = document.createElement("div"); av.className = "avatar channel";
-                    if (c.avatar_url) av.innerHTML = '<img src="' + c.avatar_url + '">'; else av.textContent = "📢";
+                    if (c.avatar_url) av.innerHTML = '<img src="' + escapeAttr(c.avatar_url) + '">'; else av.textContent = "📢";
                     el.appendChild(av);
                     const info = document.createElement("div"); info.className = "list-info";
                     info.innerHTML = '<div class="list-name">' + escapeHtml(c.name) + '</div><div class="list-last">@' + escapeHtml(c.username || "—") + ' • ' + (c.subscribers_count || 0) + ' подписчиков</div>';
@@ -1426,7 +1437,7 @@ async function openProfile() {
   if (!currentUser) return;
   const name = ((currentUser.first_name || "") + " " + (currentUser.last_name || "")).trim() || "Без имени";
   const av = document.getElementById("profile-avatar");
-  if (currentUser.avatar_url) av.innerHTML = '<img src="' + currentUser.avatar_url + '"><div class="avatar-edit-hint">📷</div>';
+  if (currentUser.avatar_url) av.innerHTML = '<img src="' + escapeAttr(currentUser.avatar_url) + '"><div class="avatar-edit-hint">📷</div>';
   else av.innerHTML = initial(name) + '<div class="avatar-edit-hint">📷</div>';
   document.getElementById("profile-name").textContent = name;
   document.getElementById("profile-username-show").textContent = currentUser.username ? "@" + currentUser.username : "—";
@@ -1452,7 +1463,7 @@ async function openProfile() {
     let colHtml = "";
     if (myUsernames.length > 0) {
       for (const u of myUsernames) {
-        colHtml += '<div class="profile-row"><div class="profile-row-icon">⭐</div><div class="profile-row-content"><div class="profile-row-value">@' + escapeHtml(u.username) + '</div></div><button class="admin-btn" style="padding:4px 8px;font-size:11px;" onclick="activateMyUsername(\''+u.username+'\')">Активировать</button></div>';
+        colHtml += '<div class="profile-row"><div class="profile-row-icon">⭐</div><div class="profile-row-content"><div class="profile-row-value">@' + escapeHtml(u.username) + '</div></div><button class="admin-btn" style="padding:4px 8px;font-size:11px;" data-username="' + escapeAttr(u.username) + '" onclick="activateMyUsername(this.dataset.username)">Активировать</button></div>';
       }
     }
     document.getElementById("profile-collection-block").innerHTML = colHtml;
@@ -1514,7 +1525,7 @@ async function openUserProfile(userId) {
     const name = ((u.first_name || "") + " " + (u.last_name || "")).trim() || "Без имени";
     
     const av = document.getElementById("user-avatar"); 
-    if (u.avatar_url) av.innerHTML = '<img src="' + u.avatar_url + '">'; 
+    if (u.avatar_url) av.innerHTML = '<img src="' + escapeAttr(u.avatar_url) + '">'; 
     else av.textContent = initial(name);
     
     document.getElementById("user-name").textContent = name; 
@@ -1553,7 +1564,7 @@ async function openUserProfile(userId) {
             const style = isActive 
                 ? "background: #5b8bff; color: #fff; box-shadow: 0 2px 8px rgba(91,139,255,0.3);" 
                 : "background: #242f3d; color: #7e8b99;";
-            return `<span onclick="showUsernameInfo('${uname}')" style="${style} padding: 4px 10px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;">@${escapeHtml(uname)}</span>`;
+            return `<span data-username="${escapeAttr(uname)}" onclick="showUsernameInfo(this.dataset.username)" style="${style} padding: 4px 10px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;">@${escapeHtml(uname)}</span>`;
         }).join("");
     } else {
         collectionBlock.style.display = "none";
@@ -1571,7 +1582,7 @@ async function showUsernameInfo(username) {
     document.getElementById("uinfo-name").textContent = "@" + data.username;
     const av = document.getElementById("uinfo-avatar");
     const name = data.owner.first_name || data.owner.username || "Без имени";
-    if (data.owner.avatar_url) av.innerHTML = '<img src="' + data.owner.avatar_url + '">';
+    if (data.owner.avatar_url) av.innerHTML = '<img src="' + escapeAttr(data.owner.avatar_url) + '">';
     else av.textContent = initial(name);
     document.getElementById("uinfo-owner-name").textContent = name;
     const purchaseBlock = document.getElementById("uinfo-purchase-block");
@@ -1773,10 +1784,10 @@ function renderAdminUsers(me, users) {
     if (me.role === "owner" && u.id !== me.id) {
       actions = '<button class="admin-btn primary" onclick="adminChangeRole(' + u.id + ')">Роль</button>' +
                 '<button class="admin-btn" onclick="adminToggleVerified(' + u.id + ',' + (!u.verified) + ')">' + (u.verified ? "Снять ⭐" : "⭐") + '</button>' +
-                '<button class="admin-btn" onclick="adminOpenBalance(' + u.id + ',\'' + escapeHtml(name).replace(/'/g, "") + '\')">💰</button>' +
-                (u.banned ? '<button class="admin-btn success" onclick="adminUnban(' + u.id + ')">Разбан</button>' : '<button class="admin-btn danger" onclick="adminOpenBan(' + u.id + ',\'' + escapeHtml(name).replace(/'/g, "") + '\')">Бан</button>');
+                '<button class="admin-btn" onclick="adminOpenBalance(' + Number(u.id) + ')">💰</button>' +
+                (u.banned ? '<button class="admin-btn success" onclick="adminUnban(' + Number(u.id) + ')">Разбан</button>' : '<button class="admin-btn danger" onclick="adminOpenBan(' + Number(u.id) + ')">Бан</button>');
     } else if (me.role === "developer" && u.role !== "owner" && u.role !== "developer") {
-      actions = (u.banned ? '<button class="admin-btn success" onclick="adminUnban(' + u.id + ')">Разбан</button>' : '<button class="admin-btn danger" onclick="adminOpenBan(' + u.id + ',\'' + escapeHtml(name).replace(/'/g, "") + '\')">Бан</button>');
+      actions = (u.banned ? '<button class="admin-btn success" onclick="adminUnban(' + Number(u.id) + ')">Разбан</button>' : '<button class="admin-btn danger" onclick="adminOpenBan(' + Number(u.id) + ')">Бан</button>');
     }
     el.innerHTML = '<div class="admin-info"><div class="admin-name">' + escapeHtml(name) + ' ' + roleTag + pdgTag + fpTag + bannedTag + verifiedMark(u.verified) + '</div><div class="admin-sub">ID ' + u.id + ' · @' + escapeHtml(u.username || "—") + ' · ' + parseFloat(u.balance || 0).toFixed(2) + ' Di<br>' + escapeHtml(u.email || "") + '</div></div><div class="admin-actions">' + actions + '</div>';
     box.appendChild(el);
@@ -1789,7 +1800,7 @@ async function adminChangeRole(userId) { const role = prompt("Роль (user / m
 async function adminToggleVerified(userId, verified) { try { await api("/api/admin/set_verified", { method: "POST", body: JSON.stringify({ user_id: userId, verified }) }); loadAdminUsers(); } catch (e) { alert("Ошибка: " + e.message); } }
 async function adminUnban(userId) { if (!confirm("Разбанить?")) return; try { await api("/api/admin/unban", { method: "POST", body: JSON.stringify({ user_id: userId }) }); loadAdminUsers(); } catch (e) { alert("Ошибка: " + e.message); } }
 
-function adminOpenBalance(userId, name) { balanceTarget = userId; document.getElementById("balance-target-info").textContent = "Начислить: " + name; document.getElementById("balance-amount").value = ""; document.getElementById("balance-description").value = ""; setError("modal-balance-error", ""); openModal("modal-balance"); }
+function adminOpenBalance(userId, name) { name = name || adminLookupName(userId); balanceTarget = userId; document.getElementById("balance-target-info").textContent = "Начислить: " + name; document.getElementById("balance-amount").value = ""; document.getElementById("balance-description").value = ""; setError("modal-balance-error", ""); openModal("modal-balance"); }
 document.getElementById("btn-confirm-balance").onclick = async () => {
   const amount = parseInt(document.getElementById("balance-amount").value);
   const description = document.getElementById("balance-description").value.trim();
@@ -1797,7 +1808,7 @@ document.getElementById("btn-confirm-balance").onclick = async () => {
   try { await api("/api/admin/add_balance", { method: "POST", body: JSON.stringify({ user_id: balanceTarget, amount, description }) }); closeModal("modal-balance"); loadAdminUsers(); alert("Начислено " + amount + " Di"); } catch (e) { setError("modal-balance-error", e.message); }
 };
 
-function adminOpenBan(userId, name) { banTarget = userId; banDuration = ""; document.getElementById("ban-target-info").textContent = "Забанить: " + name; document.getElementById("ban-reason-input").value = ""; setError("modal-ban-error", ""); document.querySelectorAll("#ban-duration-list .reason-option").forEach((b, i) => b.classList.toggle("selected", i === 0)); openModal("modal-ban"); }
+function adminOpenBan(userId, name) { name = name || adminLookupName(userId); banTarget = userId; banDuration = ""; document.getElementById("ban-target-info").textContent = "Забанить: " + name; document.getElementById("ban-reason-input").value = ""; setError("modal-ban-error", ""); document.querySelectorAll("#ban-duration-list .reason-option").forEach((b, i) => b.classList.toggle("selected", i === 0)); openModal("modal-ban"); }
 
 document.querySelectorAll("#ban-duration-list .reason-option").forEach(btn => { btn.onclick = () => { document.querySelectorAll("#ban-duration-list .reason-option").forEach(b => b.classList.remove("selected")); btn.classList.add("selected"); banDuration = btn.dataset.days; }; });
 
@@ -1825,7 +1836,7 @@ async function loadAdminReports() {
       let actions = "";
       if (r.status === "new") {
         actions = '<button class="admin-btn success" onclick="reportAction(' + r.id + ',\'reviewed\')">Принять</button>' + '<button class="admin-btn" onclick="reportAction(' + r.id + ',\'rejected\')">Отклонить</button>';
-        if (r.reported_user) actions += '<button class="admin-btn danger" onclick="adminOpenBan(' + r.reported_user.id + ',\'' + (r.reported_user.username || "") + '\')">Бан</button>';
+        if (r.reported_user) actions += '<button class="admin-btn danger" onclick="adminOpenBan(' + Number(r.reported_user.id) + ')">Бан</button>';
       }
       el.innerHTML = '<div class="report-header"><span>#' + r.id + '</span><span>' + fmtTime(r.created_at) + '</span></div><div class="report-reason">' + escapeHtml(REASON_NAMES[r.reason] || r.reason) + '</div><div class="report-body"><div><b>От:</b> ' + escapeHtml(reporter) + '</div><div><b>' + target + '</b></div>' + (r.comment ? '<div style="margin-top:6px;color:#c5cdd6;">' + escapeHtml(r.comment) + '</div>' : '') + '<div style="margin-top:6px;color:#7e8b99;font-size:12px;">' + (statusMap[r.status] || r.status) + '</div></div><div class="report-actions">' + actions + '</div>';
       box.appendChild(el);
