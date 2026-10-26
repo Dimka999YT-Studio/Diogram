@@ -754,8 +754,11 @@ def get_channel_messages(channel_id: int, limit: int = 50, offset: int = 0) -> l
     return res.data or []
 
 
-def delete_channel_message(message_id: int) -> None:
-    supabase.table("channel_messages").delete().eq("id", message_id).execute()
+def delete_channel_message(message_id: int, channel_id: int) -> bool:
+    """Удаляет сообщение ТОЛЬКО из указанного канала. Раньше фильтра по channel_id не было, и владелец
+    любого своего канала мог удалить сообщение в чужом, подставив его id. True — если что-то удалено."""
+    res = supabase.table("channel_messages").delete().eq("id", message_id).eq("channel_id", channel_id).execute()
+    return bool(res.data)
 
 
 # ============ АДМИНКА ============
@@ -954,6 +957,16 @@ def activate_username(user_id: int, username: str) -> bool:
     if old_name and not old_name.startswith("user_") and not old_name.startswith("ch_"):
         supabase.table("owned_usernames").insert({"user_id": user_id, "username": old_name}).execute()
     return True
+
+
+def get_owned_username_holder(username: str):
+    """id пользователя, у которого этот юзернейм лежит в коллекции (owned_usernames), либо None.
+    Нужен, чтобы купленные юзернеймы нельзя было занять через смену @username."""
+    res = supabase.table("owned_usernames").select("user_id, username").ilike("username", username).limit(20).execute()
+    for row in (res.data or []):
+        if (row.get("username") or "").lower() == username.lower():
+            return row["user_id"]
+    return None
 
 
 def is_username_on_frigdmant(username: str) -> dict:

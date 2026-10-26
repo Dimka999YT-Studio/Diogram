@@ -9,8 +9,9 @@ import random
 import threading
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict, Counter
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, g
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 from PIL import Image
 from groq import Groq
 import httpx
@@ -44,7 +45,7 @@ from db import (
     update_report_status, count_new_reports,
     ban_user, unban_user, is_ban_expired,
     update_privacy_settings, get_user_sessions, delete_session,
-    get_user_usernames, activate_username, is_username_on_frigdmant,
+    get_user_usernames, activate_username, is_username_on_frigdmant, get_owned_username_holder,
     create_frigdmant_listing, get_frigdmant_listings, get_user_listings,
     cancel_listing, buy_frigdmant_listing, place_frigdmant_bid,
     create_group_chat, get_chat_members, is_chat_member, get_username_purchase_info,
@@ -112,24 +113,88 @@ SHOP_ITEMS = {
 app = Flask(__name__, static_folder=None)
 CORS(app)
 
+# Лимит размера тела запроса: без него Flask целиком читал в память любой загруженный файл.
+# 12 МБ с запасом покрывает фото (5 МБ) и файлы (3 МБ) вместе с multipart-обвязкой.
+MAX_REQUEST_BYTES = 12 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = MAX_REQUEST_BYTES
+# Защита Pillow от "бомб декомпрессии" (маленький файл -> огромная картинка в памяти).
+Image.MAX_IMAGE_PIXELS = 40_000_000
+
+# За прокси хостинга (Heroku/Render/Railway) request.remote_addr — это адрес прокси, из-за чего лимиты по IP
+# общие на всех. TRUSTED_PROXIES = сколько прокси стоит перед приложением (0 — не доверять X-Forwarded-For,
+# например при запуске без прокси: иначе заголовок можно подделать и обойти лимиты).
+try: _TRUSTED_PROXIES = int(os.environ.get("TRUSTED_PROXIES", "1") or 0)
+except ValueError: _TRUSTED_PROXIES = 1
+if _TRUSTED_PROXIES > 0:
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=_TRUSTED_PROXIES, x_proto=_TRUSTED_PROXIES, x_host=0)
+
 typing_store = defaultdict(dict)
 rate_limit_store = defaultdict(list)
+_rate_limit_last_cleanup = 0.0
 
 # ==================== HELPERS ====================
 def make_token(user_id):
     payload = {"user_id": user_id, "exp": datetime.now(timezone.utc) + timedelta(days=JWT_EXP_DAYS)}
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
 
+_UNSET = object()
+
 def get_current_user():
+    # Результат кэшируется на время одного запроса: before_request уже достал пользователя для проверки бана,
+    # и эндпоинту не нужен второй запрос в базу.
+    cached = g.get("_current_user", _UNSET)
+    if cached is not _UNSET: return cached
+    user = None
     auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "): return None
-    try:
-        payload = jwt.decode(auth[7:], JWT_SECRET, algorithms=[JWT_ALGO])
-        return get_user_by_id(payload["user_id"])
-    except Exception: return None
+    if auth.startswith("Bearer "):
+        try:
+            payload = jwt.decode(auth[7:], JWT_SECRET, algorithms=[JWT_ALGO])
+            user = get_user_by_id(payload["user_id"])
+        except Exception: user = None
+    g._current_user = user
+    return user
+
+def json_body():
+    """Тело запроса как dict. Если пришёл не JSON-объект (список, строка, мусор) — пустой dict, а не 500."""
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+def str_field(data, key, strip=True):
+    """Строковое поле из JSON. Если пришло не строкой (число, список, null) — пустая строка, а не AttributeError."""
+    value = data.get(key)
+    if not isinstance(value, str): return ""
+    return value.strip() if strip else value
+
+def validate_password(password):
+    # bcrypt учитывает только первые 72 байта (в bcrypt>=5 длиннее — ValueError, т.е. 500 при создании аккаунта).
+    if len(password) < 6: return False, "Пароль минимум 6 символов"
+    if len(password.encode("utf-8")) > 72: return False, "Пароль слишком длинный (максимум 72 байта)"
+    return True, ""
+
+def to_int(value, default=None):
+    """int() без исключений; bool не считаем числом (True -> 1 нам не нужен)."""
+    if isinstance(value, bool): return default
+    try: return int(value)
+    except (TypeError, ValueError): return default
+
+def int_arg(name, default, min_value=0, max_value=None):
+    """Числовой query-параметр с границами (раньше limit=999999999 выгружал всю таблицу, а limit=abc давал 500)."""
+    value = to_int(request.args.get(name), default)
+    value = max(min_value, value)
+    if max_value is not None: value = min(max_value, value)
+    return value
+
+def _cleanup_rate_limits(now):
+    """Раз в 5 минут выбрасываем ключи, по которым давно не было запросов: иначе словарь растёт бесконечно."""
+    global _rate_limit_last_cleanup
+    if now - _rate_limit_last_cleanup < 300: return
+    _rate_limit_last_cleanup = now
+    for k in [k for k, ts in list(rate_limit_store.items()) if not ts or now - ts[-1] > 7200]:
+        rate_limit_store.pop(k, None)
 
 def check_rate_limit(key, max_attempts, window_sec):
     now = time.time()
+    _cleanup_rate_limits(now)
     rate_limit_store[key] = [t for t in rate_limit_store[key] if now - t < window_sec]
     if len(rate_limit_store[key]) >= max_attempts: return False
     rate_limit_store[key].append(now)
@@ -185,15 +250,40 @@ def user_public_dict(u):
 def check_banned(user):
     if not user or not user.get("banned"): return False, None
     if is_ban_expired(user):
-        unban_user(user["id"]); return False, None
+        unban_user(user["id"])
+        user["banned"] = False  # чтобы закэшированный на запрос объект не остался "забаненным"
+        return False, None
     return True, user.get("ban_reason") or "Нарушение правил"
+
+def banned_response(user, ban_reason):
+    return jsonify({"error": "Забанен", "banned": True, "ban_reason": ban_reason,
+                    "user_info": {"id": user["id"], "username": user.get("username"), "first_name": user.get("first_name"), "last_name": user.get("last_name")}}), 403
+
+# Эти пути сами разбираются с баном (или вызываются без входа). Остальной /api/* закрыт для забаненных:
+# раньше бан проверялся только при входе, и забаненный со старым токеном (30 дней) продолжал писать и покупать.
+BAN_EXEMPT_PATHS = {"/api/login", "/api/register", "/api/verify", "/api/me"}
+
+@app.before_request
+def block_banned_users():
+    path = request.path
+    if request.method == "OPTIONS" or not path.startswith("/api/"): return None
+    if path in BAN_EXEMPT_PATHS or path.startswith("/api/worker/"): return None
+    user = get_current_user()
+    if not user: return None  # неавторизованным ответит сам эндпоинт (401)
+    is_banned, ban_reason = check_banned(user)
+    if is_banned: return banned_response(user, ban_reason)
+    return None
+
+@app.errorhandler(413)
+def request_too_large(e):
+    return jsonify({"error": "Слишком большой запрос (максимум 12 МБ)"}), 413
 
 def validate_username(username, role):
     if not username: return False, "Username обязателен"
     min_len = 1 if role in ("owner", "developer") else 4
     if len(username) < min_len: return False, f"Username от {min_len} до 32 символов"
     if len(username) > 32: return False, "Username до 32 символов"
-    if not re.match(r"^[a-zA-Z][a-zA-Z0-9_]*$", username): return False, "Username: начинается с буквы, только латиница, цифры, _"
+    if not re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_]*", username): return False, "Username: начинается с буквы, только латиница, цифры, _"
     return True, ""
 
 # ==================== AI HELPERS ====================
@@ -245,13 +335,16 @@ def index(): return send_from_directory(".", "index.html")
 def api_register():
     ip = request.remote_addr or "unknown"
     if not check_rate_limit(f"reg_{ip}", 10, 3600): return jsonify({"error": "Слишком много попыток. Подожди час."}), 429
-    data = request.get_json() or {}
-    email = (data.get("email") or "").lower().strip()
-    password = data.get("password") or ""
+    data = json_body()
+    email = str_field(data, "email").lower()
+    password = str_field(data, "password", strip=False)
     if not email or not password: return jsonify({"error": "Email и пароль обязательны"}), 400
     ok, msg = is_valid_email(email)
     if not ok: return jsonify({"error": msg}), 400
-    if len(password) < 6: return jsonify({"error": "Пароль минимум 6 символов"}), 400
+    ok, msg = validate_password(password)
+    if not ok: return jsonify({"error": msg}), 400
+    # Лимит на один адрес: иначе можно закидать чужую почту кодами (лимит по IP это не останавливает).
+    if not check_rate_limit(f"reg_email_{email}", 3, 3600): return jsonify({"error": "Код для этого email уже отправлялся. Подожди час."}), 429
     if email_exists(email): return jsonify({"error": "Этот email уже зарегистрирован"}), 400
     code = generate_code()
     save_pending_code(email, code, expires_minutes=15)
@@ -259,11 +352,14 @@ def api_register():
 
 @app.route("/api/verify", methods=["POST"])
 def api_verify():
-    data = request.get_json() or {}
-    email = (data.get("email") or "").lower().strip()
+    data = json_body()
+    email = str_field(data, "email").lower()
     code = str(data.get("code") or "").strip()
-    password = data.get("password") or ""
+    password = str_field(data, "password", strip=False)
     if not email or not code or not password: return jsonify({"error": "Заполни все поля"}), 400
+    # Пароль проверяем ДО verify_code: код одноразовый, и раньше он сгорал, а аккаунт потом не создавался.
+    ok, msg = validate_password(password)
+    if not ok: return jsonify({"error": msg}), 400
     if not check_rate_limit(f"verify_{email}", 20, 3600): return jsonify({"error": "Слишком много попыток"}), 429
     if not verify_code(email, code): return jsonify({"error": "Неверный или истёкший код"}), 400
     if email_exists(email): return jsonify({"error": "Этот email уже зарегистрирован"}), 400
@@ -277,14 +373,15 @@ def api_verify():
 def api_login():
     ip = request.remote_addr or "unknown"
     if not check_rate_limit(f"login_{ip}", 10, 300): return jsonify({"error": "Слишком много попыток. Подожди 5 минут."}), 429
-    data = request.get_json() or {}
-    email = (data.get("email") or "").lower().strip()
-    password = data.get("password") or ""
+    data = json_body()
+    email = str_field(data, "email").lower()
+    password = str_field(data, "password", strip=False)
+    # Лимит по аккаунту (в дополнение к лимиту по IP): подбор пароля с множества адресов упирается в него.
+    if email and not check_rate_limit(f"login_email_{email}", 20, 900): return jsonify({"error": "Слишком много попыток входа в этот аккаунт. Подожди 15 минут."}), 429
     user = get_user_by_email(email)
     if not user or not check_password(password, user["password_hash"]): return jsonify({"error": "Неверный email или пароль"}), 401
     is_banned, ban_reason = check_banned(user)
-    if is_banned:
-        return jsonify({"error": "Забанен", "banned": True, "ban_reason": ban_reason, "user_info": {"id": user["id"], "username": user.get("username"), "first_name": user.get("first_name"), "last_name": user.get("last_name")}}), 403
+    if is_banned: return banned_response(user, ban_reason)
     update_last_seen(user["id"])
     token = make_token(user["id"])
     return jsonify({"ok": True, "token": token, "user": user_to_dict(user)})
@@ -294,8 +391,7 @@ def api_me():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
     is_banned, ban_reason = check_banned(user)
-    if is_banned:
-        return jsonify({"error": "Забанен", "banned": True, "ban_reason": ban_reason, "user_info": {"id": user["id"], "username": user.get("username"), "first_name": user.get("first_name"), "last_name": user.get("last_name")}}), 403
+    if is_banned: return banned_response(user, ban_reason)
     update_last_seen(user["id"])
     return jsonify({"user": user_to_dict(user)})
 
@@ -311,15 +407,21 @@ def api_heartbeat():
 def api_profile():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    data = request.get_json() or {}
-    username = (data.get("username") or "").strip().lstrip("@")
-    first_name = (data.get("first_name") or "").strip()
-    last_name = (data.get("last_name") or "").strip() or None
+    data = json_body()
+    username = str_field(data, "username").lstrip("@")
+    first_name = str_field(data, "first_name")
+    last_name = str_field(data, "last_name") or None
     if not first_name: return jsonify({"error": "Имя обязательно"}), 400
+    if len(first_name) > 32 or (last_name and len(last_name) > 32): return jsonify({"error": "Имя слишком длинное (максимум 32 символа)"}), 400
     ok, err = validate_username(username, user.get("role", "user"))
     if not ok: return jsonify({"error": err}), 400
     existing = get_user_by_username(username)
     if existing and existing["id"] != user["id"]: return jsonify({"error": "Этот @username занят"}), 400
+    # Раньше здесь не проверялись коллекция и Frigdmant: купленный или выставленный на продажу ник можно было
+    # занять бесплатно. Свой ник из коллекции (holder == user) разрешаем.
+    holder = get_owned_username_holder(username)
+    if holder is not None and holder != user["id"]: return jsonify({"error": "Этот @username принадлежит другому пользователю"}), 400
+    if is_username_on_frigdmant(username): return jsonify({"error": "Этот юзернейм сейчас на продаже на Frigdmant"}), 400
     updated = update_user_profile(user["id"], username, first_name, last_name)
     return jsonify({"ok": True, "user": user_to_dict(updated)})
 
@@ -327,11 +429,11 @@ def api_profile():
 def api_profile_name():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    data = request.get_json() or {}
-    first_name = (data.get("first_name") or "").strip()
-    last_name = (data.get("last_name") or "").strip() or None
+    data = json_body()
+    first_name = str_field(data, "first_name")
+    last_name = str_field(data, "last_name") or None
     if not first_name: return jsonify({"error": "Имя обязательно"}), 400
-    if len(first_name) > 32: return jsonify({"error": "Имя слишком длинное"}), 400
+    if len(first_name) > 32 or (last_name and len(last_name) > 32): return jsonify({"error": "Имя слишком длинное"}), 400
     updated = update_user_name(user["id"], first_name, last_name)
     return jsonify({"ok": True, "user": user_to_dict(updated)})
 
@@ -339,8 +441,8 @@ def api_profile_name():
 def api_profile_username():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    data = request.get_json() or {}
-    username = (data.get("username") or "").strip().lstrip("@")
+    data = json_body()
+    username = str_field(data, "username").lstrip("@")
     min_len = 1 if user.get("role") in ("owner", "developer") else 4
     if len(username) < min_len: return jsonify({"error": f"Такие редкие юзернеймы (до {min_len} символов) можно купить на Frigdmant", "rare_username": True}), 400
     ok, err = validate_username(username, user.get("role", "user"))
@@ -350,6 +452,8 @@ def api_profile_username():
     if existing and existing["id"] != user["id"]: return jsonify({"error": "Этот @username уже занят"}), 400
     on_market = is_username_on_frigdmant(username)
     if on_market: return jsonify({"error": "Этот юзернейм сейчас на продаже", "on_frigdmant": True, "price": on_market["price"]}), 400
+    holder = get_owned_username_holder(username)
+    if holder is not None and holder != user["id"]: return jsonify({"error": "Этот @username уже занят"}), 400
     used = count_username_changes_24h(user["id"])
     if used >= USERNAME_CHANGE_LIMIT_24H and user.get("role") not in ("owner", "developer"): return jsonify({"error": f"Лимит {USERNAME_CHANGE_LIMIT_24H} смен @username за 24 часа"}), 429
     updated = update_user_username(user["id"], username)
@@ -360,9 +464,11 @@ def api_profile_username():
 def api_profile_bio():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    data = request.get_json() or {}
+    data = json_body()
     bio = data.get("bio")
     birthday = data.get("birthday")
+    if bio is not None and not isinstance(bio, str): return jsonify({"error": "Неверный формат bio"}), 400
+    if birthday is not None and (not isinstance(birthday, str) or len(birthday) > 32): return jsonify({"error": "Неверная дата рождения"}), 400
     if bio and len(bio) > 200: return jsonify({"error": "Bio максимум 200 символов"}), 400
     updated = update_user_bio(user["id"], bio, birthday)
     if not updated: return jsonify({"error": "Нечего обновлять"}), 400
@@ -379,8 +485,13 @@ def api_username_limit():
 def api_privacy():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    data = request.get_json() or {}
-    update_privacy_settings(user["id"], data.get("hide_last_seen"), data.get("who_can_message"))
+    data = json_body()
+    hide = data.get("hide_last_seen")
+    who = data.get("who_can_message")
+    if hide is not None and not isinstance(hide, bool): return jsonify({"error": "hide_last_seen: true или false"}), 400
+    if who is not None and who not in ("all", "contacts", "nobody"):
+        return jsonify({"error": "who_can_message: all, contacts или nobody"}), 400
+    update_privacy_settings(user["id"], hide, who)
     return jsonify({"ok": True})
 
 @app.route("/api/sessions", methods=["GET"])
@@ -461,7 +572,7 @@ def api_usernames_my():
 def api_usernames_activate():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    if activate_username(user["id"], (request.get_json() or {}).get("username", "").strip()): return jsonify({"ok": True})
+    if activate_username(user["id"], str_field(json_body(), "username").lstrip("@")): return jsonify({"ok": True})
     return jsonify({"error": "Не удалось активировать"}), 400
 
 @app.route("/api/frigdmant/listings")
@@ -474,21 +585,33 @@ def api_frig_listings():
 def api_frig_list():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    data = request.get_json() or {}
-    price = int(data.get("price", 0))
+    data = json_body()
+    price = to_int(data.get("price"), 0)
     if price < 42: return jsonify({"error": "Мин. цена 42 Di"}), 400
+    if price > 100_000_000: return jsonify({"error": "Слишком большая цена"}), 400
+    uname = str_field(data, "username").lstrip("@")
+    listing_type = data.get("listing_type", "buyout")
+    if listing_type not in ("buyout", "auction"): return jsonify({"error": "Тип лота: buyout или auction"}), 400
+    if not uname: return jsonify({"error": "Укажи юзернейм"}), 400
+    if is_username_on_frigdmant(uname): return jsonify({"error": "Этот юзернейм уже выставлен на продажу"}), 400
     owned = [u["username"] for u in get_user_usernames(user["id"])]
-    if user["username"] == data.get("username"): owned.append(user["username"])
-    if data.get("username") not in owned: return jsonify({"error": "Вы не владеете этим юзернеймом"}), 403
-    supabase.table("owned_usernames").delete().eq("user_id", user["id"]).eq("username", data["username"]).execute()
-    create_frigdmant_listing(user["id"], "user", user["id"], data["username"], price, data.get("listing_type", "buyout"))
+    is_active_name = (user.get("username") or "").lower() == uname.lower()
+    if uname not in owned and not is_active_name: return jsonify({"error": "Вы не владеете этим юзернеймом"}), 403
+    # Сначала создаём лот и только потом убираем ник из коллекции: раньше при сбое создания лота ник пропадал
+    # (удалён из коллекции, лота нет).
+    listing = create_frigdmant_listing(user["id"], "user", user["id"], uname, price, listing_type)
+    if not listing: return jsonify({"error": "Не удалось создать лот"}), 500
+    if uname in owned:
+        supabase.table("owned_usernames").delete().eq("user_id", user["id"]).eq("username", uname).execute()
     return jsonify({"ok": True})
 
 @app.route("/api/frigdmant/buy", methods=["POST"])
 def api_frig_buy():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    success, err = buy_frigdmant_listing((request.get_json() or {}).get("listing_id"), user["id"])
+    listing_id = to_int(json_body().get("listing_id"))
+    if listing_id is None: return jsonify({"error": "listing_id обязателен"}), 400
+    success, err = buy_frigdmant_listing(listing_id, user["id"])
     if success: return jsonify({"ok": True})
     return jsonify({"error": err}), 400
 
@@ -496,8 +619,11 @@ def api_frig_buy():
 def api_frig_bid():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    data = request.get_json() or {}
-    success, err = place_frigdmant_bid(data.get("listing_id"), user["id"], int(data.get("amount", 0)))
+    data = json_body()
+    listing_id = to_int(data.get("listing_id")); amount = to_int(data.get("amount"), 0)
+    if listing_id is None: return jsonify({"error": "listing_id обязателен"}), 400
+    if amount <= 0 or amount > 100_000_000: return jsonify({"error": "Неверная сумма ставки"}), 400
+    success, err = place_frigdmant_bid(listing_id, user["id"], amount)
     if success: return jsonify({"ok": True})
     return jsonify({"error": err}), 400
 
@@ -505,7 +631,8 @@ def api_frig_bid():
 def api_frig_cancel():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    if cancel_listing((request.get_json() or {}).get("listing_id"), user["id"]): return jsonify({"ok": True})
+    listing_id = to_int(json_body().get("listing_id"))
+    if listing_id is not None and cancel_listing(listing_id, user["id"]): return jsonify({"ok": True})
     return jsonify({"error": "Ошибка отмены"}), 400
 
 # ==================== SHOP ====================
@@ -520,7 +647,7 @@ def api_shop_items():
 def api_shop_buy():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    data = request.get_json() or {}
+    data = json_body()
     item_id = data.get("item_id")
     if item_id not in SHOP_ITEMS: return jsonify({"error": "Товар не найден"}), 404
     item = SHOP_ITEMS[item_id]
@@ -586,27 +713,40 @@ def api_all_list():
 def api_chats_create():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    data = request.get_json() or {}
-    other_id = data.get("user_id")
+    data = json_body()
+    other_id = to_int(data.get("user_id"))
     if not other_id: return jsonify({"error": "user_id обязателен"}), 400
     if other_id == user["id"]: return jsonify({"error": "Нельзя чатиться с самим собой"}), 400
     other = get_user_by_id(other_id)
     if not other: return jsonify({"error": "Юзер не найден"}), 404
+    if other.get("banned") and not is_ban_expired(other): return jsonify({"error": "Пользователь заблокирован"}), 403
     chat = get_or_create_chat(user["id"], other_id)
+    if not chat: return jsonify({"error": "Не удалось создать чат"}), 500
     return jsonify({"ok": True, "chat_id": chat["id"]})
 
 @app.route("/api/chats/group", methods=["POST"])
 def api_create_group():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    data = request.get_json() or {}
-    name = (data.get("name") or "").strip()
-    member_ids = data.get("member_ids", [])
+    data = json_body()
+    name = str_field(data, "name")
+    raw_ids = data.get("member_ids", [])
     if not name: return jsonify({"error": "Название группы обязательно"}), 400
     if len(name) > 64: return jsonify({"error": "Название слишком длинное"}), 400
+    if not isinstance(raw_ids, list) or len(raw_ids) > 500: return jsonify({"error": "member_ids должен быть списком"}), 400
+    # Раньше id не проверялись вовсе: можно было передать несуществующие, повторяющиеся, строки или тысячи значений.
+    member_ids = []
+    for raw in raw_ids:
+        mid = to_int(raw)
+        if mid is None: return jsonify({"error": "member_ids: только числовые id"}), 400
+        if mid != user["id"] and mid not in member_ids: member_ids.append(mid)
     total_members = len(member_ids) + 1
     max_limit = 110 if check_premium(user) else 10
     if total_members > max_limit: return jsonify({"error": f"Лимит группы: {max_limit} человек. У тебя PDG: {check_premium(user)}"}), 400
+    for mid in member_ids:
+        m = get_user_by_id(mid)
+        if not m: return jsonify({"error": f"Пользователь {mid} не найден"}), 404
+        if m.get("banned") and not is_ban_expired(m): return jsonify({"error": f"Пользователь {mid} заблокирован"}), 400
     chat = create_group_chat(user["id"], name, member_ids)
     if not chat: return jsonify({"error": "Ошибка создания группы"}), 500
     return jsonify({"ok": True, "chat_id": chat["id"]})
@@ -643,7 +783,7 @@ def api_chat_messages(chat_id):
     if not chat: return jsonify({"error": "Чат не найден"}), 404
     is_allowed = is_chat_member(chat_id, user["id"]) if chat.get("is_group") else user["id"] in (chat["user1_id"], chat["user2_id"])
     if not is_allowed: return jsonify({"error": "Нет доступа"}), 403
-    limit = int(request.args.get("limit", 50)); offset = int(request.args.get("offset", 0))
+    limit = int_arg("limit", 50, 1, 100); offset = int_arg("offset", 0, 0, 100000)
     messages = get_messages(chat_id, limit, offset)
     mark_messages_read(chat_id, user["id"]); update_last_seen(user["id"])
     if chat.get("is_group"):
@@ -683,10 +823,12 @@ def api_chat_members(chat_id):
 def api_send():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    data = request.get_json() or {}
-    chat_id = data.get("chat_id"); text = (data.get("text") or "").strip()
+    data = json_body()
+    chat_id = to_int(data.get("chat_id")); text = str_field(data, "text")
     if not chat_id or not text: return jsonify({"error": "chat_id и text обязательны"}), 400
     if len(text) > 4000: return jsonify({"error": "Сообщение слишком длинное"}), 400
+    # Антиспам: не больше 20 сообщений за 10 секунд с одного аккаунта (раньше лимита не было вообще).
+    if not check_rate_limit(f"send_{user['id']}", 20, 10): return jsonify({"error": "Слишком часто. Подожди пару секунд."}), 429
     chat = get_chat_by_id(chat_id)
     if not chat: return jsonify({"error": "Чат не найден"}), 404
     is_allowed = is_chat_member(chat_id, user["id"]) if chat.get("is_group") else user["id"] in (chat["user1_id"], chat["user2_id"])
@@ -699,8 +841,9 @@ def api_send():
         if other_id == DIO_BOT_ID and user["id"] != DIO_BOT_ID:
             stripped = text.strip().lower()
             should_reply = len(stripped) >= 2 and stripped not in ("ок", "ok", "ага", "угу", "да", "нет")
-            if should_reply:
-                threading.Thread(target=process_ai_reply, args=(chat_id, text), daemon=True).start()
+            # Каждый ответ Дио — платный вызов Groq и отдельный поток: ограничиваем и по пользователю, и глобально.
+            if should_reply and check_rate_limit(f"dio_{user['id']}", 8, 300) and check_rate_limit("dio_global", 120, 60):
+                threading.Thread(target=process_ai_reply, args=(chat_id, text[:1000]), daemon=True).start()
     return jsonify({"ok": True, "message": msg})
 
 @app.route("/api/messages/<int:message_id>", methods=["DELETE"])
@@ -717,28 +860,56 @@ def api_message_delete(message_id):
 def api_poll():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    chat_id = request.args.get("chat_id"); after = request.args.get("after", "1970-01-01T00:00:00+00:00")
+    chat_id = to_int(request.args.get("chat_id")); after = (request.args.get("after") or "1970-01-01T00:00:00+00:00")[:64]
     if not chat_id: return jsonify({"messages": []})
-    chat = get_chat_by_id(int(chat_id))
+    chat = get_chat_by_id(chat_id)
     if not chat: return jsonify({"error": "Чат не найден"}), 404
-    is_allowed = is_chat_member(int(chat_id), user["id"]) if chat.get("is_group") else user["id"] in (chat["user1_id"], chat["user2_id"])
+    is_allowed = is_chat_member(chat_id, user["id"]) if chat.get("is_group") else user["id"] in (chat["user1_id"], chat["user2_id"])
     if not is_allowed: return jsonify({"error": "Нет доступа"}), 403
     update_last_seen(user["id"])
-    res = supabase.table("messages").select("*").eq("chat_id", int(chat_id)).gt("created_at", after).order("created_at").execute()
+    # limit(200): раньше за один poll можно было вытащить всю историю чата без ограничения
+    res = supabase.table("messages").select("*").eq("chat_id", chat_id).gt("created_at", after).order("created_at").limit(200).execute()
     other_id = chat["user2_id"] if chat["user1_id"] == user["id"] else chat["user1_id"]
     now = time.time()
-    typing_users = [uid for uid, ts in typing_store.get(int(chat_id), {}).items() if uid == other_id and now - ts < 5]
+    typing_users = [uid for uid, ts in typing_store.get(chat_id, {}).items() if uid == other_id and now - ts < 5]
     return jsonify({"messages": res.data or [], "typing": len(typing_users) > 0})
 
 @app.route("/api/typing", methods=["POST"])
 def api_typing():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    data = request.get_json() or {}
-    chat_id = data.get("chat_id")
+    data = json_body()
+    chat_id = to_int(data.get("chat_id"))
     if not chat_id: return jsonify({"error": "chat_id обязателен"}), 400
-    typing_store[int(chat_id)][user["id"]] = time.time()
+    # Раньше любой вошедший мог писать в typing_store любого chat_id (в том числе чужого и несуществующего):
+    # это и спуфинг "печатает...", и бесконечный рост памяти.
+    chat = get_chat_by_id(chat_id)
+    if not chat: return jsonify({"error": "Чат не найден"}), 404
+    is_allowed = is_chat_member(chat_id, user["id"]) if chat.get("is_group") else user["id"] in (chat["user1_id"], chat["user2_id"])
+    if not is_allowed: return jsonify({"error": "Нет доступа"}), 403
+    if not check_rate_limit(f"typing_{user['id']}", 30, 60): return jsonify({"ok": True})
+    now = time.time()
+    typing_store[chat_id][user["id"]] = now
+    if len(typing_store) > 2000:  # подчищаем устаревшие отметки, чтобы словарь не рос бесконечно
+        for cid in list(typing_store.keys()):
+            typing_store[cid] = {uid: ts for uid, ts in typing_store[cid].items() if now - ts < 10}
+            if not typing_store[cid]: typing_store.pop(cid, None)
     return jsonify({"ok": True})
+
+def file_matches_mime(data, mime):
+    """Грубая проверка сигнатуры: заявленный в запросе mime не должен противоречить содержимому.
+    Заголовок Content-Type присылает клиент, поэтому одной ему верить нельзя (например, .exe под видом .pdf)."""
+    head = data[:16]
+    if mime == "application/pdf": return head.startswith(b"%PDF")
+    if mime in ("application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"): return head.startswith(b"PK\x03\x04")
+    if mime in ("application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint"): return head.startswith(b"\xd0\xcf\x11\xe0")
+    if mime in ("audio/mpeg", "audio/mp3"): return head.startswith(b"ID3") or (len(head) > 1 and head[0] == 0xFF and (head[1] & 0xE0) == 0xE0)
+    if mime in ("audio/wav", "audio/x-wav", "audio/wave"): return head.startswith(b"RIFF") and data[8:12] == b"WAVE"
+    if mime in ("audio/mp4", "audio/x-m4a", "audio/m4a"): return data[4:8] == b"ftyp"
+    if mime == "text/plain": return b"\x00" not in data[:4096]
+    return False
 
 # ==================== UPLOAD ====================
 def _process_image(file_bytes, mime):
@@ -784,11 +955,11 @@ def api_upload_photo():
     if not user: return jsonify({"error": "Не авторизован"}), 401
     can, next_date = can_upload_photo(user["id"])
     if not can: return jsonify({"error": "Бесплатно можно 1 фото раз в 7 дней. Купи PDG для безлимита!", "next_date": next_date.isoformat() if next_date else None}), 429
-    chat_id = request.form.get("chat_id")
+    chat_id = to_int(request.form.get("chat_id"))
     if not chat_id: return jsonify({"error": "chat_id обязателен"}), 400
-    chat = get_chat_by_id(int(chat_id))
+    chat = get_chat_by_id(chat_id)
     if not chat: return jsonify({"error": "Чат не найден"}), 404
-    is_allowed = is_chat_member(int(chat_id), user["id"]) if chat.get("is_group") else user["id"] in (chat["user1_id"], chat["user2_id"])
+    is_allowed = is_chat_member(chat_id, user["id"]) if chat.get("is_group") else user["id"] in (chat["user1_id"], chat["user2_id"])
     if not is_allowed: return jsonify({"error": "Нет доступа"}), 403
     if "file" not in request.files: return jsonify({"error": "Файл не передан"}), 400
     file = request.files["file"]
@@ -805,7 +976,7 @@ def api_upload_photo():
         supabase.storage.from_("chat-photos").upload(filename, processed, file_options={"content-type": f"image/{ext if ext != 'jpg' else 'jpeg'}"})
         public_url = supabase.storage.from_("chat-photos").get_public_url(filename)
     except Exception as e: return jsonify({"error": f"Ошибка загрузки: {str(e)}"}), 500
-    msg = save_message(int(chat_id), user["id"], caption, "photo", public_url, len(processed), filename)
+    msg = save_message(chat_id, user["id"], caption, "photo", public_url, len(processed), filename)
     register_photo_upload(user["id"])
     return jsonify({"ok": True, "message": msg})
 
@@ -814,11 +985,11 @@ def api_upload_file():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
     if not check_file_plus(user): return jsonify({"error": "Нужна подписка File Plus"}), 403
-    chat_id = request.form.get("chat_id")
+    chat_id = to_int(request.form.get("chat_id"))
     if not chat_id: return jsonify({"error": "chat_id обязателен"}), 400
-    chat = get_chat_by_id(int(chat_id))
+    chat = get_chat_by_id(chat_id)
     if not chat: return jsonify({"error": "Чат не найден"}), 404
-    is_allowed = is_chat_member(int(chat_id), user["id"]) if chat.get("is_group") else user["id"] in (chat["user1_id"], chat["user2_id"])
+    is_allowed = is_chat_member(chat_id, user["id"]) if chat.get("is_group") else user["id"] in (chat["user1_id"], chat["user2_id"])
     if not is_allowed: return jsonify({"error": "Нет доступа"}), 403
     if "file" not in request.files: return jsonify({"error": "Файл не передан"}), 400
     file = request.files["file"]
@@ -826,6 +997,8 @@ def api_upload_file():
     if mime not in ALLOWED_FILE_MIME: return jsonify({"error": "Такой формат не поддерживается"}), 400
     file_bytes = file.read(); size = len(file_bytes)
     if size > MAX_FILE_SIZE: return jsonify({"error": "Файл больше 3 МБ"}), 400
+    if not size: return jsonify({"error": "Пустой файл"}), 400
+    if not file_matches_mime(file_bytes, mime): return jsonify({"error": "Содержимое файла не соответствует его типу"}), 400
     total_quota = FILE_QUOTA_BASE + (user.get("file_quota_bytes", 0) or 0)
     used = get_file_quota_used(user["id"])
     if used + size > total_quota:
@@ -838,7 +1011,7 @@ def api_upload_file():
         public_url = supabase.storage.from_("chat-photos").get_public_url(filename)
     except Exception as e: return jsonify({"error": f"Ошибка загрузки: {str(e)}"}), 500
     file_category = "audio" if mime.startswith("audio/") else "document"
-    msg = save_message(int(chat_id), user["id"], "", "file", public_url, size, safe_name, file_type=file_category, file_mime=mime)
+    msg = save_message(chat_id, user["id"], "", "file", public_url, size, safe_name, file_type=file_category, file_mime=mime)
     register_file_upload(user["id"], size)
     return jsonify({"ok": True, "message": msg})
 
@@ -863,7 +1036,7 @@ def api_channels_create():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
     if count_user_channels(user["id"]) >= 4: return jsonify({"error": "Максимум 4 канала на аккаунт"}), 400
-    data = request.get_json() or {}
+    data = json_body()
     name = (data.get("name") or "").strip(); username = (data.get("username") or "").strip().lstrip("@")
     description = (data.get("description") or "").strip() or None; ch_type = data.get("type", "public")
     if not name: return jsonify({"error": "Название обязательно"}), 400
@@ -913,7 +1086,7 @@ def api_channel_update(channel_id):
     if not user: return jsonify({"error": "Не авторизован"}), 401
     ch = get_channel_by_id(channel_id)
     if not ch or ch["owner_id"] != user["id"]: return jsonify({"error": "Нет доступа"}), 403
-    data = request.get_json() or {}
+    data = json_body()
     name = data.get("name"); username = data.get("username"); ch_type = data.get("type")
     if name is not None:
         name = name.strip()
@@ -984,7 +1157,7 @@ def api_channel_messages(channel_id):
     ch = get_channel_by_id(channel_id)
     if not ch: return jsonify({"error": "Канал не найден"}), 404
     if not is_subscribed(channel_id, user["id"]) and ch["owner_id"] != user["id"]: return jsonify({"error": "Ты не подписан"}), 403
-    limit = int(request.args.get("limit", 50)); offset = int(request.args.get("offset", 0))
+    limit = int_arg("limit", 50, 1, 100); offset = int_arg("offset", 0, 0, 100000)
     messages = get_channel_messages(channel_id, limit, offset)
     subs = supabase.table("channel_subscribers").select("id").eq("channel_id", channel_id).execute()
     owner = get_user_by_id(ch["owner_id"])
@@ -997,7 +1170,7 @@ def api_channel_send(channel_id):
     ch = get_channel_by_id(channel_id)
     if not ch: return jsonify({"error": "Канал не найден"}), 404
     if ch["owner_id"] != user["id"]: return jsonify({"error": "Только владелец может писать"}), 403
-    data = request.get_json() or {}
+    data = json_body()
     text = (data.get("text") or "").strip()
     if not text: return jsonify({"error": "Текст обязателен"}), 400
     if len(text) > 4000: return jsonify({"error": "Слишком длинное"}), 400
@@ -1028,7 +1201,7 @@ def api_channel_msg_delete(channel_id, msg_id):
     if not user: return jsonify({"error": "Не авторизован"}), 401
     ch = get_channel_by_id(channel_id)
     if not ch or ch["owner_id"] != user["id"]: return jsonify({"error": "Нет доступа"}), 403
-    delete_channel_message(msg_id)
+    if not delete_channel_message(msg_id, channel_id): return jsonify({"error": "Сообщение не найдено в этом канале"}), 404
     return jsonify({"ok": True})
 
 # ==================== REPORTS ====================
@@ -1038,7 +1211,7 @@ def api_report_create():
     if not user: return jsonify({"error": "Не авторизован"}), 401
     used = count_reports_by_user_24h(user["id"])
     if used >= REPORT_LIMIT_24H: return jsonify({"error": f"Лимит {REPORT_LIMIT_24H} жалоб в сутки"}), 429
-    data = request.get_json() or {}
+    data = json_body()
     reason = (data.get("reason") or "").strip(); comment = (data.get("comment") or "").strip() or None
     reported_user_id = data.get("reported_user_id"); reported_message_id = data.get("reported_message_id"); reported_channel_id = data.get("reported_channel_id")
     if reason not in REPORT_REASONS: return jsonify({"error": "Неверная причина"}), 400
@@ -1081,7 +1254,7 @@ def api_admin_stats():
 def api_admin_users():
     admin = require_admin()
     if not admin: return jsonify({"error": "Нет доступа"}), 403
-    limit = int(request.args.get("limit", 100)); offset = int(request.args.get("offset", 0))
+    limit = int_arg("limit", 100, 1, 500); offset = int_arg("offset", 0, 0, 100000)
     users = get_all_users_admin(limit, offset)
     return jsonify({"users": [user_to_dict(u) for u in users], "me": user_to_dict(admin)})
 
@@ -1089,7 +1262,7 @@ def api_admin_users():
 def api_admin_set_role():
     admin = require_owner()
     if not admin: return jsonify({"error": "Только владелец"}), 403
-    data = request.get_json() or {}
+    data = json_body()
     target_id = data.get("user_id"); role = data.get("role")
     if role not in ("user", "moderator", "developer"): return jsonify({"error": "Неверная роль"}), 400
     if target_id == admin["id"]: return jsonify({"error": "Нельзя менять свою роль"}), 400
@@ -1101,7 +1274,7 @@ def api_admin_set_role():
 def api_admin_set_verified():
     admin = require_owner()
     if not admin: return jsonify({"error": "Только владелец"}), 403
-    data = request.get_json() or {}
+    data = json_body()
     target_id = data.get("user_id"); verified = bool(data.get("verified"))
     updated = update_user_verified(target_id, verified)
     if not updated: return jsonify({"error": "Юзер не найден"}), 404
@@ -1111,7 +1284,7 @@ def api_admin_set_verified():
 def api_admin_add_balance():
     admin = require_owner()
     if not admin: return jsonify({"error": "Только владелец"}), 403
-    data = request.get_json() or {}
+    data = json_body()
     target_id = data.get("user_id"); amount = data.get("amount"); description = (data.get("description") or "Пополнение от админа").strip()
     try: amount = int(amount)
     except Exception: return jsonify({"error": "Неверная сумма"}), 400
@@ -1134,7 +1307,7 @@ def api_admin_reports():
 def api_admin_report_review(report_id):
     admin = require_admin()
     if not admin: return jsonify({"error": "Нет доступа"}), 403
-    data = request.get_json() or {}
+    data = json_body()
     status = data.get("status")
     if status not in ("reviewed", "rejected"): return jsonify({"error": "Статус: reviewed или rejected"}), 400
     update_report_status(report_id, status, admin["id"])
@@ -1153,12 +1326,19 @@ def can_ban(admin, target):
 def api_admin_ban():
     admin = get_current_user()
     if not admin or admin.get("role") not in ("owner", "developer", "moderator"): return jsonify({"error": "Нет доступа"}), 403
-    data = request.get_json() or {}
-    target_id = data.get("user_id"); reason = (data.get("reason") or "").strip(); duration_days = data.get("duration_days")
+    data = json_body()
+    target_id = to_int(data.get("user_id")); reason = str_field(data, "reason"); duration_days = data.get("duration_days")
     if not target_id or not reason: return jsonify({"error": "user_id и reason обязательны"}), 400
+    if len(reason) > 500: return jsonify({"error": "Причина слишком длинная (максимум 500 символов)"}), 400
     target = get_user_by_id(target_id)
     if not target: return jsonify({"error": "Юзер не найден"}), 404
     if not can_ban(admin, target): return jsonify({"error": "Недостаточно прав"}), 403
+    # Срок проверяем ДО отмены лотов и возврата ставок: раньше при неверном сроке лоты уже были отменены, а бан не применялся.
+    until = None
+    if duration_days:
+        days = to_int(duration_days)
+        if days is None or days <= 0 or days > 3650: return jsonify({"error": "Срок: 1-3650 дней"}), 400
+        until = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
     # Отмена лотов и возврат юзернеймов
     try:
         listings = supabase.table("frigdmant_listings").select("*").eq("seller_id", target_id).eq("status", "active").execute()
@@ -1175,13 +1355,6 @@ def api_admin_ban():
             except Exception as e:
                 print(f"[BAN] Не удалось вернуть юзернейм: {e}")
     except Exception as e: print(f"[BAN] Ошибка отмены лотов: {e}")
-    until = None
-    if duration_days:
-        try:
-            days = int(duration_days)
-            if days <= 0 or days > 3650: return jsonify({"error": "Срок: 1-3650 дней"}), 400
-            until = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
-        except Exception: return jsonify({"error": "Неверный срок"}), 400
     ban_user(target_id, reason, admin["id"], until)
     return jsonify({"ok": True})
 
@@ -1189,7 +1362,7 @@ def api_admin_ban():
 def api_admin_unban():
     admin = get_current_user()
     if not admin or admin.get("role") not in ("owner", "developer"): return jsonify({"error": "Нет доступа"}), 403
-    data = request.get_json() or {}
+    data = json_body()
     target_id = data.get("user_id")
     if not target_id: return jsonify({"error": "user_id обязателен"}), 400
     unban_user(target_id)
@@ -1209,7 +1382,7 @@ def worker_get_pending():
 @app.route("/api/worker/task_done", methods=["POST"])
 def worker_task_done():
     if not worker_authorized(): return jsonify({"error": "Unauthorized"}), 401
-    data = request.get_json() or {}
+    data = json_body()
     email = data.get("email")
     if email: supabase.table("pending_codes").update({"sent": True}).eq("email", email.lower()).execute()
     return jsonify({"ok": True})
