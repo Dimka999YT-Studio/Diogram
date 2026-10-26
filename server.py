@@ -93,7 +93,6 @@ ALLOWED_FILE_MIME = {
 REPORT_REASONS = ["spam", "abuse", "scam", "18+", "fake", "other"]
 
 SHOP_ITEMS = {
-    "pdg_1d": {"category": "pdg", "name": "PDG 1 день", "price": 4.30, "days": 1},
     "pdg_30d": {"category": "pdg", "name": "PDG 30 дней", "price": 99, "days": 30},
     "pdg_3m": {"category": "pdg", "name": "PDG 3 месяца", "price": 290, "days": 90},
     "pdg_6m": {"category": "pdg", "name": "PDG 6 месяцев", "price": 585, "days": 180},
