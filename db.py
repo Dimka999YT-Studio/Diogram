@@ -1011,7 +1011,10 @@ def get_user_listings(user_id: int) -> list:
 
 
 def cancel_listing(listing_id: int, user_id: int) -> bool:
-    res = supabase.table("frigdmant_listings").update({"status": "cancelled"}).eq("id", listing_id).eq("seller_id", user_id).eq("status", "active").execute()
+    # Лот со ставками отменять нельзя: ставки заморожены на балансах, иначе они пропадут.
+    res = (supabase.table("frigdmant_listings").update({"status": "cancelled"})
+           .eq("id", listing_id).eq("seller_id", user_id).eq("status", "active")
+           .is_("highest_bidder_id", "null").eq("current_bid", 0).execute())
     if res.data:
         supabase.table("owned_usernames").insert({"user_id": user_id, "username": res.data[0]["username"]}).execute()
         return True
