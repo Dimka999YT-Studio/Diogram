@@ -633,7 +633,7 @@ def api_frig_cancel():
     if not user: return jsonify({"error": "Не авторизован"}), 401
     listing_id = to_int(json_body().get("listing_id"))
     if listing_id is not None and cancel_listing(listing_id, user["id"]): return jsonify({"ok": True})
-    return jsonify({"error": "Ошибка отмены"}), 400
+    return jsonify({"error": "Нельзя отменить: лот не найден, уже закрыт или на него есть ставки"}), 400
 
 # ==================== SHOP ====================
 @app.route("/api/shop/items")
