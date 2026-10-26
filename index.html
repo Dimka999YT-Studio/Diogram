@@ -1432,6 +1432,102 @@ async function deleteSession(sid) {
   try { await api("/api/sessions/" + sid, { method: "DELETE" }); openSettings(); } catch(e) { alert(e.message); }
 }
 
+// FRIGDMANT
+async function openFrigdmant(tab) {
+  if (tab !== "my") tab = "market";
+  show("screen-frigdmant");
+  currentFrigTab = tab;
+  document.querySelectorAll(".shop-tab[data-frig]").forEach(t => t.classList.toggle("active", t.dataset.frig === tab));
+  document.getElementById("frig-list").innerHTML = '<div class="spinner"></div>';
+  try {
+    const data = await api("/api/frigdmant/listings");
+    frigListings = data.market; myListings = data.my_listings; renderFrig();
+  } catch(e) { document.getElementById("frig-list").innerHTML = 'Ошибка'; }
+}
+
+document.querySelectorAll(".shop-tab[data-frig]").forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll(".shop-tab[data-frig]").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active"); currentFrigTab = tab.dataset.frig; renderFrig();
+  };
+});
+
+function renderFrig() {
+  const box = document.getElementById("frig-list"); box.innerHTML = "";
+  const items = currentFrigTab === "market" ? frigListings : myListings;
+  if (!items.length) { box.innerHTML = '<div class="empty-state">Здесь пока пусто</div>'; return; }
+  for (const l of items) {
+    const el = document.createElement("div"); el.className = "frig-card" + (l.listing_type === "auction" ? " auction" : "");
+    const isAuction = l.listing_type === "auction";
+    const typeLabel = isAuction ? "⏳ Аукцион" : "💰 Фикс-цена";
+    const priceLabel = isAuction ? "Текущая ставка: " + l.current_bid + " Di" : "Цена: " + l.price + " Di";
+    const timeLeft = isAuction ? "До конца: " + fmtDate(l.end_time) : "";
+    const seller = l.seller_username ? "@" + l.seller_username : "скрыт";
+    let actions = "";
+    if (currentFrigTab === "market") {
+      if (isAuction) actions = '<button class="admin-btn primary" onclick="openFrigAction('+l.id+', \'bid\')">Сделать ставку</button>';
+      else actions = '<button class="admin-btn primary" onclick="openFrigAction('+l.id+', \'buy\')">Купить</button>';
+    } else { actions = '<button class="admin-btn danger" onclick="cancelFrigListing('+l.id+')">Отменить</button>'; }
+    el.innerHTML = '<div class="frig-title"><img src="'+COIN_URL+'" class="di-icon" style="width:16px;height:16px;"> @' + escapeHtml(l.username) + '</div><div class="frig-price">' + priceLabel + '</div><div class="frig-meta">' + typeLabel + '<br>Продавец: ' + escapeHtml(seller) + '<br>' + timeLeft + '</div><div class="frig-actions">' + actions + '</div>';
+    box.appendChild(el);
+  }
+}
+
+document.getElementById("btn-frig-new").onclick = () => { document.getElementById("frig-price").value = ""; setError("modal-frig-error", ""); openModal("modal-frig-new"); };
+
+document.querySelectorAll("#modal-frig-new .reason-option").forEach(btn => {
+  btn.onclick = () => { document.querySelectorAll("#modal-frig-new .reason-option").forEach(b => b.classList.remove("selected")); btn.classList.add("selected"); frigListingType = btn.dataset.ltype; };
+});
+
+document.getElementById("btn-frig-create").onclick = async () => {
+  const price = parseInt(document.getElementById("frig-price").value);
+  if (isNaN(price) || price < 42) return setError("modal-frig-error", "Мин. цена 42 Di");
+  try {
+    await api("/api/frigdmant/list", { method: "POST", body: JSON.stringify({ target_type: "user", username: currentUser.username, price: price, listing_type: frigListingType }) });
+    closeModal("modal-frig-new"); alert("Выставлено на Frigdmant!"); openFrigdmant();
+  } catch(e) { setError("modal-frig-error", e.message); }
+};
+
+async function cancelFrigListing(id) {
+  if (!confirm("Снять лот с продажи?")) return;
+  try { await api("/api/frigdmant/cancel", { method: "POST", body: JSON.stringify({ listing_id: id }) }); openFrigdmant(); } catch(e) { alert(e.message); }
+}
+
+function openFrigAction(id, action) {
+  const listing = frigListings.find(l => l.id === id); if (!listing) return;
+  const modal = document.getElementById("modal-frig-action"); const title = document.getElementById("frig-action-title");
+  const info = document.getElementById("frig-action-info"); const inputBlock = document.getElementById("frig-action-input-block");
+  title.textContent = action === 'buy' ? "Покупка" : "Ставка на аукционе";
+  info.innerHTML = "Юзернейм: <b>@" + escapeHtml(listing.username) + "</b><br>";
+  document.getElementById("btn-frig-confirm-action").onclick = () => action === 'buy' ? buyFrigListing(id) : placeFrigBid(id);
+  if (action === 'buy') { info.innerHTML += "Цена: <b>" + listing.price + " Di</b><br>У вас: <b>" + parseFloat(currentUser.balance).toFixed(2) + " Di</b>"; inputBlock.style.display = "none"; }
+  else { info.innerHTML += "Мин. ставка: <b>" + Math.max(listing.price, listing.current_bid + 1) + " Di</b>"; inputBlock.style.display = "block"; document.getElementById("frig-bid-amount").value = Math.max(listing.price, listing.current_bid + 1); }
+  setError("modal-frig-action-error", ""); openModal("modal-frig-action");
+}
+
+async function buyFrigListing(id) {
+  try {
+    await api("/api/frigdmant/buy", { method: "POST", body: JSON.stringify({ listing_id: id }) });
+    closeModal("modal-frig-action"); alert("Куплено! Юз добавлен в профиль.");
+    const me = await api("/api/me"); currentUser = me.user; openFrigdmant();
+  } catch(e) { setError("modal-frig-action-error", e.message); }
+}
+
+async function placeFrigBid(id) {
+  const amount = parseInt(document.getElementById("frig-bid-amount").value);
+  if (isNaN(amount)) return setError("modal-frig-action-error", "Введите сумму");
+  try {
+    await api("/api/frigdmant/bid", { method: "POST", body: JSON.stringify({ listing_id: id, amount: amount }) });
+    closeModal("modal-frig-action"); alert("Ставка принята!");
+    const me = await api("/api/me"); currentUser = me.user; openFrigdmant();
+  } catch(e) { setError("modal-frig-action-error", e.message); }
+}
+
+document.getElementById("btn-frig-back").onclick = () => { show("screen-list"); loadList(); };
+document.getElementById("btn-frigdmant").onclick = () => openFrigdmant();
+document.getElementById("menu-frig").onclick = () => { closeMenu(); openFrigdmant(); };
+document.getElementById("open-frig-my").onclick = () => openFrigdmant("my");
+
 // ПРОФИЛЬ
 async function openProfile() {
   if (!currentUser) return;
@@ -1603,7 +1699,7 @@ document.getElementById("btn-user-back").onclick = () => { show("screen-list"); 
 async function openShop() {
   show("screen-shop");
   currentShopCategory = "di";
-  document.querySelectorAll(".shop-tab").forEach(t => t.classList.toggle("active", t.dataset.cat === "di"));
+  document.querySelectorAll(".shop-tab[data-cat]").forEach(t => t.classList.toggle("active", t.dataset.cat === "di"));
   try {
     const data = await api("/api/shop/items"); shopItems = data.items;
     document.getElementById("shop-balance").innerHTML = '<img src="' + COIN_URL + '" class="di-icon"> ' + parseFloat(data.balance).toFixed(2) + " Di";
@@ -1612,8 +1708,9 @@ async function openShop() {
   } catch (e) { document.getElementById("shop-list").innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
 }
 
-document.querySelectorAll(".shop-tab").forEach(tab => {
-  tab.onclick = () => { document.querySelectorAll(".shop-tab").forEach(t => t.classList.remove("active")); tab.classList.add("active"); currentShopCategory = tab.dataset.cat; renderShop(); };
+// Только вкладки магазина ([data-cat]): раньше селектор ".shop-tab" перехватывал и вкладки Frigdmant ("Мои лоты" не переключалась)
+document.querySelectorAll(".shop-tab[data-cat]").forEach(tab => {
+  tab.onclick = () => { document.querySelectorAll(".shop-tab[data-cat]").forEach(t => t.classList.remove("active")); tab.classList.add("active"); currentShopCategory = tab.dataset.cat; renderShop(); };
 });
 
 function renderShop() {
