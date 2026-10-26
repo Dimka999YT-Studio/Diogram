@@ -255,6 +255,25 @@ def check_banned(user):
         return False, None
     return True, user.get("ban_reason") or "Нарушение правил"
 
+# Роли, которым можно писать даже тем, у кого стоит «Кто может писать: Никто» (модерация, поддержка).
+STAFF_ROLES = ("owner", "developer", "moderator")
+
+def messaging_blocked(sender, recipient):
+    """True, если sender не может писать recipient из-за настройки приватности «Никто».
+    Сотрудники (STAFF_ROLES) исключение; себе и ИИ-боту писать можно всегда."""
+    if not sender or not recipient or sender["id"] == recipient["id"]: return False
+    if recipient["id"] == DIO_BOT_ID: return False
+    if (sender.get("role") or "user") in STAFF_ROLES: return False
+    return recipient.get("who_can_message") == "nobody"
+
+def private_chat_blocked(chat, user):
+    """Для личного чата: ответ-ошибка (jsonify, 403), если собеседник запретил писать ему, иначе None."""
+    if not chat or chat.get("is_group"): return None
+    other_id = chat["user2_id"] if chat["user1_id"] == user["id"] else chat["user1_id"]
+    if messaging_blocked(user, get_user_by_id(other_id)):
+        return jsonify({"error": "Этот пользователь не принимает сообщения", "privacy": "nobody"}), 403
+    return None
+
 def banned_response(user, ban_reason):
     return jsonify({"error": "Забанен", "banned": True, "ban_reason": ban_reason,
                     "user_info": {"id": user["id"], "username": user.get("username"), "first_name": user.get("first_name"), "last_name": user.get("last_name")}}), 403
@@ -720,6 +739,7 @@ def api_chats_create():
     other = get_user_by_id(other_id)
     if not other: return jsonify({"error": "Юзер не найден"}), 404
     if other.get("banned") and not is_ban_expired(other): return jsonify({"error": "Пользователь заблокирован"}), 403
+    if messaging_blocked(user, other): return jsonify({"error": "Этот пользователь не принимает сообщения", "privacy": "nobody"}), 403
     chat = get_or_create_chat(user["id"], other_id)
     if not chat: return jsonify({"error": "Не удалось создать чат"}), 500
     return jsonify({"ok": True, "chat_id": chat["id"]})
@@ -833,6 +853,8 @@ def api_send():
     if not chat: return jsonify({"error": "Чат не найден"}), 404
     is_allowed = is_chat_member(chat_id, user["id"]) if chat.get("is_group") else user["id"] in (chat["user1_id"], chat["user2_id"])
     if not is_allowed: return jsonify({"error": "Нет доступа"}), 403
+    blocked = private_chat_blocked(chat, user)
+    if blocked: return blocked
     msg = save_message(chat_id, user["id"], text, "text")
     update_last_seen(user["id"])
     # Дио отвечает только в личных чатах (не в группах)
@@ -961,6 +983,8 @@ def api_upload_photo():
     if not chat: return jsonify({"error": "Чат не найден"}), 404
     is_allowed = is_chat_member(chat_id, user["id"]) if chat.get("is_group") else user["id"] in (chat["user1_id"], chat["user2_id"])
     if not is_allowed: return jsonify({"error": "Нет доступа"}), 403
+    blocked = private_chat_blocked(chat, user)
+    if blocked: return blocked
     if "file" not in request.files: return jsonify({"error": "Файл не передан"}), 400
     file = request.files["file"]
     mime = file.mimetype or ""
@@ -991,6 +1015,8 @@ def api_upload_file():
     if not chat: return jsonify({"error": "Чат не найден"}), 404
     is_allowed = is_chat_member(chat_id, user["id"]) if chat.get("is_group") else user["id"] in (chat["user1_id"], chat["user2_id"])
     if not is_allowed: return jsonify({"error": "Нет доступа"}), 403
+    blocked = private_chat_blocked(chat, user)
+    if blocked: return blocked
     if "file" not in request.files: return jsonify({"error": "Файл не передан"}), 400
     file = request.files["file"]
     mime = file.mimetype or ""
