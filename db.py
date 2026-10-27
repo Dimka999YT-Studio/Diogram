@@ -761,6 +761,110 @@ def delete_channel_message(message_id: int, channel_id: int) -> bool:
     return bool(res.data)
 
 
+# ============ КОММЕНТАРИИ И ОПРОСЫ КАНАЛОВ ============
+
+def get_owned_groups(user_id: int) -> list:
+    """Группы, которыми владеет пользователь (для привязки к каналу)."""
+    res = supabase.table("chats").select("id, name, avatar_url").eq("is_group", True).eq("owner_id", user_id).execute()
+    return res.data or []
+
+
+def set_channel_linked_chat(channel_id: int, chat_id) -> bool:
+    """Привязывает группу к каналу (chat_id=None снимает привязку). False — группа уже привязана к другому каналу."""
+    try:
+        supabase.table("channels").update({"linked_chat_id": chat_id}).eq("id", channel_id).execute()
+        return True
+    except Exception:
+        return False
+
+
+def save_channel_post(channel_id: int, sender_id: int, text: str, poll: dict = None, linked_chat_id=None) -> dict:
+    """Сохраняет пост канала. Если к каналу привязана группа, дублирует пост в группу (к нему крепятся комментарии)."""
+    row = {"channel_id": channel_id, "sender_id": sender_id, "text": text}
+    if poll:
+        row["poll"] = poll
+    res = supabase.table("channel_messages").insert(row).execute()
+    post = res.data[0] if res.data else None
+    if post and linked_chat_id:
+        try:
+            mirror_text = ("📊 " + text) if poll else text
+            mres = supabase.table("messages").insert({
+                "chat_id": linked_chat_id, "sender_id": sender_id, "text": mirror_text,
+                "type": "text", "channel_post_id": post["id"],
+            }).execute()
+            if mres.data:
+                post["discussion_message_id"] = mres.data[0]["id"]
+                supabase.table("channel_messages").update({"discussion_message_id": post["discussion_message_id"]}).eq("id", post["id"]).execute()
+        except Exception as e:
+            print(f"[mirror post error] {e}")
+    return post
+
+
+def delete_channel_post_mirror(discussion_message_id) -> None:
+    if discussion_message_id:
+        supabase.table("messages").delete().eq("id", discussion_message_id).execute()
+
+
+def get_channel_message(message_id: int, channel_id: int) -> dict:
+    res = supabase.table("channel_messages").select("*").eq("id", message_id).eq("channel_id", channel_id).execute()
+    return res.data[0] if res.data else None
+
+
+def decorate_channel_messages(messages: list, user_id: int) -> list:
+    """Добавляет к постам результаты опросов (poll_results) и число комментариев (comments_count)."""
+    poll_ids = [m["id"] for m in messages if m.get("poll")]
+    if poll_ids:
+        votes = supabase.table("channel_poll_votes").select("message_id, user_id, option_index").in_("message_id", poll_ids).execute().data or []
+        for m in messages:
+            if not m.get("poll"): continue
+            n = len((m["poll"] or {}).get("options") or [])
+            counts = [0] * n
+            voters = set(); mine = []
+            for v in votes:
+                if v["message_id"] != m["id"] or not (0 <= v["option_index"] < n): continue
+                counts[v["option_index"]] += 1
+                voters.add(v["user_id"])
+                if v["user_id"] == user_id: mine.append(v["option_index"])
+            m["poll_results"] = {"counts": counts, "voters": len(voters), "my": sorted(mine)}
+    disc_ids = [m["discussion_message_id"] for m in messages if m.get("discussion_message_id")]
+    if disc_ids:
+        rows = supabase.table("messages").select("reply_to_message_id").in_("reply_to_message_id", disc_ids).execute().data or []
+        tally = {}
+        for r in rows: tally[r["reply_to_message_id"]] = tally.get(r["reply_to_message_id"], 0) + 1
+        for m in messages:
+            if m.get("discussion_message_id"): m["comments_count"] = tally.get(m["discussion_message_id"], 0)
+    return messages
+
+
+def set_poll_votes(message_id: int, user_id: int, options: list) -> None:
+    """Заменяет голоса пользователя в опросе (пустой список — снять голос)."""
+    supabase.table("channel_poll_votes").delete().eq("message_id", message_id).eq("user_id", user_id).execute()
+    if options:
+        supabase.table("channel_poll_votes").insert(
+            [{"message_id": message_id, "user_id": user_id, "option_index": i} for i in options]
+        ).execute()
+
+
+def get_post_comments(discussion_message_id: int, limit: int = 100, after_id: int = 0) -> list:
+    res = (supabase.table("messages").select("*").eq("reply_to_message_id", discussion_message_id)
+           .gt("id", after_id).order("id", desc=False).limit(limit).execute())
+    return res.data or []
+
+
+def save_post_comment(chat_id: int, sender_id: int, discussion_message_id: int, text: str) -> dict:
+    res = supabase.table("messages").insert({
+        "chat_id": chat_id, "sender_id": sender_id, "text": text, "type": "text",
+        "reply_to_message_id": discussion_message_id,
+    }).execute()
+    return res.data[0] if res.data else None
+
+
+def ensure_chat_member(chat_id: int, user_id: int) -> None:
+    """Комментатор канала становится участником группы обсуждения."""
+    if not is_chat_member(chat_id, user_id):
+        supabase.table("chat_members").insert({"chat_id": chat_id, "user_id": user_id}).execute()
+
+
 # ============ АДМИНКА ============
 
 def get_all_users_admin(limit: int = 100, offset: int = 0) -> list:

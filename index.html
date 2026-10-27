@@ -233,6 +233,16 @@
   .doc-contact a { color: #5b8bff; text-decoration: none; }
 
   /* MODALS */
+  .poll { min-width: 230px; }
+  .poll-q { font-weight: 700; margin-bottom: 8px; }
+  .poll-opt { position: relative; display: block; width: 100%; text-align: left; background: #142030; border: 1px solid #2b3a4b; color: #e8eef5; border-radius: 10px; padding: 8px 10px; margin: 5px 0; cursor: pointer; overflow: hidden; font: inherit; }
+  .poll-opt .bar { position: absolute; inset: 0 auto 0 0; background: rgba(91,139,255,0.28); z-index: 0; }
+  .poll-opt span { position: relative; z-index: 1; }
+  .poll-opt .pct { float: right; opacity: 0.8; }
+  .poll-opt.mine { border-color: #5b8bff; }
+  .poll-meta { font-size: 12px; opacity: 0.7; margin-top: 6px; }
+  .comments-btn { display: block; margin-top: 8px; padding-top: 7px; border: none; border-top: 1px solid rgba(255,255,255,0.12); background: transparent; color: #7fb0ff; font: inherit; font-size: 13px; cursor: pointer; width: 100%; text-align: left; }
+  .comment-name { font-size: 12px; font-weight: 700; color: #7fb0ff; margin-bottom: 2px; }
   .modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
   .modal.active { display: flex; }
   .modal-bg { position: absolute; inset: 0; background: rgba(0,0,0,0.7); }
@@ -385,8 +395,22 @@
     <div class="messages" id="channel-messages"></div>
     <div class="input-area" id="channel-input-area" style="display:none;">
       <button class="input-btn" id="btn-channel-attach">📎</button>
+      <button class="input-btn" id="btn-channel-poll" title="Опрос">📊</button>
       <input id="channel-input" placeholder="Сообщение в канал..." autocomplete="off">
       <button class="send-btn" id="channel-send-btn">➤</button>
+    </div>
+  </div>
+
+  <!-- КОММЕНТАРИИ К ПОСТУ КАНАЛА -->
+  <div class="screen" id="screen-comments">
+    <div class="header">
+      <button class="header-icon" id="btn-back-comments">←</button>
+      <div class="header-info"><div class="name">Комментарии</div><div class="status" id="comments-status">—</div></div>
+    </div>
+    <div class="messages" id="comments-messages"></div>
+    <div class="input-area">
+      <input id="comments-input" placeholder="Комментарий..." autocomplete="off" maxlength="2000">
+      <button class="send-btn" id="comments-send-btn">➤</button>
     </div>
   </div>
 
@@ -505,6 +529,7 @@
         <div class="ch-info-subs" id="ch-info-subs">0 подписчиков</div>
       </div>
       <button class="profile-btn primary" id="btn-ch-info-edit" style="display:none;">✏️ Редактировать канал</button>
+      <button class="profile-btn secondary" id="btn-ch-info-link" style="display:none;">💬 Комментарии: группа</button>
       <button class="profile-btn secondary" id="btn-ch-info-subscribe" style="display:none;">➕ Подписаться</button>
       <button class="profile-btn secondary" id="btn-ch-info-unsubscribe" style="display:none;">🔕 Отписаться</button>
       <button class="profile-btn danger" id="btn-ch-info-delete" style="display:none;">🗑️ Удалить канал</button>
@@ -667,6 +692,8 @@
   <div class="menu-item" id="menu-logout"><span class="icon">🚪</span> Выйти</div>
 </div>
 
+<div class="modal" id="modal-poll"><div class="modal-bg" onclick="closeModal('modal-poll')"></div><div class="modal-content"><div class="modal-title">📊 Новый опрос</div><input type="text" id="poll-question" placeholder="Вопрос" maxlength="255" style="margin-bottom:10px;"><textarea id="poll-options" placeholder="Варианты — каждый с новой строки (от 2 до 10)" rows="5" style="resize:none;"></textarea><label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px;"><input type="checkbox" id="poll-multiple" style="width:auto;"> Можно выбрать несколько</label><div class="error" id="modal-poll-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-poll')">Отмена</button><button class="btn" id="btn-poll-send">Отправить</button></div></div></div>
+<div class="modal" id="modal-link-group"><div class="modal-bg" onclick="closeModal('modal-link-group')"></div><div class="modal-content"><div class="modal-title">Группа для комментариев</div><div style="font-size:13px;color:#7e8b99;margin-bottom:12px;">Посты канала будут дублироваться в группу, а под ними появится кнопка «Комментарии». Подписчики, которые комментируют, добавляются в группу.</div><div id="link-group-list"></div><div class="error" id="modal-link-group-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-link-group')">Закрыть</button></div></div></div>
 <div class="modal" id="modal-name"><div class="modal-bg" onclick="closeModal('modal-name')"></div><div class="modal-content"><div class="modal-title">Изменить имя</div><input type="text" id="modal-name-first" placeholder="Имя" maxlength="32" style="margin-bottom:10px;"><input type="text" id="modal-name-last" placeholder="Фамилия (необязательно)" maxlength="32"><div class="error" id="modal-name-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-name')">Отмена</button><button class="btn" id="btn-save-name">Сохранить</button></div></div></div>
 
 <div class="modal" id="modal-username"><div class="modal-bg" onclick="closeModal('modal-username')"></div><div class="modal-content"><div class="modal-title">Изменить @username</div><input type="text" id="modal-username-input" placeholder="username" maxlength="32"><div style="font-size:12px;color:#7e8b99;margin-top:8px;" id="username-limit-info"></div><div class="error" id="modal-username-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-username')">Отмена</button><button class="btn" id="btn-save-username">Сохранить</button></div></div></div>
@@ -1152,8 +1179,77 @@ async function openChannel(channelId) {
   } catch (e) { if (e.message !== "banned") document.getElementById("channel-messages").innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
 }
 
-function renderChannelMessages(msgs) { const box = document.getElementById("channel-messages"); box.innerHTML = ""; if (!msgs.length) { box.innerHTML = '<div class="empty-state">В канале пока нет сообщений</div>'; return; } for (const m of msgs) appendChannelMessage(m); }
-function appendChannelMessage(m) { const box = document.getElementById("channel-messages"); const empty = box.querySelector(".empty-state"); if (empty) empty.remove(); const d = document.createElement("div"); d.className = "msg other"; d.innerHTML = linkify(m.text) + '<span class="time">' + fmtTime(m.created_at) + '</span>'; box.appendChild(d); box.scrollTop = box.scrollHeight; }
+function renderChannelMessages(msgs) {
+  const box = document.getElementById("channel-messages");
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80; const prev = box.scrollTop;
+  box.innerHTML = "";
+  if (!msgs.length) { box.innerHTML = '<div class="empty-state">В канале пока нет сообщений</div>'; return; }
+  for (const m of msgs) appendChannelMessage(m);
+  box.scrollTop = atBottom ? box.scrollHeight : prev;
+}
+function pollHtml(m) {
+  const p = m.poll, r = m.poll_results || { counts: [], voters: 0, my: [] }; const total = r.counts.reduce((a, b) => a + b, 0) || 0;
+  let h = '<div class="poll" data-multiple="' + (p.multiple ? "1" : "0") + '" data-my="' + escapeAttr((r.my || []).join(",")) + '"><div class="poll-q">📊 ' + escapeHtml(p.question) + '</div>';
+  (p.options || []).forEach((o, i) => { const c = r.counts[i] || 0; const pct = total ? Math.round(c * 100 / total) : 0; h += '<button class="poll-opt' + ((r.my || []).includes(i) ? " mine" : "") + '" data-idx="' + i + '"><div class="bar" style="width:' + pct + '%"></div><span class="pct">' + pct + '% · ' + c + '</span><span>' + escapeHtml(o) + '</span></button>'; });
+  return h + '<div class="poll-meta">Проголосовало: ' + (r.voters || 0) + (p.multiple ? " · можно несколько" : "") + ' · анонимный</div></div>';
+}
+function appendChannelMessage(m) {
+  const box = document.getElementById("channel-messages"); const empty = box.querySelector(".empty-state"); if (empty) empty.remove();
+  const d = document.createElement("div"); d.className = "msg other"; d.setAttribute("data-mid", String(parseInt(m.id, 10) || 0));
+  d.innerHTML = (m.poll ? pollHtml(m) : linkify(m.text)) + '<span class="time">' + fmtTime(m.created_at) + '</span>'
+    + (m.discussion_message_id ? '<button class="comments-btn" data-comments="1">💬 Комментарии' + (m.comments_count ? " (" + (parseInt(m.comments_count, 10) || 0) + ")" : "") + '</button>' : "");
+  box.appendChild(d);
+}
+document.getElementById("channel-messages").addEventListener("click", async (e) => {
+  const msgEl = e.target.closest("[data-mid]"); if (!msgEl || !currentChannel) return; const mid = parseInt(msgEl.getAttribute("data-mid"), 10);
+  if (e.target.closest("[data-comments]")) { openComments(currentChannel.id, mid); return; }
+  const opt = e.target.closest(".poll-opt"); if (!opt) return;
+  const poll = msgEl.querySelector(".poll"); const idx = parseInt(opt.getAttribute("data-idx"), 10);
+  let my = (poll.getAttribute("data-my") || "").split(",").filter(x => x !== "").map(Number);
+  if (poll.getAttribute("data-multiple") === "1") my = my.includes(idx) ? my.filter(x => x !== idx) : my.concat(idx);
+  else my = my.includes(idx) ? [] : [idx];
+  try { await api("/api/channels/" + currentChannel.id + "/messages/" + mid + "/vote", { method: "POST", body: JSON.stringify({ options: my }) }); const data = await api("/api/channels/" + currentChannel.id + "/messages"); renderChannelMessages(data.messages); } catch (err) { if (err.message !== "banned") alert("Ошибка: " + err.message); }
+});
+
+// ---- опрос в канале (создаёт владелец) ----
+document.getElementById("btn-channel-poll").onclick = () => { document.getElementById("poll-question").value = ""; document.getElementById("poll-options").value = ""; document.getElementById("poll-multiple").checked = false; setError("modal-poll-error", ""); openModal("modal-poll"); };
+document.getElementById("btn-poll-send").onclick = async () => {
+  if (!currentChannel) return;
+  const question = document.getElementById("poll-question").value.trim(); const options = document.getElementById("poll-options").value.split("\n").map(x => x.trim()).filter(Boolean);
+  if (!question) return setError("modal-poll-error", "Введи вопрос"); if (options.length < 2 || options.length > 10) return setError("modal-poll-error", "Нужно от 2 до 10 вариантов");
+  try { await api("/api/channels/" + currentChannel.id + "/send", { method: "POST", body: JSON.stringify({ poll: { question, options, multiple: document.getElementById("poll-multiple").checked } }) }); closeModal("modal-poll"); const data = await api("/api/channels/" + currentChannel.id + "/messages"); renderChannelMessages(data.messages); } catch (e) { if (e.message !== "banned") setError("modal-poll-error", e.message); }
+};
+
+// ---- комментарии к посту ----
+let currentComments = null; let commentsInterval = null;
+async function loadComments(scroll) {
+  if (!currentComments) return;
+  const box = document.getElementById("comments-messages");
+  const data = await api("/api/channels/" + currentComments.channelId + "/messages/" + currentComments.msgId + "/comments");
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80; const prev = box.scrollTop;
+  box.innerHTML = "";
+  document.getElementById("comments-status").textContent = (data.comments.length) + " комментариев";
+  if (!data.comments.length) box.innerHTML = '<div class="empty-state">Комментариев пока нет. Будь первым!</div>';
+  for (const c of data.comments) {
+    const own = currentUser && c.sender_id === currentUser.id; const d = document.createElement("div"); d.className = "msg " + (own ? "own" : "other");
+    const nm = c.sender ? ((c.sender.first_name || "") + " " + (c.sender.last_name || "")).trim() || c.sender.username || "Пользователь" : "Пользователь";
+    d.innerHTML = (own ? "" : '<div class="comment-name">' + escapeHtml(nm) + '</div>') + linkify(c.text) + '<span class="time">' + fmtTime(c.created_at) + '</span>'; box.appendChild(d);
+  }
+  box.scrollTop = (scroll || atBottom) ? box.scrollHeight : prev;
+}
+async function openComments(channelId, msgId) {
+  currentComments = { channelId, msgId }; document.getElementById("comments-messages").innerHTML = '<div class="spinner"></div>'; show("screen-comments");
+  try { await loadComments(true); } catch (e) { if (e.message !== "banned") { document.getElementById("comments-messages").innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; } return; }
+  if (commentsInterval) clearInterval(commentsInterval);
+  commentsInterval = setInterval(() => { loadComments(false).catch(() => {}); }, 3000);
+}
+async function sendComment() {
+  const input = document.getElementById("comments-input"); const text = input.value.trim(); if (!text || !currentComments) return; input.value = "";
+  try { await api("/api/channels/" + currentComments.channelId + "/messages/" + currentComments.msgId + "/comments", { method: "POST", body: JSON.stringify({ text }) }); await loadComments(true); } catch (e) { if (e.message !== "banned") { input.value = text; alert("Ошибка: " + e.message); } }
+}
+document.getElementById("comments-send-btn").onclick = sendComment;
+document.getElementById("comments-input").addEventListener("keypress", e => { if (e.key === "Enter") sendComment(); });
+document.getElementById("btn-back-comments").onclick = () => { if (commentsInterval) clearInterval(commentsInterval); commentsInterval = null; currentComments = null; show("screen-channel"); };
 
 document.getElementById("channel-send-btn").onclick = sendChannelMessage;
 document.getElementById("channel-input").addEventListener("keypress", e => { if (e.key === "Enter") sendChannelMessage(); });
@@ -1198,12 +1294,24 @@ async function openChannelInfo(channelId) {
     const isOwner = ch.is_owner; const isSub = ch.is_subscribed;
     document.getElementById("btn-ch-info-edit").style.display = isOwner ? "block" : "none";
     document.getElementById("btn-ch-info-delete").style.display = isOwner ? "block" : "none";
+    { const lb = document.getElementById("btn-ch-info-link"); lb.style.display = isOwner ? "block" : "none"; lb.textContent = ch.linked_group ? "💬 Комментарии: " + (ch.linked_group.name || "группа") : "💬 Привязать группу для комментариев"; }
     if (isOwner) { document.getElementById("btn-ch-info-subscribe").style.display = "none"; document.getElementById("btn-ch-info-unsubscribe").style.display = "none"; }
     else if (isSub) { document.getElementById("btn-ch-info-subscribe").style.display = "none"; document.getElementById("btn-ch-info-unsubscribe").style.display = ch.type === "public" ? "block" : "none"; }
     else { document.getElementById("btn-ch-info-subscribe").style.display = "block"; document.getElementById("btn-ch-info-unsubscribe").style.display = "none"; }
     show("screen-channel-info");
   } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
 }
+
+document.getElementById("btn-ch-info-link").onclick = async () => {
+  if (!currentChInfo) return; const box = document.getElementById("link-group-list"); box.innerHTML = '<div class="spinner"></div>'; setError("modal-link-group-error", ""); openModal("modal-link-group");
+  try {
+    const data = await api("/api/channels/" + currentChInfo.id + "/groups"); box.innerHTML = "";
+    const mk = (label, chatId, active) => { const b = document.createElement("button"); b.className = "reason-option" + (active ? " selected" : ""); b.textContent = label; b.onclick = async () => { try { await api("/api/channels/" + currentChInfo.id + "/link_group", { method: "POST", body: JSON.stringify({ chat_id: chatId }) }); closeModal("modal-link-group"); await openChannelInfo(currentChInfo.id); } catch (e) { if (e.message !== "banned") setError("modal-link-group-error", e.message); } }; box.appendChild(b); };
+    for (const g of data.groups) mk((g.id === data.linked_chat_id ? "✅ " : "") + (g.name || "Группа"), g.id, g.id === data.linked_chat_id);
+    if (data.linked_chat_id) mk("❌ Отвязать группу", null, false);
+    if (!data.groups.length) box.innerHTML = '<div class="empty-state">У тебя нет своих групп. Создай группу и вернись сюда.</div>';
+  } catch (e) { if (e.message !== "banned") setError("modal-link-group-error", e.message); }
+};
 
 document.getElementById("btn-ch-info-back").onclick = () => { if (currentChannel) show("screen-channel"); else { show("screen-list"); loadList(); } };
 

@@ -49,6 +49,8 @@ from db import (
     create_frigdmant_listing, get_frigdmant_listings, get_user_listings,
     cancel_listing, buy_frigdmant_listing, place_frigdmant_bid,
     create_group_chat, get_chat_members, is_chat_member, get_username_purchase_info,
+    get_owned_groups, set_channel_linked_chat, save_channel_post, delete_channel_post_mirror, get_channel_message,
+    decorate_channel_messages, set_poll_votes, get_post_comments, save_post_comment, ensure_chat_member,
     supabase
 )
 from email_service import generate_code
@@ -1104,7 +1106,7 @@ def api_channel_info(channel_id):
     if not ch: return jsonify({"error": "Канал не найден"}), 404
     subs = supabase.table("channel_subscribers").select("id").eq("channel_id", channel_id).execute()
     owner = get_user_by_id(ch["owner_id"])
-    return jsonify({"channel": {"id": ch["id"], "name": ch["name"], "username": ch.get("username"), "description": ch.get("description"), "type": ch["type"], "avatar_url": ch.get("avatar_url"), "subscribers_count": len(subs.data or []), "is_owner": ch["owner_id"] == user["id"], "is_subscribed": is_subscribed(channel_id, user["id"]), "created_at": ch.get("created_at"), "owner": user_public_dict(owner) if owner else None}})
+    return jsonify({"channel": {"id": ch["id"], "name": ch["name"], "username": ch.get("username"), "description": ch.get("description"), "type": ch["type"], "avatar_url": ch.get("avatar_url"), "subscribers_count": len(subs.data or []), "is_owner": ch["owner_id"] == user["id"], "is_subscribed": is_subscribed(channel_id, user["id"]), "created_at": ch.get("created_at"), "linked_group": ({"id": lg["id"], "name": lg.get("name")} if (lg := linked_group(ch)) and ch["owner_id"] == user["id"] else None), "comments_enabled": linked_group(ch) is not None, "owner": user_public_dict(owner) if owner else None}})
 
 @app.route("/api/channels/<int:channel_id>/update", methods=["POST"])
 def api_channel_update(channel_id):
@@ -1184,10 +1186,36 @@ def api_channel_messages(channel_id):
     if not ch: return jsonify({"error": "Канал не найден"}), 404
     if not is_subscribed(channel_id, user["id"]) and ch["owner_id"] != user["id"]: return jsonify({"error": "Ты не подписан"}), 403
     limit = int_arg("limit", 50, 1, 100); offset = int_arg("offset", 0, 0, 100000)
-    messages = get_channel_messages(channel_id, limit, offset)
+    messages = decorate_channel_messages(get_channel_messages(channel_id, limit, offset), user["id"])
     subs = supabase.table("channel_subscribers").select("id").eq("channel_id", channel_id).execute()
     owner = get_user_by_id(ch["owner_id"])
-    return jsonify({"messages": messages, "channel": {"id": ch["id"], "name": ch["name"], "username": ch.get("username"), "description": ch.get("description"), "type": ch["type"], "avatar_url": ch.get("avatar_url"), "subscribers_count": len(subs.data or []), "is_owner": ch["owner_id"] == user["id"], "owner": user_public_dict(owner) if owner else None}})
+    return jsonify({"messages": messages, "channel": {"id": ch["id"], "name": ch["name"], "username": ch.get("username"), "description": ch.get("description"), "type": ch["type"], "avatar_url": ch.get("avatar_url"), "subscribers_count": len(subs.data or []), "is_owner": ch["owner_id"] == user["id"], "comments_enabled": linked_group(ch) is not None, "owner": user_public_dict(owner) if owner else None}})
+
+def linked_group(ch):
+    """Привязанная к каналу группа (или None, если не привязана / группу удалили)."""
+    cid = ch.get("linked_chat_id")
+    if not cid: return None
+    chat = get_chat_by_id(cid)
+    return chat if chat and chat.get("is_group") else None
+
+def parse_poll(data):
+    """Проверяет опрос из запроса. Возвращает (poll, error)."""
+    raw = data.get("poll")
+    if raw is None: return None, None
+    if not isinstance(raw, dict): return None, "Некорректный опрос"
+    question = str_field(raw, "question")
+    options = raw.get("options")
+    if not question or len(question) > 255: return None, "Вопрос опроса: 1–255 символов"
+    if not isinstance(options, list): return None, "Некорректные варианты"
+    clean = []
+    for o in options:
+        if not isinstance(o, str): return None, "Некорректные варианты"
+        o = o.strip()
+        if o: clean.append(o)
+    if len(clean) < 2 or len(clean) > 10: return None, "Нужно от 2 до 10 вариантов"
+    if any(len(o) > 100 for o in clean): return None, "Вариант длиннее 100 символов"
+    if len({o.lower() for o in clean}) != len(clean): return None, "Варианты не должны повторяться"
+    return {"question": question, "options": clean, "multiple": bool(raw.get("multiple"))}, None
 
 @app.route("/api/channels/<int:channel_id>/send", methods=["POST"])
 def api_channel_send(channel_id):
@@ -1196,12 +1224,112 @@ def api_channel_send(channel_id):
     ch = get_channel_by_id(channel_id)
     if not ch: return jsonify({"error": "Канал не найден"}), 404
     if ch["owner_id"] != user["id"]: return jsonify({"error": "Только владелец может писать"}), 403
+    if not check_rate_limit(f"chsend_{user['id']}", 20, 10): return jsonify({"error": "Слишком часто. Подожди пару секунд."}), 429
     data = json_body()
-    text = (data.get("text") or "").strip()
+    poll, err = parse_poll(data)
+    if err: return jsonify({"error": err}), 400
+    text = poll["question"] if poll else str_field(data, "text")
     if not text: return jsonify({"error": "Текст обязателен"}), 400
     if len(text) > 4000: return jsonify({"error": "Слишком длинное"}), 400
-    msg = save_channel_message(channel_id, user["id"], text)
+    lg = linked_group(ch)
+    msg = save_channel_post(channel_id, user["id"], text, poll, lg["id"] if lg else None)
     return jsonify({"ok": True, "message": msg})
+
+@app.route("/api/channels/<int:channel_id>/groups")
+def api_channel_groups(channel_id):
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    ch = get_channel_by_id(channel_id)
+    if not ch or ch["owner_id"] != user["id"]: return jsonify({"error": "Нет доступа"}), 403
+    return jsonify({"groups": get_owned_groups(user["id"]), "linked_chat_id": (linked_group(ch) or {}).get("id")})
+
+@app.route("/api/channels/<int:channel_id>/link_group", methods=["POST"])
+def api_channel_link_group(channel_id):
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    ch = get_channel_by_id(channel_id)
+    if not ch or ch["owner_id"] != user["id"]: return jsonify({"error": "Нет доступа"}), 403
+    data = json_body()
+    if data.get("chat_id") is None:
+        set_channel_linked_chat(channel_id, None)
+        return jsonify({"ok": True, "linked": False})
+    chat_id = to_int(data.get("chat_id"))
+    chat = get_chat_by_id(chat_id) if chat_id else None
+    if not chat or not chat.get("is_group") or chat.get("owner_id") != user["id"]:
+        return jsonify({"error": "Привязать можно только свою группу"}), 403
+    if not set_channel_linked_chat(channel_id, chat_id):
+        return jsonify({"error": "Эта группа уже привязана к другому каналу"}), 409
+    return jsonify({"ok": True, "linked": True})
+
+def channel_reader(channel_id, user):
+    """(канал, ошибка-ответ): канал доступен подписчикам и владельцу."""
+    ch = get_channel_by_id(channel_id)
+    if not ch: return None, (jsonify({"error": "Канал не найден"}), 404)
+    if ch["owner_id"] != user["id"] and not is_subscribed(channel_id, user["id"]):
+        return None, (jsonify({"error": "Ты не подписан"}), 403)
+    return ch, None
+
+@app.route("/api/channels/<int:channel_id>/messages/<int:msg_id>/vote", methods=["POST"])
+def api_channel_vote(channel_id, msg_id):
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    ch, err = channel_reader(channel_id, user)
+    if err: return err
+    if not check_rate_limit(f"vote_{user['id']}", 30, 60): return jsonify({"error": "Слишком часто"}), 429
+    post = get_channel_message(msg_id, channel_id)
+    if not post or not post.get("poll"): return jsonify({"error": "Опрос не найден"}), 404
+    n = len(post["poll"].get("options") or [])
+    raw = json_body().get("options")
+    if not isinstance(raw, list) or len(raw) > n: return jsonify({"error": "Некорректный выбор"}), 400
+    picked = []
+    for v in raw:
+        i = to_int(v)
+        if i is None or not (0 <= i < n): return jsonify({"error": "Некорректный вариант"}), 400
+        if i not in picked: picked.append(i)
+    if len(picked) > 1 and not post["poll"].get("multiple"): return jsonify({"error": "В этом опросе один ответ"}), 400
+    try: set_poll_votes(msg_id, user["id"], picked)
+    except Exception: return jsonify({"error": "Не удалось проголосовать, попробуй ещё раз"}), 409
+    return jsonify({"ok": True, "poll_results": decorate_channel_messages([post], user["id"])[0]["poll_results"]})
+
+def comments_context(channel_id, msg_id, user):
+    """(канал, пост, группа, ошибка-ответ) для комментариев к посту."""
+    ch, err = channel_reader(channel_id, user)
+    if err: return None, None, None, err
+    post = get_channel_message(msg_id, channel_id)
+    if not post: return None, None, None, (jsonify({"error": "Пост не найден"}), 404)
+    lg = linked_group(ch)
+    if not lg or not post.get("discussion_message_id") or lg["id"] != (get_message_by_id(post["discussion_message_id"]) or {}).get("chat_id"):
+        return None, None, None, (jsonify({"error": "Комментарии к этому посту недоступны"}), 404)
+    return ch, post, lg, None
+
+@app.route("/api/channels/<int:channel_id>/messages/<int:msg_id>/comments")
+def api_channel_comments(channel_id, msg_id):
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    ch, post, lg, err = comments_context(channel_id, msg_id, user)
+    if err: return err
+    comments = get_post_comments(post["discussion_message_id"], int_arg("limit", 100, 1, 200), int_arg("after_id", 0, 0, 10**12))
+    users = {}
+    for c in comments:
+        sid = c["sender_id"]
+        if sid not in users: users[sid] = user_public_dict(get_user_by_id(sid))
+        c["sender"] = users[sid]
+    return jsonify({"comments": comments, "post": {"id": post["id"], "text": post["text"], "poll": bool(post.get("poll"))}})
+
+@app.route("/api/channels/<int:channel_id>/messages/<int:msg_id>/comments", methods=["POST"])
+def api_channel_comment_send(channel_id, msg_id):
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    ch, post, lg, err = comments_context(channel_id, msg_id, user)
+    if err: return err
+    text = str_field(json_body(), "text")
+    if not text: return jsonify({"error": "Текст обязателен"}), 400
+    if len(text) > 2000: return jsonify({"error": "Слишком длинный комментарий"}), 400
+    if not check_rate_limit(f"comment_{user['id']}", 10, 30): return jsonify({"error": "Слишком часто. Подожди пару секунд."}), 429
+    ensure_chat_member(lg["id"], user["id"])
+    c = save_post_comment(lg["id"], user["id"], post["discussion_message_id"], text)
+    c["sender"] = user_public_dict(user)
+    return jsonify({"ok": True, "comment": c})
 
 @app.route("/api/channels/<int:channel_id>", methods=["DELETE"])
 def api_channel_delete(channel_id):
@@ -1227,7 +1355,9 @@ def api_channel_msg_delete(channel_id, msg_id):
     if not user: return jsonify({"error": "Не авторизован"}), 401
     ch = get_channel_by_id(channel_id)
     if not ch or ch["owner_id"] != user["id"]: return jsonify({"error": "Нет доступа"}), 403
-    if not delete_channel_message(msg_id, channel_id): return jsonify({"error": "Сообщение не найдено в этом канале"}), 404
+    post = get_channel_message(msg_id, channel_id)
+    if not post or not delete_channel_message(msg_id, channel_id): return jsonify({"error": "Сообщение не найдено в этом канале"}), 404
+    delete_channel_post_mirror(post.get("discussion_message_id"))
     return jsonify({"ok": True})
 
 # ==================== REPORTS ====================
