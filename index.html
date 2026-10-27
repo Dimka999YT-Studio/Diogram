@@ -1819,7 +1819,8 @@ async function showUsernameInfo(username) {
     if (data.purchase) {
       const d = new Date(data.purchase.date).toLocaleString("ru-RU", { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
       const rub = Math.round(data.purchase.price * RATE);
-      purchaseBlock.innerHTML = `Это имя приобретено на платформе <b>Frigdmant</b><br>${d} за <b>${parseFloat(data.purchase.price).toFixed(1)} Di</b> (~${rub} ₽)`;
+      if (data.purchase.note) purchaseBlock.innerHTML = `Это имя было выдано <b>${escapeHtml(data.purchase.note)}</b><br>${d} за <b>${Math.round(data.purchase.price)} Di</b> (~${rub} ₽)`;
+      else purchaseBlock.innerHTML = `Это имя приобретено на платформе <b>Frigdmant</b><br>${d} за <b>${parseFloat(data.purchase.price).toFixed(1)} Di</b> (~${rub} ₽)`;
     } else {
       purchaseBlock.innerHTML = `Этот юзернейм был получен при регистрации или создан вручную (не покупался на Frigdmant).`;
     }
