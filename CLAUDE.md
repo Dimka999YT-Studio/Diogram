@@ -25,9 +25,11 @@
 
 ## Supabase
 
-- Таблицы: `users`, `chats`, `chat_members`, `messages`, `channels`, `channel_subscribers`, `channel_messages`, `pending_codes`, `owned_usernames`, `frigdmant_listings`, `transactions`, `reports`, `photo_uploads`, `file_uploads`, `username_changes`, `user_sessions`.
+- Таблицы: `users`, `chats`, `chat_members`, `messages`, `channels`, `channel_subscribers`, `channel_messages`, `pending_codes`, `owned_usernames`, `frigdmant_listings`, `transactions`, `reports`, `photo_uploads`, `file_uploads`, `username_changes`, `user_sessions`, `frigdmant_bids`, `channel_poll_votes`.
 - Бакеты хранилища: `avatars`, `chat-photos` (оба публичные).
-- SQL-функции (RPC), которых нет в репозитории: `spend_balance_atomic`, `add_balance_atomic`, `buy_username_atomic`, `place_bid_atomic`, `close_auction_atomic`.
+- Миграции лежат в `supabase/migrations/` (с файлами отката). RLS включён на всех таблицах, у `anon`/`authenticated` прав нет: сервер ходит только под `service_role`.
+- Каналы: к каналу можно привязать одну свою группу (`channels.linked_chat_id`): посты дублируются в группу (`messages.channel_post_id`), комментарии это сообщения группы с `reply_to_message_id`. Опросы: `channel_messages.poll` + `channel_poll_votes` (анонимные).
+- SQL-функции (RPC), описаны в миграции `20261026_frigdmant_and_security.sql`: `spend_balance_atomic`, `add_balance_atomic`, `buy_username_atomic`, `place_bid_atomic`, `close_auction_atomic`.
 
 ## Что важно помнить в коде
 
@@ -45,9 +47,7 @@
 
 - **Сменить `WORKER_KEY`**: старое значение осталось в публичной истории git (коммиты от 11.10). Делает владелец на хостинге и в скрипте воркера.
 - Сделать бакет `chat-photos` приватным и отдавать вложения по временным ссылкам (иконку монеты `Diogram.coin.di.jpg` нужно перенести в публичный бакет).
-- Проверить SQL-функции Supabase на гонки и ставки/покупки собственных лотов.
 - `who_can_message`: режим «Никто» работает (обычные пользователи не могут создавать чат и писать, исключения: owner, developer, moderator, ИИ-бот Дио; группы не затронуты). «Только контакты» по-прежнему не применяется (списка контактов нет), настройка «Никто» не сбрасывается после окончания PDG, а требование PDG проверяется только в клиенте.
-- Цена `pdg_1d` = 4.30, а списывается `int(4.30)` = 4: выбрать целую цену или перейти на дробные суммы (проверить тип `balance`).
 - Раздел «Сессии» не работает: таблица `user_sessions` нигде не заполняется.
 - Лимиты в памяти: для нескольких воркеров нужен Redis.
 - Заголовки безопасности (CSP и др.), `CORS` разрешён для всех источников, JWT лежит в `localStorage`.
