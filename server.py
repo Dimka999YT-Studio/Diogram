@@ -648,14 +648,16 @@ def api_username_info(username):
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
     username = username.strip().lstrip("@")
-    res = supabase.table("owned_usernames").select("user_id").eq("username", username).execute()
+    res = supabase.table("owned_usernames").select("user_id, note, purchase_price, purchased_at").eq("username", username).execute()
     owner_id = res.data[0]["user_id"] if res.data else None
+    gift = res.data[0] if res.data and res.data[0].get("note") else None
     if not owner_id:
         u_res = supabase.table("users").select("id").eq("username", username).execute()
         if u_res.data: owner_id = u_res.data[0]["id"]
     if not owner_id: return jsonify({"error": "Владелец не найден"}), 404
     owner = get_user_by_id(owner_id)
-    purchase = get_username_purchase_info(username)
+    # Имя, выданное вручную с пометкой (например «Claude»): показываем, кем выдано, и записанную цену
+    purchase = ({"note": gift["note"], "price": gift.get("purchase_price") or 0, "date": gift.get("purchased_at")} if gift else get_username_purchase_info(username))
     return jsonify({"username": username, "owner": user_public_dict(owner), "purchase": purchase})
 
 # ==================== FRIGDMANT ====================
