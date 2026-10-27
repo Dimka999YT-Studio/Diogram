@@ -62,6 +62,14 @@ def get_user_by_id(user_id: int) -> dict:
     return res.data[0] if res.data else None
 
 
+def get_users_by_ids(user_ids) -> dict:
+    """Пользователи пачкой одним запросом: {id: user}. Раньше в циклах было по запросу на каждого."""
+    ids = list({int(i) for i in user_ids if i is not None})
+    if not ids: return {}
+    res = supabase.table("users").select("*").in_("id", ids).execute()
+    return {u["id"]: u for u in (res.data or [])}
+
+
 def get_user_by_username(username: str) -> dict:
     res = supabase.table("users").select("*").ilike("username", username).execute()
     return res.data[0] if res.data else None
@@ -419,26 +427,40 @@ def get_or_create_chat(user1_id: int, user2_id: int) -> dict:
     return res.data[0] if res.data else None
 
 
+def get_chat_summaries(user_id: int, chat_ids: list) -> dict:
+    """{chat_id: {last_text, last_type, last_at, unread}} одним запросом (RPC chat_summaries).
+    Если функции в базе нет — запасной путь по запросу на чат."""
+    if not chat_ids: return {}
+    try:
+        res = supabase.rpc("chat_summaries", {"p_user_id": user_id, "p_chat_ids": chat_ids}).execute()
+        return {r["chat_id"]: r for r in (res.data or [])}
+    except Exception as e:
+        print(f"[chat_summaries fallback] {e}")
+        out = {}
+        for cid in chat_ids:
+            last = supabase.table("messages").select("text, type, created_at").eq("chat_id", cid).order("created_at", desc=True).limit(1).execute()
+            lm = last.data[0] if last.data else None
+            out[cid] = {"chat_id": cid, "last_text": lm["text"] if lm else None, "last_type": lm["type"] if lm else None,
+                        "last_at": lm["created_at"] if lm else None, "unread": get_unread_count(cid, user_id)}
+        return out
+
+
 def get_user_chats(user_id: int) -> list:
     res = supabase.table("chats").select("*").or_(
         f"user1_id.eq.{user_id},user2_id.eq.{user_id}"
     ).execute()
-    chats = res.data or []
+    chats = [c for c in (res.data or []) if not c.get("is_group")]
+    if not chats: return []
+    others = get_users_by_ids([c["user2_id"] if c["user1_id"] == user_id else c["user1_id"] for c in chats])
+    summaries = get_chat_summaries(user_id, [c["id"] for c in chats])
 
     result = []
     for chat in chats:
         other_id = chat["user2_id"] if chat["user1_id"] == user_id else chat["user1_id"]
-        other = get_user_by_id(other_id)
+        other = others.get(other_id)
         if not other:
             continue
-
-        last = supabase.table("messages").select("*").eq("chat_id", chat["id"]).order(
-            "created_at", desc=True
-        ).limit(1).execute()
-
-        last_msg = last.data[0] if last.data else None
-        unread = get_unread_count(chat["id"], user_id)
-
+        sm = summaries.get(chat["id"]) or {}
         result.append({
             "chat_id": chat["id"],
             "type": "chat",
@@ -454,14 +476,35 @@ def get_user_chats(user_id: int) -> list:
                 "last_seen": other.get("last_seen"),
                 "banned": other.get("banned", False),
             },
-            "last_message": last_msg["text"] if last_msg else None,
-            "last_message_type": last_msg["type"] if last_msg else "text",
-            "last_message_at": last_msg["created_at"] if last_msg else chat["created_at"],
-            "unread_count": unread,
+            "last_message": sm.get("last_text"),
+            "last_message_type": sm.get("last_type") or "text",
+            "last_message_at": sm.get("last_at") or chat["created_at"],
+            "unread_count": sm.get("unread") or 0,
         })
 
     result.sort(key=lambda x: x["last_message_at"] or "", reverse=True)
     return result
+
+
+def get_user_groups(user_id: int) -> list:
+    """Группы пользователя для общего списка: 3 запроса вместо нескольких на каждую группу."""
+    mem = supabase.table("chat_members").select("chat_id").eq("user_id", user_id).execute().data or []
+    ids = list({m["chat_id"] for m in mem})
+    if not ids: return []
+    chats = [c for c in (supabase.table("chats").select("*").in_("id", ids).execute().data or []) if c.get("is_group")]
+    if not chats: return []
+    gids = [c["id"] for c in chats]
+    summaries = get_chat_summaries(user_id, gids)
+    counts = {}
+    for r in (supabase.table("chat_members").select("chat_id").in_("chat_id", gids).execute().data or []):
+        counts[r["chat_id"]] = counts.get(r["chat_id"], 0) + 1
+    return [{
+        "type": "group", "chat_id": c["id"], "name": c.get("name"), "avatar_url": c.get("avatar_url"),
+        "last_message": (summaries.get(c["id"]) or {}).get("last_text"),
+        "last_message_at": (summaries.get(c["id"]) or {}).get("last_at") or c.get("created_at"),
+        "subscribers_count": counts.get(c["id"], 0), "unread_count": (summaries.get(c["id"]) or {}).get("unread") or 0,
+        "is_group": True,
+    } for c in chats]
 
 
 def get_chat_by_id(chat_id: int) -> dict:
@@ -474,7 +517,7 @@ def get_chat_by_id(chat_id: int) -> dict:
 def save_message(chat_id: int, sender_id: int, text: str, msg_type: str = "text",
                  attachment_url: str = None, attachment_size: int = None,
                  attachment_name: str = None, file_type: str = None,
-                 file_mime: str = None) -> dict:
+                 file_mime: str = None, client_id: str = None) -> dict:
     data = {
         "chat_id": chat_id,
         "sender_id": sender_id,
@@ -495,14 +538,30 @@ def save_message(chat_id: int, sender_id: int, text: str, msg_type: str = "text"
         data["file_name"] = attachment_name
     if file_mime:
         data["file_mime"] = file_mime
-    res = supabase.table("messages").insert(data).execute()
+    if client_id:
+        data["client_id"] = client_id
+    try:
+        res = supabase.table("messages").insert(data).execute()
+    except Exception as e:
+        # Повторная отправка с тем же client_id (двойной клик, повтор после таймаута): возвращаем уже сохранённое сообщение.
+        if client_id and ("23505" in str(e) or "duplicate" in str(e).lower()):
+            ex = supabase.table("messages").select("*").eq("chat_id", chat_id).eq("sender_id", sender_id).eq("client_id", client_id).limit(1).execute()
+            if ex.data:
+                return ex.data[0]
+        raise
     return res.data[0] if res.data else None
 
 
 def get_messages(chat_id: int, limit: int = 50, offset: int = 0) -> list:
+    """Последние `limit` сообщений (после пропуска `offset` самых новых) в хронологическом порядке.
+    Раньше отдавались самые СТАРЫЕ 50: в длинных чатах открывалась древняя история."""
     res = supabase.table("messages").select("*").eq("chat_id", chat_id).order(
-        "created_at", desc=False
-    ).range(offset, offset + limit - 1).execute()
+        "created_at", desc=True).order("id", desc=True).range(offset, offset + limit - 1).execute()
+    return list(reversed(res.data or []))
+
+
+def get_messages_after_id(chat_id: int, after_id: int, limit: int = 200) -> list:
+    res = supabase.table("messages").select("*").eq("chat_id", chat_id).gt("id", after_id).order("id").limit(limit).execute()
     return res.data or []
 
 
@@ -600,16 +659,22 @@ def get_user_channels(user_id: int) -> list:
 
     res = supabase.table("channels").select("*").in_("id", all_ids).execute()
     channels = res.data or []
+    owners = get_users_by_ids([c["owner_id"] for c in channels])
+    try:
+        sm = {r["channel_id"]: r for r in (supabase.rpc("channel_summaries", {"p_ids": [c["id"] for c in channels]}).execute().data or [])}
+    except Exception as e:
+        print(f"[channel_summaries fallback] {e}")
+        sm = {}
+        for c in channels:
+            cnt = supabase.table("channel_subscribers").select("id").eq("channel_id", c["id"]).execute()
+            last = supabase.table("channel_messages").select("text, created_at").eq("channel_id", c["id"]).order("created_at", desc=True).limit(1).execute()
+            lm = last.data[0] if last.data else None
+            sm[c["id"]] = {"subs_count": len(cnt.data or []), "last_text": lm["text"] if lm else None, "last_at": lm["created_at"] if lm else None}
 
     result = []
     for ch in channels:
-        owner = get_user_by_id(ch["owner_id"])
-        subs_count = supabase.table("channel_subscribers").select("id").eq("channel_id", ch["id"]).execute()
-        last = supabase.table("channel_messages").select("*").eq("channel_id", ch["id"]).order(
-            "created_at", desc=True
-        ).limit(1).execute()
-        last_msg = last.data[0] if last.data else None
-
+        owner = owners.get(ch["owner_id"])
+        info = sm.get(ch["id"]) or {}
         result.append({
             "channel_id": ch["id"],
             "type": "channel",
@@ -627,9 +692,9 @@ def get_user_channels(user_id: int) -> list:
                 "role": owner.get("role", "user") if owner else "user",
                 "avatar_url": owner.get("avatar_url") if owner else None,
             } if owner else None,
-            "subscribers_count": len(subs_count.data or []),
-            "last_message": last_msg["text"] if last_msg else None,
-            "last_message_at": last_msg["created_at"] if last_msg else ch["created_at"],
+            "subscribers_count": info.get("subs_count") or 0,
+            "last_message": info.get("last_text"),
+            "last_message_at": info.get("last_at") or ch["created_at"],
         })
 
     result.sort(key=lambda x: x["last_message_at"] or "", reverse=True)
@@ -748,10 +813,10 @@ def save_channel_message(channel_id: int, sender_id: int, text: str) -> dict:
 
 
 def get_channel_messages(channel_id: int, limit: int = 50, offset: int = 0) -> list:
+    """Последние `limit` постов в хронологическом порядке (раньше — самые старые)."""
     res = supabase.table("channel_messages").select("*").eq("channel_id", channel_id).order(
-        "created_at", desc=False
-    ).range(offset, offset + limit - 1).execute()
-    return res.data or []
+        "created_at", desc=True).order("id", desc=True).range(offset, offset + limit - 1).execute()
+    return list(reversed(res.data or []))
 
 
 def delete_channel_message(message_id: int, channel_id: int) -> bool:

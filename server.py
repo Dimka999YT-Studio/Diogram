@@ -49,6 +49,7 @@ from db import (
     create_frigdmant_listing, get_frigdmant_listings, get_user_listings,
     cancel_listing, buy_frigdmant_listing, place_frigdmant_bid,
     create_group_chat, get_chat_members, is_chat_member, get_username_purchase_info,
+    get_users_by_ids, get_user_groups, get_messages_after_id,
     get_owned_groups, set_channel_linked_chat, save_channel_post, delete_channel_post_mirror, get_channel_message,
     decorate_channel_messages, set_poll_votes, get_post_comments, save_post_comment, ensure_chat_member,
     supabase
@@ -140,6 +141,66 @@ def make_token(user_id):
 
 _UNSET = object()
 
+# ---- Короткие кэши в памяти процесса: опрос чата раньше делал 5 запросов к базе каждые 2 секунды у каждого пользователя ----
+USER_CACHE_TTL = 5      # сек: бан/смена роли применяются не позже чем через это время (админские действия сбрасывают кэш сразу)
+CHAT_CACHE_TTL = 30
+MEMBER_CACHE_TTL = 10
+LAST_SEEN_EVERY = 20    # писать last_seen в базу не чаще, чем раз в N секунд на пользователя
+_cache_lock = threading.Lock()
+_user_cache = {}; _chat_cache = {}; _member_cache = {}; _last_seen_written = {}
+
+def _cache_get(store, key, ttl):
+    with _cache_lock:
+        hit = store.get(key)
+    if hit and time.time() - hit[0] < ttl: return hit[1]
+    return _UNSET
+
+def _cache_put(store, key, value, limit=5000):
+    with _cache_lock:
+        if len(store) > limit: store.clear()
+        store[key] = (time.time(), value)
+
+def clear_caches():
+    with _cache_lock:
+        _user_cache.clear(); _chat_cache.clear(); _member_cache.clear()
+
+def get_chat_cached(chat_id):
+    hit = _cache_get(_chat_cache, chat_id, CHAT_CACHE_TTL)
+    if hit is not _UNSET: return dict(hit) if hit else None
+    chat = get_chat_by_id(chat_id)
+    _cache_put(_chat_cache, chat_id, chat)
+    return dict(chat) if chat else None
+
+def is_member_cached(chat_id, user_id):
+    hit = _cache_get(_member_cache, (chat_id, user_id), MEMBER_CACHE_TTL)
+    if hit is not _UNSET: return hit
+    res = is_chat_member(chat_id, user_id)
+    _cache_put(_member_cache, (chat_id, user_id), bool(res))
+    return bool(res)
+
+def has_chat_access(chat, user_id):
+    if chat.get("is_group"): return is_member_cached(chat["id"], user_id)
+    return user_id in (chat["user1_id"], chat["user2_id"])
+
+_real_update_last_seen = update_last_seen
+def update_last_seen(user_id):
+    """Раньше запись в базу шла на каждый опрос/запрос. Теперь не чаще раза в LAST_SEEN_EVERY секунд (онлайн = 2 минуты)."""
+    now = time.time()
+    with _cache_lock:
+        if now - _last_seen_written.get(user_id, 0) < LAST_SEEN_EVERY: return
+        if len(_last_seen_written) > 20000: _last_seen_written.clear()
+        _last_seen_written[user_id] = now
+    try: _real_update_last_seen(user_id)
+    except Exception as e: print(f"[last_seen] {e}")
+
+def sender_names(messages):
+    """Добавляет sender_name к сообщениям группы (клиент его показывает, но сервер раньше не присылал)."""
+    users = get_users_by_ids([m.get("sender_id") for m in messages])
+    for m in messages:
+        u = users.get(m.get("sender_id"))
+        m["sender_name"] = ((u.get("first_name") or u.get("username") or "") if u else "")
+    return messages
+
 def get_current_user():
     # Результат кэшируется на время одного запроса: before_request уже достал пользователя для проверки бана,
     # и эндпоинту не нужен второй запрос в базу.
@@ -150,10 +211,24 @@ def get_current_user():
     if auth.startswith("Bearer "):
         try:
             payload = jwt.decode(auth[7:], JWT_SECRET, algorithms=[JWT_ALGO])
-            user = get_user_by_id(payload["user_id"])
+            uid = payload["user_id"]
+            hit = _cache_get(_user_cache, uid, USER_CACHE_TTL)
+            if hit is not _UNSET: user = dict(hit) if hit else None
+            else:
+                user = get_user_by_id(uid)
+                _cache_put(_user_cache, uid, dict(user) if user else None)
         except Exception: user = None
     g._current_user = user
     return user
+
+# Частые безопасные запросы не должны сбрасывать кэш, всё остальное, что что-то меняет (профиль, бан, группы, покупки), — сбрасывает.
+CACHE_KEEP_PATHS = ("/api/send", "/api/typing", "/api/poll")
+@app.after_request
+def invalidate_caches_on_write(resp):
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.path.startswith("/api/") \
+       and request.path not in CACHE_KEEP_PATHS and not request.path.endswith("/read") and "/comments" not in request.path and "/vote" not in request.path:
+        clear_caches()
+    return resp
 
 def json_body():
     """Тело запроса как dict. Если пришёл не JSON-объект (список, строка, мусор) — пустой dict, а не 500."""
@@ -193,13 +268,15 @@ def _cleanup_rate_limits(now):
     for k in [k for k, ts in list(rate_limit_store.items()) if not ts or now - ts[-1] > 7200]:
         rate_limit_store.pop(k, None)
 
+_rate_lock = threading.Lock()
 def check_rate_limit(key, max_attempts, window_sec):
-    now = time.time()
-    _cleanup_rate_limits(now)
-    rate_limit_store[key] = [t for t in rate_limit_store[key] if now - t < window_sec]
-    if len(rate_limit_store[key]) >= max_attempts: return False
-    rate_limit_store[key].append(now)
-    return True
+    with _rate_lock:  # сервер работает несколькими потоками: без замка два запроса могли обойти лимит одновременно
+        now = time.time()
+        _cleanup_rate_limits(now)
+        rate_limit_store[key] = [t for t in rate_limit_store[key] if now - t < window_sec]
+        if len(rate_limit_store[key]) >= max_attempts: return False
+        rate_limit_store[key].append(now)
+        return True
 
 def worker_authorized():
     """Проверка X-Worker-Key. Если WORKER_KEY не задан — доступ закрыт для всех (fail closed)."""
@@ -706,25 +783,12 @@ def api_all_list():
     chats = get_user_chats(user["id"])
     channels = get_user_channels(user["id"])
     
-    # Добавляем группы в общий список
     try:
-        group_res = supabase.table("chat_members").select("chat_id").eq("user_id", user["id"]).execute()
-        for gm in (group_res.data or []):
-            chat = get_chat_by_id(gm["chat_id"])
-            if chat and chat.get("is_group"):
-                if not any(c.get("chat_id") == chat["id"] for c in chats):
-                    last_msg = supabase.table("messages").select("*").eq("chat_id", chat["id"]).order("created_at", desc=True).limit(1).execute()
-                    last = last_msg.data[0] if last_msg.data else None
-                    chats.append({
-                        "type": "group", "chat_id": chat["id"], "name": chat.get("name"),
-                        "avatar_url": chat.get("avatar_url"), "last_message": last.get("text") if last else None,
-                        "last_message_at": last.get("created_at") if last else chat.get("created_at"),
-                        "subscribers_count": len(get_chat_members(chat["id"])),
-                        "is_group": True
-                    })
+        known = {c.get("chat_id") for c in chats}
+        chats += [g_ for g_ in get_user_groups(user["id"]) if g_["chat_id"] not in known]
     except Exception as e:
         print(f"[ALL_LIST] Ошибка групп: {e}")
-    
+
     items = chats + channels
     items.sort(key=lambda x: x.get("last_message_at") or "", reverse=True)
     return jsonify({"items": items})
@@ -808,8 +872,10 @@ def api_chat_messages(chat_id):
     messages = get_messages(chat_id, limit, offset)
     mark_messages_read(chat_id, user["id"]); update_last_seen(user["id"])
     if chat.get("is_group"):
+        sender_names(messages)
         members = get_chat_members(chat_id)
-        users_data = [user_public_dict(get_user_by_id(uid)) for uid in members if get_user_by_id(uid)]
+        mu = get_users_by_ids(members)
+        users_data = [user_public_dict(mu[uid]) for uid in members if uid in mu]
         return jsonify({"messages": messages, "other_user": {"is_group": True, "name": chat.get("name"), "avatar_url": chat.get("avatar_url"), "members": users_data, "owner_id": chat.get("owner_id")}})
     other_id = chat["user2_id"] if chat["user1_id"] == user["id"] else chat["user1_id"]
     other = get_user_by_id(other_id)
@@ -850,13 +916,13 @@ def api_send():
     if len(text) > 4000: return jsonify({"error": "Сообщение слишком длинное"}), 400
     # Антиспам: не больше 20 сообщений за 10 секунд с одного аккаунта (раньше лимита не было вообще).
     if not check_rate_limit(f"send_{user['id']}", 20, 10): return jsonify({"error": "Слишком часто. Подожди пару секунд."}), 429
-    chat = get_chat_by_id(chat_id)
+    chat = get_chat_cached(chat_id)
     if not chat: return jsonify({"error": "Чат не найден"}), 404
-    is_allowed = is_chat_member(chat_id, user["id"]) if chat.get("is_group") else user["id"] in (chat["user1_id"], chat["user2_id"])
-    if not is_allowed: return jsonify({"error": "Нет доступа"}), 403
+    if not has_chat_access(chat, user["id"]): return jsonify({"error": "Нет доступа"}), 403
     blocked = private_chat_blocked(chat, user)
     if blocked: return blocked
-    msg = save_message(chat_id, user["id"], text, "text")
+    client_id = str_field(data, "client_id")[:64] or None
+    msg = save_message(chat_id, user["id"], text, "text", client_id=client_id)
     update_last_seen(user["id"])
     # Дио отвечает только в личных чатах (не в группах)
     if not chat.get("is_group"):
@@ -883,19 +949,22 @@ def api_message_delete(message_id):
 def api_poll():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    chat_id = to_int(request.args.get("chat_id")); after = (request.args.get("after") or "1970-01-01T00:00:00+00:00")[:64]
+    chat_id = to_int(request.args.get("chat_id")); after_id = to_int(request.args.get("after_id"))
     if not chat_id: return jsonify({"messages": []})
-    chat = get_chat_by_id(chat_id)
+    chat = get_chat_cached(chat_id)
     if not chat: return jsonify({"error": "Чат не найден"}), 404
-    is_allowed = is_chat_member(chat_id, user["id"]) if chat.get("is_group") else user["id"] in (chat["user1_id"], chat["user2_id"])
-    if not is_allowed: return jsonify({"error": "Нет доступа"}), 403
+    if not has_chat_access(chat, user["id"]): return jsonify({"error": "Нет доступа"}), 403
     update_last_seen(user["id"])
-    # limit(200): раньше за один poll можно было вытащить всю историю чата без ограничения
-    res = supabase.table("messages").select("*").eq("chat_id", chat_id).gt("created_at", after).order("created_at").limit(200).execute()
-    other_id = chat["user2_id"] if chat["user1_id"] == user["id"] else chat["user1_id"]
+    if after_id is not None and after_id >= 0:
+        msgs = get_messages_after_id(chat_id, after_id, 200)   # по id: быстрее и без потерь/повторов на границе времени
+    else:
+        after = (request.args.get("after") or "1970-01-01T00:00:00+00:00")[:64]  # старые клиенты
+        msgs = supabase.table("messages").select("*").eq("chat_id", chat_id).gt("created_at", after).order("created_at").limit(200).execute().data or []
+    if chat.get("is_group") and msgs: sender_names(msgs)
+    other_id = None if chat.get("is_group") else (chat["user2_id"] if chat["user1_id"] == user["id"] else chat["user1_id"])
     now = time.time()
-    typing_users = [uid for uid, ts in typing_store.get(chat_id, {}).items() if uid == other_id and now - ts < 5]
-    return jsonify({"messages": res.data or [], "typing": len(typing_users) > 0})
+    typing_users = [uid for uid, ts in typing_store.get(chat_id, {}).items() if uid != user["id"] and (other_id is None or uid == other_id) and now - ts < 5]
+    return jsonify({"messages": msgs, "typing": len(typing_users) > 0})
 
 @app.route("/api/typing", methods=["POST"])
 def api_typing():
@@ -906,10 +975,9 @@ def api_typing():
     if not chat_id: return jsonify({"error": "chat_id обязателен"}), 400
     # Раньше любой вошедший мог писать в typing_store любого chat_id (в том числе чужого и несуществующего):
     # это и спуфинг "печатает...", и бесконечный рост памяти.
-    chat = get_chat_by_id(chat_id)
+    chat = get_chat_cached(chat_id)
     if not chat: return jsonify({"error": "Чат не найден"}), 404
-    is_allowed = is_chat_member(chat_id, user["id"]) if chat.get("is_group") else user["id"] in (chat["user1_id"], chat["user2_id"])
-    if not is_allowed: return jsonify({"error": "Нет доступа"}), 403
+    if not has_chat_access(chat, user["id"]): return jsonify({"error": "Нет доступа"}), 403
     if not check_rate_limit(f"typing_{user['id']}", 30, 60): return jsonify({"ok": True})
     now = time.time()
     typing_store[chat_id][user["id"]] = now

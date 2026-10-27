@@ -1026,7 +1026,7 @@ async function loadList() {
   } catch (e) { if (e.message !== "banned") box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
 }
 
-function startListPolling() { if (listPollInterval) clearInterval(listPollInterval); listPollInterval = setInterval(() => { if (document.getElementById("screen-list").classList.contains("active")) loadList(); }, 5000); }
+function startListPolling() { if (listPollInterval) clearInterval(listPollInterval); listPollInterval = setInterval(() => { if (!document.hidden && document.getElementById("screen-list").classList.contains("active")) loadList(); }, 8000); }
 
 async function openChat(chatId, otherUser) {
   currentChat = { id: chatId, other: otherUser };
@@ -1045,10 +1045,13 @@ async function openChat(chatId, otherUser) {
   } catch (e) { if (e.message !== "banned") document.getElementById("messages").innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
 }
 
-function renderMessages(msgs) { const box = document.getElementById("messages"); box.innerHTML = ""; if (!msgs.length) { box.innerHTML = '<div class="empty-state">Напиши первое сообщение 👋</div>'; return; } for (const m of msgs) appendMessage(m); }
+let renderedIds = new Set(); let lastMessageId = 0;
+function renderMessages(msgs) { const box = document.getElementById("messages"); box.innerHTML = ""; renderedIds = new Set(); lastMessageId = 0; if (!msgs.length) { box.innerHTML = '<div class="empty-state">Напиши первое сообщение 👋</div>'; return; } for (const m of msgs) appendMessage(m); }
 
 function appendMessage(m) {
   const box = document.getElementById("messages");
+  // Одно и то же сообщение не рисуем дважды (раньше наложение опросов при медленном сервере давало дубли)
+  if (m.id != null) { if (renderedIds.has(m.id)) return null; renderedIds.add(m.id); if (m.id > lastMessageId) lastMessageId = m.id; }
   const empty = box.querySelector(".empty-state"); if (empty) empty.remove();
   const isOwn = m.sender_id === currentUser.id;
   const d = document.createElement("div"); d.className = "msg " + (isOwn ? "own" : "other");
@@ -1075,7 +1078,9 @@ function appendMessage(m) {
   let checks = "";
   if (isOwn) checks = m.read_at ? '<span class="checks read">✓✓</span>' : '<span class="checks">✓</span>';
   d.innerHTML = content + '<span class="time">' + time + checks + '</span>';
+  if (m.id != null) d.setAttribute("data-mid", String(m.id));
   box.appendChild(d); box.scrollTop = box.scrollHeight;
+  return d;
 }
 
 function openPhotoViewer(url) { document.getElementById("photo-viewer-img").src = url; document.getElementById("photo-viewer").classList.add("active"); }
@@ -1088,17 +1093,27 @@ function handleSend() { if (pendingPhoto || pendingFile) return sendFile(); retu
 
 document.getElementById("msg-input").addEventListener("input", () => { if (!currentChat) return; if (typingTimer) return; typingTimer = setTimeout(() => typingTimer = null, 3000); api("/api/typing", { method: "POST", body: JSON.stringify({ chat_id: currentChat.id }) }).catch(() => {}); });
 
+let sendingFile = false;
+function newClientId() { return (crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2))).slice(0, 40); }
 async function sendMessage() {
   const input = document.getElementById("msg-input"); const text = input.value.trim();
   if (!text || !currentChat) return; input.value = "";
+  const chatId = currentChat.id; const clientId = newClientId();
+  // Сразу показываем сообщение (серое), не дожидаясь сервера
+  const pending = appendMessage({ sender_id: currentUser.id, text, created_at: new Date().toISOString(), type: "text" });
+  if (pending) pending.style.opacity = "0.6";
   try {
-    const data = await api("/api/send", { method: "POST", body: JSON.stringify({ chat_id: currentChat.id, text }) });
-    appendMessage(data.message || { sender_id: currentUser.id, text, created_at: new Date().toISOString(), type: "text" });
-  } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
+    const data = await api("/api/send", { method: "POST", body: JSON.stringify({ chat_id: chatId, text, client_id: clientId }) });
+    if (pending) { pending.remove(); }
+    if (currentChat && currentChat.id === chatId && data.message) appendMessage(data.message);
+  } catch (e) {
+    if (pending) pending.remove();
+    if (e.message !== "banned") { if (!input.value) input.value = text; alert("Ошибка: " + e.message); }
+  }
 }
 
 async function sendFile() {
-  if (!currentChat) return;
+  if (!currentChat || sendingFile) return; sendingFile = true;
   const input = document.getElementById("msg-input");
   const caption = input.value.trim();
   const fd = new FormData();
@@ -1113,6 +1128,7 @@ async function sendFile() {
     const data = await api(endpoint, { method: "POST", body: fd });
     if (data.message) appendMessage(data.message);
   } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
+  finally { sendingFile = false; }
 }
 
 document.getElementById("btn-attach-photo").onclick = () => {
@@ -1144,22 +1160,32 @@ document.getElementById("photo-file-input").onchange = (e) => {
 
 document.getElementById("photo-preview-close").onclick = () => { pendingPhoto = null; pendingFile = null; document.getElementById("photo-preview").classList.remove("active"); };
 
+let chatPollToken = 0;
 function startChatPolling() {
-  if (chatPollInterval) clearInterval(chatPollInterval);
-  chatPollInterval = setInterval(async () => {
-    if (!currentChat) return;
+  if (chatPollInterval) clearTimeout(chatPollInterval);
+  const token = ++chatPollToken;   // старая цепочка опросов после выхода/смены чата сама останавливается
+  const tick = async () => {
+    if (token !== chatPollToken || !currentChat) return;
+    const chatId = currentChat.id;
     try {
-      const data = await api("/api/poll?chat_id=" + currentChat.id + "&after=" + encodeURIComponent(lastMessageTime));
-      if (data.messages && data.messages.length) {
-        for (const m of data.messages) { if (m.sender_id !== currentUser.id) appendMessage(m); lastMessageTime = m.created_at; }
-        api("/api/chats/" + currentChat.id + "/read", { method: "POST" }).catch(() => {});
+      if (!document.hidden) {
+        const data = await api("/api/poll?chat_id=" + chatId + "&after_id=" + lastMessageId);
+        if (token !== chatPollToken || !currentChat || currentChat.id !== chatId) return;
+        if (data.messages && data.messages.length) {
+          let fromOthers = false;
+          for (const m of data.messages) { if (appendMessage(m) && m.sender_id !== currentUser.id) fromOthers = true; }
+          if (fromOthers) api("/api/chats/" + chatId + "/read", { method: "POST" }).catch(() => {});
+        }
+        document.getElementById("typing").style.display = data.typing ? "block" : "none";
       }
-      document.getElementById("typing").style.display = data.typing ? "block" : "none";
     } catch (e) {}
-  }, 2000);
+    // Следующий опрос только после ответа на предыдущий: запросы больше не накладываются друг на друга
+    if (token === chatPollToken) chatPollInterval = setTimeout(tick, document.hidden ? 5000 : 1500);
+  };
+  chatPollInterval = setTimeout(tick, 1500);
 }
 
-document.getElementById("btn-back-chat").onclick = () => { if (chatPollInterval) clearInterval(chatPollInterval); currentChat = null; show("screen-list"); loadList(); };
+document.getElementById("btn-back-chat").onclick = () => { chatPollToken++; if (chatPollInterval) clearTimeout(chatPollInterval); currentChat = null; show("screen-list"); loadList(); };
 document.getElementById("chat-header-info").onclick = () => { if (currentChat && currentChat.other && !currentChat.other.is_group) openUserProfile(currentChat.other.id); };
 document.getElementById("btn-chat-report").onclick = () => { if (!currentChat) return; reportTarget = { type: "user", user_id: currentChat.other.id, name: currentChat.other.first_name || currentChat.other.username }; openReportModal(); };
 
