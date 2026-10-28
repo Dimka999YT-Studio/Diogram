@@ -243,6 +243,10 @@
   .poll-meta { font-size: 12px; opacity: 0.7; margin-top: 6px; }
   .comments-btn { display: block; margin-top: 8px; padding-top: 7px; border: none; border-top: 1px solid rgba(255,255,255,0.12); background: transparent; color: #7fb0ff; font: inherit; font-size: 13px; cursor: pointer; width: 100%; text-align: left; }
   .comment-name { font-size: 12px; font-weight: 700; color: #7fb0ff; margin-bottom: 2px; }
+  .uname-main { font-size: 18px; font-weight: 600; color: #7fb0ff; }
+  .uname-also { font-size: 14px; color: #7e8b99; margin-top: 6px; line-height: 1.7; }
+  .uname-also .mention-lite { color: #7fb0ff; cursor: pointer; }
+  .reserved-form textarea { width: 100%; min-height: 70px; resize: vertical; }
   .modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
   .modal.active { display: flex; }
   .modal-bg { position: absolute; inset: 0; background: rgba(0,0,0,0.7); }
@@ -498,8 +502,8 @@
         <div class="profile-row">
           <div class="profile-row-icon">⭐</div>
           <div class="profile-row-content">
-            <div class="profile-row-label">Коллекция юзернеймов</div>
-            <div class="profile-row-value" id="user-usernames-list" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;"></div>
+            <div class="uname-main" id="user-main-username"></div>
+            <div class="uname-also" id="user-usernames-list"></div>
           </div>
         </div>
       </div>
@@ -616,6 +620,7 @@
     <div class="admin-tabs">
       <button class="admin-tab active" data-tab="users">👥 Юзеры</button>
       <button class="admin-tab" data-tab="reports">📩 Жалобы</button>
+      <button class="admin-tab" data-tab="reserved" id="admin-tab-reserved" style="display:none;">⭐ Резерв имён</button>
     </div>
     <div class="search-bar"><input type="text" id="admin-search" placeholder="Поиск по @username или email"></div>
     <div class="list" id="admin-list"><div class="spinner"></div></div>
@@ -1696,6 +1701,8 @@ async function openProfile() {
         colHtml += '<div class="profile-row"><div class="profile-row-icon">⭐</div><div class="profile-row-content"><div class="profile-row-value">@' + escapeHtml(u.username) + '</div></div><button class="admin-btn" style="padding:4px 8px;font-size:11px;" data-username="' + escapeAttr(u.username) + '" onclick="activateMyUsername(this.dataset.username)">Активировать</button></div>';
       }
     }
+    const alsoOthers = myUsernames.map(x => x.username).filter(n => n.toLowerCase() !== (currentUser.username || "").toLowerCase());
+    if (alsoOthers.length) colHtml = '<div class="profile-row"><div class="profile-row-icon">⭐</div><div class="profile-row-content"><div class="uname-main">@' + escapeHtml(currentUser.username || "") + '</div><div class="uname-also">а также ' + alsoOthers.map(n => '<span class="mention-lite" data-username="' + escapeAttr(n) + '">@' + escapeHtml(n) + '</span>').join(", ") + '</div></div></div>' + colHtml;
     document.getElementById("profile-collection-block").innerHTML = colHtml;
   } catch(e) {}
 
@@ -1784,18 +1791,14 @@ async function openUserProfile(userId) {
     document.getElementById("user-id").textContent = u.id;
     document.getElementById("user-role").textContent = u.role;
     
-    // Коллекция
+    // Как в Telegram: основной @username, ниже «а также» коллекционные
     const collectionBox = document.getElementById("user-usernames-list");
     const collectionBlock = document.getElementById("user-collection-block");
-    if (data.collection && data.collection.length > 0) {
+    const others = (data.collection || []).filter(n => n.toLowerCase() !== (u.username || "").toLowerCase());
+    if (others.length > 0 && u.username && !u.banned) {
         collectionBlock.style.display = "block";
-        collectionBox.innerHTML = data.collection.map(uname => {
-            const isActive = uname.toLowerCase() === (u.username || "").toLowerCase();
-            const style = isActive 
-                ? "background: #5b8bff; color: #fff; box-shadow: 0 2px 8px rgba(91,139,255,0.3);" 
-                : "background: #242f3d; color: #7e8b99;";
-            return `<span data-username="${escapeAttr(uname)}" onclick="showUsernameInfo(this.dataset.username)" style="${style} padding: 4px 10px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;">@${escapeHtml(uname)}</span>`;
-        }).join("");
+        document.getElementById("user-main-username").textContent = "@" + u.username;
+        collectionBox.innerHTML = "а также " + others.map(n => '<span class="mention-lite" data-username="' + escapeAttr(n) + '">@' + escapeHtml(n) + '</span>').join(", ");
     } else {
         collectionBlock.style.display = "none";
     }
@@ -1805,6 +1808,8 @@ async function openUserProfile(userId) {
     show("screen-user-profile");
   } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
 }
+
+document.addEventListener("click", (e) => { const el = e.target.closest(".mention-lite"); if (el) { const n = el.getAttribute("data-username"); if (n) showUsernameInfo(n); } });
 
 async function showUsernameInfo(username) {
   try {
@@ -1816,7 +1821,9 @@ async function showUsernameInfo(username) {
     else av.textContent = initial(name);
     document.getElementById("uinfo-owner-name").textContent = name;
     const purchaseBlock = document.getElementById("uinfo-purchase-block");
-    if (data.purchase) {
+    if (data.reserved) {
+      purchaseBlock.innerHTML = `Этот юзернейм зарезервирован и выдаётся владельцем.`;
+    } else if (data.purchase) {
       const d = new Date(data.purchase.date).toLocaleString("ru-RU", { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
       const rub = Math.round(data.purchase.price * RATE);
       purchaseBlock.innerHTML = `Это имя приобретено на платформе <b>Frigdmant</b><br>${d} за <b>${parseFloat(data.purchase.price).toFixed(1)} Di</b> (~${rub} ₽)`;
@@ -1989,10 +1996,15 @@ async function openAdmin() {
         chartBox.innerHTML = '<div style="font-size: 13px; color: #7e8b99; text-align: center;">За последние 7 дней регистраций нет</div>';
     }
   } catch (e) { console.error("Ошибка загрузки статистики", e); }
-  if (currentAdminTab === "users") loadAdminUsers(); else loadAdminReports();
+  document.getElementById("admin-tab-reserved").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
+  adminShowTab();
 }
 
-document.querySelectorAll(".admin-tab").forEach(tab => { tab.onclick = () => { document.querySelectorAll(".admin-tab").forEach(t => t.classList.remove("active")); tab.classList.add("active"); currentAdminTab = tab.dataset.tab; if (currentAdminTab === "users") loadAdminUsers(); else loadAdminReports(); }; });
+document.querySelectorAll(".admin-tab").forEach(tab => { tab.onclick = () => { document.querySelectorAll(".admin-tab").forEach(t => t.classList.remove("active")); tab.classList.add("active"); currentAdminTab = tab.dataset.tab; adminShowTab(); }; });
+function adminShowTab() {
+  document.querySelector("#screen-admin > .search-bar").style.display = currentAdminTab === "users" ? "" : "none";
+  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else loadAdminReports();
+}
 
 async function loadAdminUsers() {
   const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
@@ -2050,6 +2062,42 @@ document.getElementById("btn-confirm-ban").onclick = async () => {
   if (banDuration) payload.duration_days = parseInt(banDuration);
   try { await api("/api/admin/ban", { method: "POST", body: JSON.stringify(payload) }); closeModal("modal-ban"); loadAdminUsers(); alert("Забанен"); } catch (e) { setError("modal-ban-error", e.message); }
 };
+
+async function loadAdminReserved() {
+  const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
+  try {
+    const data = await api("/api/admin/reserved"); box.innerHTML = "";
+    const form = document.createElement("div"); form.className = "report-card reserved-form";
+    form.innerHTML = '<div class="report-reason">Добавить в резерв</div><textarea id="reserved-input" placeholder="Юзернеймы: каждый с новой строки или через запятую"></textarea><div style="margin-top:8px;"><button class="admin-btn success" id="btn-reserved-add">Добавить</button></div><div id="reserved-result" style="font-size:13px;margin-top:8px;color:#7e8b99;"></div>';
+    box.appendChild(form);
+    if (!data.reserved.length) { const e = document.createElement("div"); e.className = "empty-state"; e.textContent = "Резерв пуст"; box.appendChild(e); }
+    for (const r of data.reserved) {
+      const el = document.createElement("div"); el.className = "report-card"; el.setAttribute("data-username", r.username);
+      el.innerHTML = '<div class="report-reason">@' + escapeHtml(r.username) + '</div><div class="report-body">Занят пользователем @' + escapeHtml(r.holder_username || "?") + ' (ID ' + (parseInt(r.holder_id, 10) || 0) + ')</div><div style="margin-top:8px;"><button class="admin-btn success" data-act="give">Выдать по ID</button> <button class="admin-btn danger" data-act="remove">Убрать</button></div>';
+      box.appendChild(el);
+    }
+  } catch (e) { box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+}
+document.getElementById("admin-list").addEventListener("click", async (e) => {
+  if (currentAdminTab !== "reserved") return;
+  try {
+    if (e.target.id === "btn-reserved-add") {
+      const r = await api("/api/admin/reserved/add", { method: "POST", body: JSON.stringify({ usernames: document.getElementById("reserved-input").value }) });
+      await loadAdminReserved(); const out = document.getElementById("reserved-result");
+      out.textContent = "Добавлено: " + (r.added.length ? r.added.map(n => "@" + n).join(", ") : "ничего") + (r.skipped.length ? ". Не добавлено: " + r.skipped.map(x => "@" + x.username + " (" + x.reason + ")").join("; ") : "");
+      return;
+    }
+    const act = e.target.getAttribute("data-act"); const card = e.target.closest("[data-username]"); if (!act || !card) return; const name = card.getAttribute("data-username");
+    if (act === "give") {
+      const id = parseInt(prompt("ID пользователя, которому выдать @" + name), 10); if (!id) return;
+      const r = await api("/api/admin/reserved/give", { method: "POST", body: JSON.stringify({ username: name, user_id: id }) });
+      alert("Выдано пользователю @" + (r.to || id)); loadAdminReserved();
+    } else if (act === "remove") {
+      if (!confirm("Убрать @" + name + " из резерва? Имя станет свободным.")) return;
+      await api("/api/admin/reserved/remove", { method: "POST", body: JSON.stringify({ username: name }) }); loadAdminReserved();
+    }
+  } catch (err) { if (err.message !== "banned") alert("Ошибка: " + err.message); }
+});
 
 async function loadAdminReports() {
   const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
