@@ -180,6 +180,12 @@
   .frig-actions { display: flex; gap: 8px; }
 
   /* ADMIN & DOCS */
+  /* Админка: статистика, график и вкладки занимали весь экран, список юзеров сжимался до 0 высоты и не листался.
+     Теперь листается весь экран целиком, а шапка остаётся сверху. */
+  #screen-admin { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  #screen-admin > * { flex-shrink: 0; }
+  #screen-admin > .header { position: sticky; top: 0; z-index: 5; }
+  #screen-admin > .list { flex: none; overflow: visible; padding-bottom: 24px; }
   .admin-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 16px; }
   .stat-card { background: #17212b; border-radius: 12px; padding: 16px; position: relative; }
   .stat-value { font-size: 28px; font-weight: 700; color: #5b8bff; }
