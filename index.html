@@ -249,7 +249,6 @@
   .poll-meta { font-size: 12px; opacity: 0.7; margin-top: 6px; }
   .comments-btn { display: block; margin-top: 8px; padding-top: 7px; border: none; border-top: 1px solid rgba(255,255,255,0.12); background: transparent; color: #7fb0ff; font: inherit; font-size: 13px; cursor: pointer; width: 100%; text-align: left; }
   .comment-name { font-size: 12px; font-weight: 700; color: #7fb0ff; margin-bottom: 2px; }
-  .copy-link { color: #7fb0ff; cursor: pointer; word-break: break-all; }
   .ch-info-desc { font-size: 14px; color: #c5cdd6; padding: 10px 20px 0; text-align: center; line-height: 1.5; word-break: break-word; }
   .uname-main { font-size: 18px; font-weight: 600; color: #7fb0ff; }
   .uname-also { font-size: 14px; color: #7e8b99; margin-top: 6px; line-height: 1.7; }
@@ -477,7 +476,6 @@
           <div class="profile-row-edit" id="edit-username">✏️</div>
         </div>
         <div id="profile-collection-block"></div>
-        <div class="profile-row"><div class="profile-row-icon">🔗</div><div class="profile-row-content"><div class="profile-row-label">Ссылка на профиль (нажми, чтобы скопировать)</div><div class="profile-row-value copy-link" id="profile-link-show">—</div></div></div>
       </div>
 
       <div class="profile-block">
@@ -520,7 +518,6 @@
       <div class="profile-block">
         <div class="profile-row"><div class="profile-row-icon">📝</div><div class="profile-row-content"><div class="profile-row-label">О себе</div><div class="profile-row-value" id="user-bio">—</div></div></div>
         <div class="profile-row"><div class="profile-row-icon">🆔</div><div class="profile-row-content"><div class="profile-row-label">ID</div><div class="profile-row-value" id="user-id">—</div></div></div>
-        <div class="profile-row"><div class="profile-row-icon">🔗</div><div class="profile-row-content"><div class="profile-row-label">Ссылка (нажми, чтобы скопировать)</div><div class="profile-row-value copy-link" id="user-link">—</div></div></div>
         <div class="profile-row"><div class="profile-row-icon">🎭</div><div class="profile-row-content"><div class="profile-row-label">Роль</div><div class="profile-row-value" id="user-role">—</div></div></div>
       </div>
       <button class="profile-btn primary" id="btn-user-message">💬 Написать сообщение</button>
@@ -543,7 +540,6 @@
         <div class="ch-info-subs" id="ch-info-subs">0 подписчиков</div>
       </div>
       <div class="ch-info-desc" id="ch-info-desc" style="display:none;"></div>
-      <div class="ch-info-desc" id="ch-info-link-row" style="display:none;"><span class="copy-link" id="ch-info-link-text"></span></div>
       <button class="profile-btn primary" id="btn-ch-info-edit" style="display:none;">✏️ Редактировать канал</button>
       <button class="profile-btn secondary" id="btn-ch-info-link" style="display:none;">💬 Комментарии: группа</button>
       <button class="profile-btn secondary" id="btn-ch-info-subscribe" style="display:none;">➕ Подписаться</button>
@@ -952,7 +948,7 @@ document.getElementById("btn-verify").onclick = async () => {
 
 function afterLogin() {
   if (!currentUser.profile_completed) { show("screen-profile-setup"); return; }
-  startHeartbeat(); show("screen-list"); loadList(); startListPolling(); handleDeepLink();
+  startHeartbeat(); show("screen-list"); loadList(); startListPolling();
   if (currentUser.role === "owner" || currentUser.role === "developer") {
     document.getElementById("menu-admin").style.display = "flex"; startAdminPoll();
   }
@@ -1334,8 +1330,7 @@ async function openChannelInfo(channelId) {
     document.getElementById("ch-info-username").textContent = ch.username ? "@" + ch.username : "🌍 Глобальный канал";
     document.getElementById("ch-info-type").textContent = ch.type === "secret" ? "🌍 Глобальный" : "📢 Публичный";
     document.getElementById("ch-info-subs").textContent = (ch.subscribers_count || 0) + " подписчиков";
-    { const d = document.getElementById("ch-info-desc"); d.textContent = ch.description || ""; d.style.display = ch.description ? "block" : "none";
-      const lr = document.getElementById("ch-info-link-row"), lt = document.getElementById("ch-info-link-text"); lr.style.display = ch.username ? "block" : "none"; lt.textContent = ch.username ? profileLink(ch.username) : ""; lt.setAttribute("data-link", ch.username ? profileLink(ch.username) : ""); }
+    { const d = document.getElementById("ch-info-desc"); d.textContent = ch.description || ""; d.style.display = ch.description ? "block" : "none"; }
     const isOwner = ch.is_owner; const isSub = ch.is_subscribed;
     document.getElementById("btn-ch-info-edit").style.display = isOwner ? "block" : "none";
     document.getElementById("btn-ch-info-delete").style.display = isOwner ? "block" : "none";
@@ -1691,7 +1686,6 @@ async function openProfile() {
   else av.innerHTML = initial(name) + '<div class="avatar-edit-hint">📷</div>';
   document.getElementById("profile-name").textContent = name;
   document.getElementById("profile-username-show").textContent = currentUser.username ? "@" + currentUser.username : "—";
-  { const l = document.getElementById("profile-link-show"); l.textContent = currentUser.username ? profileLink(currentUser.username) : "—"; l.setAttribute("data-link", currentUser.username ? profileLink(currentUser.username) : ""); }
   document.getElementById("profile-id").textContent = currentUser.id;
   document.getElementById("profile-role").textContent = currentUser.role;
 
@@ -1805,7 +1799,6 @@ async function openUserProfile(userId) {
 
     document.getElementById("user-bio").textContent = u.bio || "—"; 
     document.getElementById("user-id").textContent = u.id;
-    { const l = document.getElementById("user-link"); const ok = !!u.username && !u.banned; l.parentElement.parentElement.style.display = ok ? "" : "none"; l.textContent = ok ? profileLink(u.username) : ""; l.setAttribute("data-link", ok ? profileLink(u.username) : ""); }
     document.getElementById("user-role").textContent = u.role;
     
     // Как в Telegram: основной @username, ниже «а также» коллекционные
@@ -2164,25 +2157,6 @@ document.getElementById("menu-admin").onclick = () => { closeMenu(); openAdmin()
 document.getElementById("menu-new-channel").onclick = () => { closeMenu(); createChannelDialog(); };
 
 // ИНИЦИАЛИЗАЦИЯ
-// ---- Ссылки на профили и каналы: https://сайт/username ----
-function profileLink(name) { return location.origin + "/" + name; }
-async function copyText(text) {
-  try { await navigator.clipboard.writeText(text); alert("Ссылка скопирована:\n" + text); }
-  catch (e) { prompt("Скопируй ссылку:", text); }
-}
-document.addEventListener("click", (e) => { const el = e.target.closest(".copy-link"); if (el) { const t = el.getAttribute("data-link"); if (t) copyText(t); } });
-
-let pendingDeepLink = (() => { const m = location.pathname.match(/^\/@?([A-Za-z][A-Za-z0-9_]{0,31})\/?$/); return m ? m[1] : null; })();
-async function handleDeepLink() {
-  if (!pendingDeepLink || !currentUser || !currentUser.profile_completed) return;
-  const name = pendingDeepLink; pendingDeepLink = null;
-  try { history.replaceState(null, "", "/"); } catch (e) {}
-  try {
-    const r = await api("/api/resolve/" + encodeURIComponent(name));
-    if (r.type === "channel") await openChannelInfo(r.id); else await openUserProfile(r.id);
-  } catch (e) { if (e.message !== "banned") alert("@" + name + ": " + e.message); }
-}
-
 (async function init() {
   if (token) {
     try { const data = await api("/api/me"); currentUser = data.user; afterLogin(); return; } catch (e) { if (e.message !== "banned") { localStorage.removeItem("diogram_token"); token = null; } }
