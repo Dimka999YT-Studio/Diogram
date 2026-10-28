@@ -46,6 +46,7 @@ from db import (
     ban_user, unban_user, is_ban_expired,
     update_privacy_settings, get_user_sessions, delete_session,
     get_user_usernames, activate_username, is_username_on_frigdmant, get_owned_username_holder,
+    get_reserved_usernames, add_reserved_username, give_reserved_username, remove_reserved_username, is_username_reserved,
     create_frigdmant_listing, get_frigdmant_listings, get_user_listings,
     cancel_listing, buy_frigdmant_listing, place_frigdmant_bid,
     create_group_chat, get_chat_members, is_chat_member, get_username_purchase_info,
@@ -383,6 +384,19 @@ def validate_username(username, role):
     if not re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_]*", username): return False, "Username: начинается с буквы, только латиница, цифры, _"
     return True, ""
 
+def username_conflict(username, acting_user_id=None):
+    """Текст ошибки, если @username уже кем-то занят (активный ник, коллекция/резерв, канал), иначе None.
+    Свои имена acting_user_id не считаются конфликтом. Раньше сообщение было безликим «занят»,
+    а каналы вообще не проверяли коллекции и ники пользователей."""
+    existing = get_user_by_username(username)
+    if existing and existing["id"] != acting_user_id:
+        return f"Этот юзернейм занят пользователем @{existing.get('username') or username}"
+    holder = get_owned_username_holder(username)
+    if holder is not None and holder != acting_user_id:
+        h = get_user_by_id(holder)
+        return f"Этот юзернейм занят пользователем @{(h or {}).get('username') or 'unknown'}"
+    return None
+
 # ==================== AI HELPERS ====================
 def get_chat_history_for_ai(chat_id, bot_id, limit=15):
     try:
@@ -512,12 +526,10 @@ def api_profile():
     if len(first_name) > 32 or (last_name and len(last_name) > 32): return jsonify({"error": "Имя слишком длинное (максимум 32 символа)"}), 400
     ok, err = validate_username(username, user.get("role", "user"))
     if not ok: return jsonify({"error": err}), 400
-    existing = get_user_by_username(username)
-    if existing and existing["id"] != user["id"]: return jsonify({"error": "Этот @username занят"}), 400
     # Раньше здесь не проверялись коллекция и Frigdmant: купленный или выставленный на продажу ник можно было
-    # занять бесплатно. Свой ник из коллекции (holder == user) разрешаем.
-    holder = get_owned_username_holder(username)
-    if holder is not None and holder != user["id"]: return jsonify({"error": "Этот @username принадлежит другому пользователю"}), 400
+    # занять бесплатно. Свой ник из коллекции разрешаем.
+    conflict = username_conflict(username, user["id"])
+    if conflict: return jsonify({"error": conflict}), 400
     if is_username_on_frigdmant(username): return jsonify({"error": "Этот юзернейм сейчас на продаже на Frigdmant"}), 400
     updated = update_user_profile(user["id"], username, first_name, last_name)
     return jsonify({"ok": True, "user": user_to_dict(updated)})
@@ -545,12 +557,10 @@ def api_profile_username():
     ok, err = validate_username(username, user.get("role", "user"))
     if not ok: return jsonify({"error": err}), 400
     if username.lower() == (user.get("username") or "").lower(): return jsonify({"error": "Это твой текущий @username"}), 400
-    existing = get_user_by_username(username)
-    if existing and existing["id"] != user["id"]: return jsonify({"error": "Этот @username уже занят"}), 400
+    conflict = username_conflict(username, user["id"])
+    if conflict: return jsonify({"error": conflict}), 400
     on_market = is_username_on_frigdmant(username)
     if on_market: return jsonify({"error": "Этот юзернейм сейчас на продаже", "on_frigdmant": True, "price": on_market["price"]}), 400
-    holder = get_owned_username_holder(username)
-    if holder is not None and holder != user["id"]: return jsonify({"error": "Этот @username уже занят"}), 400
     used = count_username_changes_24h(user["id"])
     if used >= USERNAME_CHANGE_LIMIT_24H and user.get("role") not in ("owner", "developer"): return jsonify({"error": f"Лимит {USERNAME_CHANGE_LIMIT_24H} смен @username за 24 часа"}), 429
     updated = update_user_username(user["id"], username)
@@ -656,7 +666,7 @@ def api_username_info(username):
     if not owner_id: return jsonify({"error": "Владелец не найден"}), 404
     owner = get_user_by_id(owner_id)
     purchase = get_username_purchase_info(username)
-    return jsonify({"username": username, "owner": user_public_dict(owner), "purchase": purchase})
+    return jsonify({"username": username, "owner": user_public_dict(owner), "purchase": purchase, "reserved": is_username_reserved(username)})
 
 # ==================== FRIGDMANT ====================
 @app.route("/api/usernames/my")
@@ -1147,6 +1157,8 @@ def api_channels_create():
         if not ok: return jsonify({"error": err}), 400
         existing = get_channel_by_username(username)
         if existing: return jsonify({"error": "Этот @username канала занят"}), 400
+        conflict = username_conflict(username, user["id"])
+        if conflict: return jsonify({"error": conflict}), 400
     ch = create_channel(user["id"], name, username, description, ch_type)
     if not ch: return jsonify({"error": "Ошибка создания"}), 500
     if ch_type == "secret":
@@ -1201,6 +1213,8 @@ def api_channel_update(channel_id):
         if username.lower() != (ch.get("username") or "").lower():
             existing = get_channel_by_username(username)
             if existing and existing["id"] != channel_id: return jsonify({"error": "Этот @username канала занят"}), 400
+            conflict = username_conflict(username, user["id"])
+            if conflict: return jsonify({"error": conflict}), 400
     else: username = None
     updated = update_channel_full(channel_id, name=name if name is not None else ch["name"], username=username, ch_type=final_type)
     if final_type == "public": subscribe_to_channel(channel_id, user["id"])
@@ -1589,6 +1603,58 @@ def api_admin_unban():
     target_id = data.get("user_id")
     if not target_id: return jsonify({"error": "user_id обязателен"}), 400
     unban_user(target_id)
+    return jsonify({"ok": True})
+
+# ==================== РЕЗЕРВ ЮЗЕРНЕЙМОВ (только owner) ====================
+@app.route("/api/admin/reserved")
+def api_admin_reserved():
+    admin = require_owner()
+    if not admin: return jsonify({"error": "Нет доступа"}), 403
+    rows = get_reserved_usernames()
+    holders = get_users_by_ids([r["user_id"] for r in rows])
+    return jsonify({"reserved": [{"username": r["username"], "holder_id": r["user_id"], "holder_username": (holders.get(r["user_id"]) or {}).get("username")} for r in rows]})
+
+@app.route("/api/admin/reserved/add", methods=["POST"])
+def api_admin_reserved_add():
+    admin = require_owner()
+    if not admin: return jsonify({"error": "Нет доступа"}), 403
+    raw = json_body().get("usernames")
+    if isinstance(raw, str): raw = re.split(r"[\s,;]+", raw)
+    if not isinstance(raw, list): return jsonify({"error": "Нужен список юзернеймов"}), 400
+    names = []
+    for n in raw:
+        if isinstance(n, str) and n.strip().lstrip("@") and n.strip().lstrip("@").lower() not in [x.lower() for x in names]: names.append(n.strip().lstrip("@"))
+    if not names: return jsonify({"error": "Список пуст"}), 400
+    if len(names) > 50: return jsonify({"error": "Не больше 50 имён за раз"}), 400
+    added, skipped = [], []
+    for n in names:
+        ok, err = validate_username(n, "owner")
+        if not ok: skipped.append({"username": n, "reason": err}); continue
+        conflict = username_conflict(n, None)
+        if not conflict and get_channel_by_username(n): conflict = "Этот юзернейм занят каналом"
+        if not conflict and is_username_on_frigdmant(n): conflict = "Этот юзернейм сейчас на продаже на Frigdmant"
+        if conflict: skipped.append({"username": n, "reason": conflict}); continue
+        if add_reserved_username(admin["id"], n): added.append(n)
+        else: skipped.append({"username": n, "reason": "Не удалось сохранить"})
+    return jsonify({"ok": True, "added": added, "skipped": skipped})
+
+@app.route("/api/admin/reserved/give", methods=["POST"])
+def api_admin_reserved_give():
+    admin = require_owner()
+    if not admin: return jsonify({"error": "Нет доступа"}), 403
+    data = json_body(); name = str_field(data, "username").lstrip("@"); uid = to_int(data.get("user_id"))
+    if not name or uid is None: return jsonify({"error": "Нужны username и user_id"}), 400
+    target = get_user_by_id(uid)
+    if not target: return jsonify({"error": "Пользователь с таким ID не найден"}), 404
+    if not give_reserved_username(name, uid): return jsonify({"error": "Это имя не в резерве"}), 404
+    return jsonify({"ok": True, "to": target.get("username")})
+
+@app.route("/api/admin/reserved/remove", methods=["POST"])
+def api_admin_reserved_remove():
+    admin = require_owner()
+    if not admin: return jsonify({"error": "Нет доступа"}), 403
+    name = str_field(json_body(), "username").lstrip("@")
+    if not name or not remove_reserved_username(name): return jsonify({"error": "Это имя не в резерве"}), 404
     return jsonify({"ok": True})
 
 # ==================== WORKER ====================

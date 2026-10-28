@@ -72,8 +72,11 @@ def get_users_by_ids(user_ids) -> dict:
 
 
 def get_user_by_username(username: str) -> dict:
-    res = supabase.table("users").select("*").ilike("username", username).execute()
-    return res.data[0] if res.data else None
+    # ilike считает «_» подстановочным знаком ("a_b" совпадало с "axb"), поэтому берём только точное совпадение без учёта регистра
+    res = supabase.table("users").select("*").ilike("username", username).limit(50).execute()
+    for u in (res.data or []):
+        if (u.get("username") or "").lower() == (username or "").lower(): return u
+    return None
 
 
 def search_users(query: str, current_user_id: int, limit: int = 20) -> list:
@@ -643,8 +646,10 @@ def get_channel_by_id(channel_id: int) -> dict:
 
 
 def get_channel_by_username(username: str) -> dict:
-    res = supabase.table("channels").select("*").ilike("username", username).execute()
-    return res.data[0] if res.data else None
+    res = supabase.table("channels").select("*").ilike("username", username).limit(50).execute()
+    for c in (res.data or []):
+        if (c.get("username") or "").lower() == (username or "").lower(): return c
+    return None
 
 
 def count_user_channels(user_id: int) -> int:
@@ -1112,8 +1117,50 @@ def delete_session(session_id: int, user_id: int):
 # ============ FRIGDMANT И ИНВЕНТАРЬ ============
 
 def get_user_usernames(user_id: int) -> list:
-    res = supabase.table("owned_usernames").select("*").eq("user_id", user_id).order("purchased_at", desc=True).execute()
+    """Коллекция пользователя. Зарезервированные имена (раздел админки «Резерв») сюда не попадают."""
+    res = supabase.table("owned_usernames").select("*").eq("user_id", user_id).eq("reserved", False).order("purchased_at", desc=True).execute()
     return res.data or []
+
+
+def get_reserved_usernames() -> list:
+    res = supabase.table("owned_usernames").select("id, user_id, username, purchased_at").eq("reserved", True).order("username").execute()
+    return res.data or []
+
+
+def add_reserved_username(user_id: int, username: str) -> bool:
+    try:
+        res = supabase.table("owned_usernames").insert({"user_id": user_id, "username": username, "purchase_price": 0, "reserved": True}).execute()
+        return bool(res.data)
+    except Exception as e:
+        print(f"[reserved add] {e}")
+        return False
+
+
+def _find_reserved(username: str):
+    res = supabase.table("owned_usernames").select("id, user_id, username").eq("reserved", True).ilike("username", username).limit(20).execute()
+    for row in (res.data or []):
+        if (row.get("username") or "").lower() == username.lower():
+            return row
+    return None
+
+
+def give_reserved_username(username: str, to_user_id: int) -> bool:
+    """Передаёт зарезервированное имя в коллекцию пользователя (резерв снимается)."""
+    row = _find_reserved(username)
+    if not row: return False
+    res = supabase.table("owned_usernames").update({"user_id": to_user_id, "reserved": False}).eq("id", row["id"]).eq("reserved", True).execute()
+    return bool(res.data)
+
+
+def remove_reserved_username(username: str) -> bool:
+    row = _find_reserved(username)
+    if not row: return False
+    res = supabase.table("owned_usernames").delete().eq("id", row["id"]).eq("reserved", True).execute()
+    return bool(res.data)
+
+
+def is_username_reserved(username: str) -> bool:
+    return _find_reserved(username) is not None
 
 
 def activate_username(user_id: int, username: str) -> bool:
