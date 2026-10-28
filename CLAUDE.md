@@ -29,7 +29,7 @@
 - Бакеты хранилища: `avatars`, `chat-photos` (оба публичные).
 - Миграции лежат в `supabase/migrations/` (с файлами отката). RLS включён на всех таблицах, у `anon`/`authenticated` прав нет: сервер ходит только под `service_role`.
 - Каналы: к каналу можно привязать одну свою группу (`channels.linked_chat_id`): посты дублируются в группу (`messages.channel_post_id`), комментарии это сообщения группы с `reply_to_message_id`. Опросы: `channel_messages.poll` + `channel_poll_votes` (анонимные).
-- Ссылки как t.me: `https://сайт/username` (и `/@username`) отдают то же приложение (`username_link`), клиент после входа вызывает `/api/resolve/<username>` и открывает профиль или канал (`handleDeepLink`). Обзор каналов: `/api/channels/browse` (публичные и глобальные, с описанием).
+- Ссылки как t.me: `https://сайт/username` (и `/@username`) отдают то же приложение (`username_link`), клиент после входа вызывает `/api/resolve/<username>` и открывает профиль или канал (`handleDeepLink`).
 - SQL-функции (RPC), описаны в миграции `20261026_frigdmant_and_security.sql`: `spend_balance_atomic`, `add_balance_atomic`, `buy_username_atomic`, `place_bid_atomic`, `close_auction_atomic`.
 
 ## Что важно помнить в коде

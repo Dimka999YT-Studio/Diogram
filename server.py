@@ -49,7 +49,7 @@ from db import (
     create_frigdmant_listing, get_frigdmant_listings, get_user_listings,
     cancel_listing, buy_frigdmant_listing, place_frigdmant_bid,
     create_group_chat, get_chat_members, is_chat_member, get_username_purchase_info,
-    browse_channels, get_users_by_ids, get_user_groups, get_messages_after_id,
+    get_users_by_ids, get_user_groups, get_messages_after_id,
     get_owned_groups, set_channel_linked_chat, save_channel_post, delete_channel_post_mirror, get_channel_message,
     decorate_channel_messages, set_poll_votes, get_post_comments, save_post_comment, ensure_chat_member,
     supabase
@@ -1180,15 +1180,6 @@ def api_channels_create():
         for u in get_all_users_admin(limit=10000): subscribe_to_channel(ch["id"], u["id"])
     else: subscribe_to_channel(ch["id"], user["id"])
     return jsonify({"ok": True, "channel": ch})
-
-@app.route("/api/channels/browse")
-def api_channels_browse():
-    user = get_current_user()
-    if not user: return jsonify({"error": "Не авторизован"}), 401
-    limit = int_arg("limit", 30, 1, 50); offset = int_arg("offset", 0, 0, 100000)
-    q = request.args.get("q", "")[:64]
-    items = browse_channels(user["id"], q, limit, offset)
-    return jsonify({"channels": items, "has_more": len(items) == limit and not q.strip()})
 
 @app.route("/api/channels/search")
 def api_channels_search():

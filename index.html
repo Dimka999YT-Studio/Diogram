@@ -243,12 +243,6 @@
   .poll-meta { font-size: 12px; opacity: 0.7; margin-top: 6px; }
   .comments-btn { display: block; margin-top: 8px; padding-top: 7px; border: none; border-top: 1px solid rgba(255,255,255,0.12); background: transparent; color: #7fb0ff; font: inherit; font-size: 13px; cursor: pointer; width: 100%; text-align: left; }
   .comment-name { font-size: 12px; font-weight: 700; color: #7fb0ff; margin-bottom: 2px; }
-  .browse-card { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #17212b; cursor: pointer; align-items: flex-start; }
-  .browse-card:active { background: #17212b; }
-  .browse-card .b-name { font-size: 15px; font-weight: 600; }
-  .browse-card .b-user { font-size: 13px; color: #7fb0ff; margin-top: 2px; }
-  .browse-card .b-desc { font-size: 13px; color: #c5cdd6; margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
-  .browse-card .b-meta { font-size: 12px; color: #7e8b99; margin-top: 4px; }
   .copy-link { color: #7fb0ff; cursor: pointer; word-break: break-all; }
   .ch-info-desc { font-size: 14px; color: #c5cdd6; padding: 10px 20px 0; text-align: center; line-height: 1.5; word-break: break-word; }
   .modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
@@ -363,15 +357,6 @@
     <div class="list" id="search-results">
       <div class="empty-state">Начни вводить имя...</div>
     </div>
-  </div>
-
-  <!-- ОБЗОР КАНАЛОВ -->
-  <div class="screen" id="screen-browse">
-    <div class="header">
-      <button class="header-icon" id="btn-browse-back">←</button>
-      <input type="text" id="browse-input" placeholder="Обзор каналов: название или @username" style="flex:1; background: transparent; border: none; font-size: 16px; padding: 8px;">
-    </div>
-    <div class="list" id="browse-list"><div class="spinner"></div></div>
   </div>
 
   <!-- CHAT -->
@@ -708,7 +693,6 @@
   <div class="menu-item" id="menu-profile"><span class="icon">👤</span> Профиль</div>
   <div class="menu-item" id="menu-shop"><span class="icon">🛒</span> Магазин</div>
   <div class="menu-item" id="menu-frig"><span class="icon">🏷️</span> Frigdmant</div>
-  <div class="menu-item" id="menu-browse"><span class="icon">🔭</span> Обзор каналов</div>
   <div class="menu-item" id="menu-new-channel"><span class="icon">📢</span> Новый канал</div>
   <div class="menu-item" id="menu-admin" style="display:none;"><span class="icon">👑</span> Админка <span id="menu-admin-badge" style="display:none;background:#ff5b5b;color:#fff;font-size:10px;padding:2px 6px;border-radius:8px;margin-left:auto;">0</span></div>
   <div class="menu-item" id="menu-logout"><span class="icon">🚪</span> Выйти</div>
@@ -1363,7 +1347,7 @@ document.getElementById("btn-ch-info-link").onclick = async () => {
   } catch (e) { if (e.message !== "banned") setError("modal-link-group-error", e.message); }
 };
 
-document.getElementById("btn-ch-info-back").onclick = () => { if (infoReturnTo === "browse") { infoReturnTo = null; show("screen-browse"); } else if (currentChannel) show("screen-channel"); else { show("screen-list"); loadList(); } };
+document.getElementById("btn-ch-info-back").onclick = () => { if (currentChannel) show("screen-channel"); else { show("screen-list"); loadList(); } };
 
 document.getElementById("btn-ch-info-edit").onclick = () => {
   if (!currentChInfo) return;
@@ -2140,42 +2124,9 @@ async function handleDeepLink() {
   try { history.replaceState(null, "", "/"); } catch (e) {}
   try {
     const r = await api("/api/resolve/" + encodeURIComponent(name));
-    if (r.type === "channel") { infoReturnTo = null; await openChannelInfo(r.id); } else await openUserProfile(r.id);
+    if (r.type === "channel") await openChannelInfo(r.id); else await openUserProfile(r.id);
   } catch (e) { if (e.message !== "banned") alert("@" + name + ": " + e.message); }
 }
-
-// ---- Обзор каналов (публичные и глобальные) ----
-let infoReturnTo = null; let browseOffset = 0; let browseTimer = null;
-function browseCard(c) {
-  const el = document.createElement("div"); el.className = "browse-card";
-  const av = document.createElement("div"); av.className = "avatar channel";
-  if (c.avatar_url) av.innerHTML = '<img src="' + escapeAttr(c.avatar_url) + '">'; else av.textContent = c.type === "secret" ? "🌍" : "📢";
-  const info = document.createElement("div"); info.className = "list-info";
-  info.innerHTML = '<div class="b-name">' + (c.type === "secret" ? "🌍 " : "") + escapeHtml(c.name || "Канал") + '</div>'
-    + '<div class="b-user">' + (c.username ? "@" + escapeHtml(c.username) : "Глобальный канал") + '</div>'
-    + (c.description ? '<div class="b-desc">' + escapeHtml(c.description) + '</div>' : '')
-    + '<div class="b-meta">' + (parseInt(c.subscribers_count, 10) || 0) + ' подписчиков' + (c.is_subscribed ? " · ✅ вы подписаны" : "") + '</div>';
-  el.appendChild(av); el.appendChild(info);
-  el.onclick = () => { infoReturnTo = "browse"; openChannelInfo(c.id); };
-  return el;
-}
-async function loadBrowse(reset) {
-  const box = document.getElementById("browse-list"); const q = document.getElementById("browse-input").value.trim();
-  if (reset) { browseOffset = 0; box.innerHTML = '<div class="spinner"></div>'; }
-  const more = box.querySelector(".browse-more"); if (more) more.remove();
-  try {
-    const data = await api("/api/channels/browse?limit=30&offset=" + browseOffset + (q.length >= 2 ? "&q=" + encodeURIComponent(q) : ""));
-    if (reset) box.innerHTML = "";
-    for (const c of data.channels) box.appendChild(browseCard(c));
-    browseOffset += data.channels.length;
-    if (!box.children.length) box.innerHTML = '<div class="empty-state">Каналов не найдено</div>';
-    if (data.has_more) { const b = document.createElement("button"); b.className = "profile-btn secondary browse-more"; b.style.margin = "12px 16px"; b.textContent = "Показать ещё"; b.onclick = () => loadBrowse(false); box.appendChild(b); }
-  } catch (e) { if (e.message !== "banned") box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
-}
-function openBrowse() { document.getElementById("browse-input").value = ""; show("screen-browse"); loadBrowse(true); }
-document.getElementById("menu-browse").onclick = () => { closeMenu(); openBrowse(); };
-document.getElementById("btn-browse-back").onclick = () => { show("screen-list"); loadList(); };
-document.getElementById("browse-input").addEventListener("input", () => { clearTimeout(browseTimer); browseTimer = setTimeout(() => { const q = document.getElementById("browse-input").value.trim(); if (q.length === 0 || q.length >= 2) loadBrowse(true); }, 300); });
 
 (async function init() {
   if (token) {
