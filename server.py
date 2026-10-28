@@ -51,7 +51,7 @@ from db import (
     create_group_chat, get_chat_members, is_chat_member, get_username_purchase_info,
     get_users_by_ids, get_user_groups, get_messages_after_id,
     get_owned_groups, set_channel_linked_chat, save_channel_post, delete_channel_post_mirror, get_channel_message,
-    decorate_channel_messages, set_poll_votes, get_post_comments, save_post_comment, ensure_chat_member,
+    decorate_channel_messages, set_poll_votes, get_post_comments, save_post_comment,
     supabase
 )
 from email_service import generate_code
@@ -586,8 +586,8 @@ def api_privacy():
     hide = data.get("hide_last_seen")
     who = data.get("who_can_message")
     if hide is not None and not isinstance(hide, bool): return jsonify({"error": "hide_last_seen: true или false"}), 400
-    if who is not None and who not in ("all", "contacts", "nobody"):
-        return jsonify({"error": "who_can_message: all, contacts или nobody"}), 400
+    if who is not None and who not in ("all", "nobody"):
+        return jsonify({"error": "who_can_message: all или nobody"}), 400
     update_privacy_settings(user["id"], hide, who)
     return jsonify({"ok": True})
 
@@ -832,6 +832,7 @@ def api_create_group():
         m = get_user_by_id(mid)
         if not m: return jsonify({"error": f"Пользователь {mid} не найден"}), 404
         if m.get("banned") and not is_ban_expired(m): return jsonify({"error": f"Пользователь {mid} заблокирован"}), 400
+        if messaging_blocked(user, m): return jsonify({"error": "Этот пользователь не принимает сообщения", "privacy": "nobody"}), 403
     chat = create_group_chat(user["id"], name, member_ids)
     if not chat: return jsonify({"error": "Ошибка создания группы"}), 500
     return jsonify({"ok": True, "chat_id": chat["id"]})
@@ -1393,7 +1394,6 @@ def api_channel_comment_send(channel_id, msg_id):
     if not text: return jsonify({"error": "Текст обязателен"}), 400
     if len(text) > 2000: return jsonify({"error": "Слишком длинный комментарий"}), 400
     if not check_rate_limit(f"comment_{user['id']}", 10, 30): return jsonify({"error": "Слишком часто. Подожди пару секунд."}), 429
-    ensure_chat_member(lg["id"], user["id"])
     c = save_post_comment(lg["id"], user["id"], post["discussion_message_id"], text)
     c["sender"] = user_public_dict(user)
     return jsonify({"ok": True, "comment": c})

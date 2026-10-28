@@ -1,4 +1,5 @@
 import os
+import threading
 import bcrypt
 from datetime import datetime, timedelta, timezone
 from supabase import create_client, Client
@@ -258,13 +259,18 @@ def activate_file_plus(user_id: int, days: int, cost: int, description: str) -> 
     return True, None
 
 
+# Чтение+запись в одной критической секции. Верно, пока сервис работает одним процессом (Procfile: --workers 1).
+_quota_lock = threading.Lock()
+
+
 def add_file_quota(user_id: int, bytes_amount: int) -> bool:
     try:
-        user = get_user_by_id(user_id)
-        current = user.get("file_quota_bytes", 0) or 0
-        supabase.table("users").update({
-            "file_quota_bytes": current + bytes_amount
-        }).eq("id", user_id).execute()
+        with _quota_lock:
+            user = get_user_by_id(user_id)
+            current = user.get("file_quota_bytes", 0) or 0
+            supabase.table("users").update({
+                "file_quota_bytes": current + bytes_amount
+            }).eq("id", user_id).execute()
         return True
     except Exception:
         return False
@@ -901,13 +907,19 @@ def decorate_channel_messages(messages: list, user_id: int) -> list:
     return messages
 
 
+# Замена голосов = delete + insert; под замком, чтобы параллельные запросы одного пользователя не оставили два ответа.
+# Верно только при одном процессе (Procfile: --workers 1).
+_poll_vote_lock = threading.Lock()
+
+
 def set_poll_votes(message_id: int, user_id: int, options: list) -> None:
     """Заменяет голоса пользователя в опросе (пустой список — снять голос)."""
-    supabase.table("channel_poll_votes").delete().eq("message_id", message_id).eq("user_id", user_id).execute()
-    if options:
-        supabase.table("channel_poll_votes").insert(
-            [{"message_id": message_id, "user_id": user_id, "option_index": i} for i in options]
-        ).execute()
+    with _poll_vote_lock:
+        supabase.table("channel_poll_votes").delete().eq("message_id", message_id).eq("user_id", user_id).execute()
+        if options:
+            supabase.table("channel_poll_votes").insert(
+                [{"message_id": message_id, "user_id": user_id, "option_index": i} for i in options]
+            ).execute()
 
 
 def get_post_comments(discussion_message_id: int, limit: int = 100, after_id: int = 0) -> list:
@@ -922,12 +934,6 @@ def save_post_comment(chat_id: int, sender_id: int, discussion_message_id: int, 
         "reply_to_message_id": discussion_message_id,
     }).execute()
     return res.data[0] if res.data else None
-
-
-def ensure_chat_member(chat_id: int, user_id: int) -> None:
-    """Комментатор канала становится участником группы обсуждения."""
-    if not is_chat_member(chat_id, user_id):
-        supabase.table("chat_members").insert({"chat_id": chat_id, "user_id": user_id}).execute()
 
 
 # ============ АДМИНКА ============

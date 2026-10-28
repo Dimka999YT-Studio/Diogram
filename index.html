@@ -1528,7 +1528,7 @@ async function openSettings() {
   try {
     const me = await api("/api/me"); currentUser = me.user;
     document.getElementById("toggle-hide-seen").classList.toggle("active", currentUser.hide_last_seen);
-    const whoMap = { "all": "Все", "contacts": "Только контакты", "nobody": "Никто" };
+    const whoMap = { "all": "Все", "nobody": "Никто" };
     document.getElementById("who-can-msg-val").textContent = whoMap[currentUser.who_can_message] || "Все";
     
     const sess = await api("/api/sessions");
@@ -1555,9 +1555,10 @@ document.getElementById("toggle-hide-seen").onclick = async () => {
 async function changeWhoCanMessage() {
   if (!currentUser.premium) return alert("Эта функция доступна только с подпиской PDG!");
   const cur = currentUser.who_can_message;
-  const choice = prompt("Кто может тебе писать?\n1 — Все\n2 — Только контакты\n3 — Никто", cur === "all" ? "1" : cur === "contacts" ? "2" : "3");
+  const choice = prompt("Кто может тебе писать?\n1 — Все\n2 — Никто", cur === "nobody" ? "2" : "1");
   if (!choice) return;
-  const val = choice === "1" ? "all" : choice === "2" ? "contacts" : "nobody";
+  const val = choice === "1" ? "all" : choice === "2" ? "nobody" : null;
+  if (!val) return;
   try { await api("/api/settings/privacy", { method: "POST", body: JSON.stringify({ who_can_message: val }) }); currentUser.who_can_message = val; openSettings(); } catch(e) { alert(e.message); }
 }
 
