@@ -49,7 +49,7 @@ from db import (
     create_frigdmant_listing, get_frigdmant_listings, get_user_listings,
     cancel_listing, buy_frigdmant_listing, place_frigdmant_bid,
     create_group_chat, get_chat_members, is_chat_member, get_username_purchase_info,
-    get_users_by_ids, get_user_groups, get_messages_after_id,
+    browse_channels, get_users_by_ids, get_user_groups, get_messages_after_id,
     get_owned_groups, set_channel_linked_chat, save_channel_post, delete_channel_post_mirror, get_channel_message,
     decorate_channel_messages, set_poll_votes, get_post_comments, save_post_comment, ensure_chat_member,
     supabase
@@ -426,6 +426,34 @@ def process_ai_reply(chat_id, user_text):
 # ==================== STATIC ====================
 @app.route("/")
 def index(): return send_from_directory(".", "index.html")
+
+# Ссылки вида https://сайт/username (как t.me/username): отдаём то же приложение, оно само откроет профиль или канал.
+# Только однословные имена по правилам юзернейма; файлы проекта (с точкой в имени) по-прежнему 404.
+LINK_RE = re.compile(r"@?[A-Za-z][A-Za-z0-9_]{0,31}")
+@app.route("/<name>")
+def username_link(name):
+    if not LINK_RE.fullmatch(name) or name.lower() in ("api", "static"): return jsonify({"error": "Не найдено"}), 404
+    resp = send_from_directory(".", "index.html")
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+@app.route("/api/resolve/<username>")
+def api_resolve(username):
+    """Кто или что скрывается за @username: пользователь или канал (для ссылок вида /username)."""
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    if not check_rate_limit(f"resolve_{user['id']}", 30, 60): return jsonify({"error": "Слишком часто"}), 429
+    name = username.strip().lstrip("@")
+    if not LINK_RE.fullmatch(name): return jsonify({"error": "Не найдено"}), 404
+    u = get_user_by_username(name)
+    if u and not u.get("banned"): return jsonify({"type": "user", "id": u["id"], "username": u.get("username")})
+    ch = get_channel_by_username(name)
+    if ch and ch.get("type") in ("public", "secret"): return jsonify({"type": "channel", "id": ch["id"], "username": ch.get("username")})
+    holder = get_owned_username_holder(name)   # имя лежит в чьей-то коллекции: открываем владельца
+    if holder is not None:
+        h = get_user_by_id(holder)
+        if h and not h.get("banned"): return jsonify({"type": "user", "id": h["id"], "username": h.get("username"), "via_collection": True})
+    return jsonify({"error": "Юзернейм не найден"}), 404
 
 # ==================== AUTH ====================
 @app.route("/api/register", methods=["POST"])
@@ -1152,6 +1180,15 @@ def api_channels_create():
         for u in get_all_users_admin(limit=10000): subscribe_to_channel(ch["id"], u["id"])
     else: subscribe_to_channel(ch["id"], user["id"])
     return jsonify({"ok": True, "channel": ch})
+
+@app.route("/api/channels/browse")
+def api_channels_browse():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    limit = int_arg("limit", 30, 1, 50); offset = int_arg("offset", 0, 0, 100000)
+    q = request.args.get("q", "")[:64]
+    items = browse_channels(user["id"], q, limit, offset)
+    return jsonify({"channels": items, "has_more": len(items) == limit and not q.strip()})
 
 @app.route("/api/channels/search")
 def api_channels_search():

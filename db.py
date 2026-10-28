@@ -711,6 +711,36 @@ def search_public_channels(query: str, limit: int = 20) -> list:
     return res.data or []
 
 
+def browse_channels(user_id: int, q: str = "", limit: int = 30, offset: int = 0) -> list:
+    """Обзор каналов: публичные и глобальные (type='secret'). С подписчиками и признаком «я подписан» (батчем)."""
+    q = (q or "").strip().lstrip("@")
+    if q:
+        pat = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        found = {}
+        for col in ("name", "username"):
+            r = supabase.table("channels").select("*").in_("type", ["public", "secret"]).ilike(col, pat).limit(limit).execute()
+            for ch in (r.data or []): found[ch["id"]] = ch
+        channels = sorted(found.values(), key=lambda c: (c.get("created_at") or "", c["id"]), reverse=True)[:limit]
+    else:
+        channels = supabase.table("channels").select("*").in_("type", ["public", "secret"]).order("created_at", desc=True).order("id", desc=True).range(offset, offset + limit - 1).execute().data or []
+    if not channels: return []
+    ids = [c["id"] for c in channels]
+    counts = {}
+    try:
+        for r in (supabase.rpc("channel_summaries", {"p_ids": ids}).execute().data or []):
+            counts[r["channel_id"]] = r.get("subs_count") or 0
+    except Exception as e:
+        print(f"[browse counts fallback] {e}")
+        for cid in ids:
+            counts[cid] = len(supabase.table("channel_subscribers").select("id").eq("channel_id", cid).execute().data or [])
+    mine = {r["channel_id"] for r in (supabase.table("channel_subscribers").select("channel_id").eq("user_id", user_id).in_("channel_id", ids).execute().data or [])}
+    return [{
+        "id": c["id"], "name": c.get("name"), "username": c.get("username"), "description": (c.get("description") or "")[:300],
+        "avatar_url": c.get("avatar_url"), "type": c.get("type"), "subscribers_count": counts.get(c["id"], 0),
+        "is_subscribed": c["id"] in mine or c.get("owner_id") == user_id, "is_owner": c.get("owner_id") == user_id,
+    } for c in channels]
+
+
 def subscribe_to_channel(channel_id: int, user_id: int) -> bool:
     try:
         supabase.table("channel_subscribers").insert({

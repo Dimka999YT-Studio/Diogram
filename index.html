@@ -243,6 +243,14 @@
   .poll-meta { font-size: 12px; opacity: 0.7; margin-top: 6px; }
   .comments-btn { display: block; margin-top: 8px; padding-top: 7px; border: none; border-top: 1px solid rgba(255,255,255,0.12); background: transparent; color: #7fb0ff; font: inherit; font-size: 13px; cursor: pointer; width: 100%; text-align: left; }
   .comment-name { font-size: 12px; font-weight: 700; color: #7fb0ff; margin-bottom: 2px; }
+  .browse-card { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #17212b; cursor: pointer; align-items: flex-start; }
+  .browse-card:active { background: #17212b; }
+  .browse-card .b-name { font-size: 15px; font-weight: 600; }
+  .browse-card .b-user { font-size: 13px; color: #7fb0ff; margin-top: 2px; }
+  .browse-card .b-desc { font-size: 13px; color: #c5cdd6; margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+  .browse-card .b-meta { font-size: 12px; color: #7e8b99; margin-top: 4px; }
+  .copy-link { color: #7fb0ff; cursor: pointer; word-break: break-all; }
+  .ch-info-desc { font-size: 14px; color: #c5cdd6; padding: 10px 20px 0; text-align: center; line-height: 1.5; word-break: break-word; }
   .modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
   .modal.active { display: flex; }
   .modal-bg { position: absolute; inset: 0; background: rgba(0,0,0,0.7); }
@@ -357,6 +365,15 @@
     </div>
   </div>
 
+  <!-- ОБЗОР КАНАЛОВ -->
+  <div class="screen" id="screen-browse">
+    <div class="header">
+      <button class="header-icon" id="btn-browse-back">←</button>
+      <input type="text" id="browse-input" placeholder="Обзор каналов: название или @username" style="flex:1; background: transparent; border: none; font-size: 16px; padding: 8px;">
+    </div>
+    <div class="list" id="browse-list"><div class="spinner"></div></div>
+  </div>
+
   <!-- CHAT -->
   <div class="screen" id="screen-chat">
     <div class="header">
@@ -465,6 +482,7 @@
           <div class="profile-row-edit" id="edit-username">✏️</div>
         </div>
         <div id="profile-collection-block"></div>
+        <div class="profile-row"><div class="profile-row-icon">🔗</div><div class="profile-row-content"><div class="profile-row-label">Ссылка на профиль (нажми, чтобы скопировать)</div><div class="profile-row-value copy-link" id="profile-link-show">—</div></div></div>
       </div>
 
       <div class="profile-block">
@@ -507,6 +525,7 @@
       <div class="profile-block">
         <div class="profile-row"><div class="profile-row-icon">📝</div><div class="profile-row-content"><div class="profile-row-label">О себе</div><div class="profile-row-value" id="user-bio">—</div></div></div>
         <div class="profile-row"><div class="profile-row-icon">🆔</div><div class="profile-row-content"><div class="profile-row-label">ID</div><div class="profile-row-value" id="user-id">—</div></div></div>
+        <div class="profile-row"><div class="profile-row-icon">🔗</div><div class="profile-row-content"><div class="profile-row-label">Ссылка (нажми, чтобы скопировать)</div><div class="profile-row-value copy-link" id="user-link">—</div></div></div>
         <div class="profile-row"><div class="profile-row-icon">🎭</div><div class="profile-row-content"><div class="profile-row-label">Роль</div><div class="profile-row-value" id="user-role">—</div></div></div>
       </div>
       <button class="profile-btn primary" id="btn-user-message">💬 Написать сообщение</button>
@@ -528,6 +547,8 @@
         <div class="ch-info-type" id="ch-info-type">📢 Публичный</div>
         <div class="ch-info-subs" id="ch-info-subs">0 подписчиков</div>
       </div>
+      <div class="ch-info-desc" id="ch-info-desc" style="display:none;"></div>
+      <div class="ch-info-desc" id="ch-info-link-row" style="display:none;"><span class="copy-link" id="ch-info-link-text"></span></div>
       <button class="profile-btn primary" id="btn-ch-info-edit" style="display:none;">✏️ Редактировать канал</button>
       <button class="profile-btn secondary" id="btn-ch-info-link" style="display:none;">💬 Комментарии: группа</button>
       <button class="profile-btn secondary" id="btn-ch-info-subscribe" style="display:none;">➕ Подписаться</button>
@@ -687,6 +708,7 @@
   <div class="menu-item" id="menu-profile"><span class="icon">👤</span> Профиль</div>
   <div class="menu-item" id="menu-shop"><span class="icon">🛒</span> Магазин</div>
   <div class="menu-item" id="menu-frig"><span class="icon">🏷️</span> Frigdmant</div>
+  <div class="menu-item" id="menu-browse"><span class="icon">🔭</span> Обзор каналов</div>
   <div class="menu-item" id="menu-new-channel"><span class="icon">📢</span> Новый канал</div>
   <div class="menu-item" id="menu-admin" style="display:none;"><span class="icon">👑</span> Админка <span id="menu-admin-badge" style="display:none;background:#ff5b5b;color:#fff;font-size:10px;padding:2px 6px;border-radius:8px;margin-left:auto;">0</span></div>
   <div class="menu-item" id="menu-logout"><span class="icon">🚪</span> Выйти</div>
@@ -935,7 +957,7 @@ document.getElementById("btn-verify").onclick = async () => {
 
 function afterLogin() {
   if (!currentUser.profile_completed) { show("screen-profile-setup"); return; }
-  startHeartbeat(); show("screen-list"); loadList(); startListPolling();
+  startHeartbeat(); show("screen-list"); loadList(); startListPolling(); handleDeepLink();
   if (currentUser.role === "owner" || currentUser.role === "developer") {
     document.getElementById("menu-admin").style.display = "flex"; startAdminPoll();
   }
@@ -1317,6 +1339,8 @@ async function openChannelInfo(channelId) {
     document.getElementById("ch-info-username").textContent = ch.username ? "@" + ch.username : "🌍 Глобальный канал";
     document.getElementById("ch-info-type").textContent = ch.type === "secret" ? "🌍 Глобальный" : "📢 Публичный";
     document.getElementById("ch-info-subs").textContent = (ch.subscribers_count || 0) + " подписчиков";
+    { const d = document.getElementById("ch-info-desc"); d.textContent = ch.description || ""; d.style.display = ch.description ? "block" : "none";
+      const lr = document.getElementById("ch-info-link-row"), lt = document.getElementById("ch-info-link-text"); lr.style.display = ch.username ? "block" : "none"; lt.textContent = ch.username ? profileLink(ch.username) : ""; lt.setAttribute("data-link", ch.username ? profileLink(ch.username) : ""); }
     const isOwner = ch.is_owner; const isSub = ch.is_subscribed;
     document.getElementById("btn-ch-info-edit").style.display = isOwner ? "block" : "none";
     document.getElementById("btn-ch-info-delete").style.display = isOwner ? "block" : "none";
@@ -1339,7 +1363,7 @@ document.getElementById("btn-ch-info-link").onclick = async () => {
   } catch (e) { if (e.message !== "banned") setError("modal-link-group-error", e.message); }
 };
 
-document.getElementById("btn-ch-info-back").onclick = () => { if (currentChannel) show("screen-channel"); else { show("screen-list"); loadList(); } };
+document.getElementById("btn-ch-info-back").onclick = () => { if (infoReturnTo === "browse") { infoReturnTo = null; show("screen-browse"); } else if (currentChannel) show("screen-channel"); else { show("screen-list"); loadList(); } };
 
 document.getElementById("btn-ch-info-edit").onclick = () => {
   if (!currentChInfo) return;
@@ -1510,7 +1534,7 @@ document.getElementById("search-input").addEventListener("input", (e) => {
                     if (c.avatar_url) av.innerHTML = '<img src="' + escapeAttr(c.avatar_url) + '">'; else av.textContent = "📢";
                     el.appendChild(av);
                     const info = document.createElement("div"); info.className = "list-info";
-                    info.innerHTML = '<div class="list-name">' + escapeHtml(c.name) + '</div><div class="list-last">@' + escapeHtml(c.username || "—") + ' • ' + (c.subscribers_count || 0) + ' подписчиков</div>';
+                    info.innerHTML = '<div class="list-name">' + escapeHtml(c.name) + '</div><div class="list-last">@' + escapeHtml(c.username || "—") + (c.subscribers_count != null ? ' • ' + (c.subscribers_count || 0) + ' подписчиков' : '') + '</div>' + (c.description ? '<div class="list-last">' + escapeHtml(c.description) + '</div>' : '');
                     el.appendChild(info);
                     el.onclick = () => openChannel(c.id);
                     box.appendChild(el);
@@ -1671,6 +1695,7 @@ async function openProfile() {
   else av.innerHTML = initial(name) + '<div class="avatar-edit-hint">📷</div>';
   document.getElementById("profile-name").textContent = name;
   document.getElementById("profile-username-show").textContent = currentUser.username ? "@" + currentUser.username : "—";
+  { const l = document.getElementById("profile-link-show"); l.textContent = currentUser.username ? profileLink(currentUser.username) : "—"; l.setAttribute("data-link", currentUser.username ? profileLink(currentUser.username) : ""); }
   document.getElementById("profile-id").textContent = currentUser.id;
   document.getElementById("profile-role").textContent = currentUser.role;
 
@@ -1782,6 +1807,7 @@ async function openUserProfile(userId) {
 
     document.getElementById("user-bio").textContent = u.bio || "—"; 
     document.getElementById("user-id").textContent = u.id;
+    { const l = document.getElementById("user-link"); const ok = !!u.username && !u.banned; l.parentElement.parentElement.style.display = ok ? "" : "none"; l.textContent = ok ? profileLink(u.username) : ""; l.setAttribute("data-link", ok ? profileLink(u.username) : ""); }
     document.getElementById("user-role").textContent = u.role;
     
     // Коллекция
@@ -2099,6 +2125,58 @@ document.getElementById("menu-admin").onclick = () => { closeMenu(); openAdmin()
 document.getElementById("menu-new-channel").onclick = () => { closeMenu(); createChannelDialog(); };
 
 // ИНИЦИАЛИЗАЦИЯ
+// ---- Ссылки на профили и каналы: https://сайт/username ----
+function profileLink(name) { return location.origin + "/" + name; }
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); alert("Ссылка скопирована:\n" + text); }
+  catch (e) { prompt("Скопируй ссылку:", text); }
+}
+document.addEventListener("click", (e) => { const el = e.target.closest(".copy-link"); if (el) { const t = el.getAttribute("data-link"); if (t) copyText(t); } });
+
+let pendingDeepLink = (() => { const m = location.pathname.match(/^\/@?([A-Za-z][A-Za-z0-9_]{0,31})\/?$/); return m ? m[1] : null; })();
+async function handleDeepLink() {
+  if (!pendingDeepLink || !currentUser || !currentUser.profile_completed) return;
+  const name = pendingDeepLink; pendingDeepLink = null;
+  try { history.replaceState(null, "", "/"); } catch (e) {}
+  try {
+    const r = await api("/api/resolve/" + encodeURIComponent(name));
+    if (r.type === "channel") { infoReturnTo = null; await openChannelInfo(r.id); } else await openUserProfile(r.id);
+  } catch (e) { if (e.message !== "banned") alert("@" + name + ": " + e.message); }
+}
+
+// ---- Обзор каналов (публичные и глобальные) ----
+let infoReturnTo = null; let browseOffset = 0; let browseTimer = null;
+function browseCard(c) {
+  const el = document.createElement("div"); el.className = "browse-card";
+  const av = document.createElement("div"); av.className = "avatar channel";
+  if (c.avatar_url) av.innerHTML = '<img src="' + escapeAttr(c.avatar_url) + '">'; else av.textContent = c.type === "secret" ? "🌍" : "📢";
+  const info = document.createElement("div"); info.className = "list-info";
+  info.innerHTML = '<div class="b-name">' + (c.type === "secret" ? "🌍 " : "") + escapeHtml(c.name || "Канал") + '</div>'
+    + '<div class="b-user">' + (c.username ? "@" + escapeHtml(c.username) : "Глобальный канал") + '</div>'
+    + (c.description ? '<div class="b-desc">' + escapeHtml(c.description) + '</div>' : '')
+    + '<div class="b-meta">' + (parseInt(c.subscribers_count, 10) || 0) + ' подписчиков' + (c.is_subscribed ? " · ✅ вы подписаны" : "") + '</div>';
+  el.appendChild(av); el.appendChild(info);
+  el.onclick = () => { infoReturnTo = "browse"; openChannelInfo(c.id); };
+  return el;
+}
+async function loadBrowse(reset) {
+  const box = document.getElementById("browse-list"); const q = document.getElementById("browse-input").value.trim();
+  if (reset) { browseOffset = 0; box.innerHTML = '<div class="spinner"></div>'; }
+  const more = box.querySelector(".browse-more"); if (more) more.remove();
+  try {
+    const data = await api("/api/channels/browse?limit=30&offset=" + browseOffset + (q.length >= 2 ? "&q=" + encodeURIComponent(q) : ""));
+    if (reset) box.innerHTML = "";
+    for (const c of data.channels) box.appendChild(browseCard(c));
+    browseOffset += data.channels.length;
+    if (!box.children.length) box.innerHTML = '<div class="empty-state">Каналов не найдено</div>';
+    if (data.has_more) { const b = document.createElement("button"); b.className = "profile-btn secondary browse-more"; b.style.margin = "12px 16px"; b.textContent = "Показать ещё"; b.onclick = () => loadBrowse(false); box.appendChild(b); }
+  } catch (e) { if (e.message !== "banned") box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+}
+function openBrowse() { document.getElementById("browse-input").value = ""; show("screen-browse"); loadBrowse(true); }
+document.getElementById("menu-browse").onclick = () => { closeMenu(); openBrowse(); };
+document.getElementById("btn-browse-back").onclick = () => { show("screen-list"); loadList(); };
+document.getElementById("browse-input").addEventListener("input", () => { clearTimeout(browseTimer); browseTimer = setTimeout(() => { const q = document.getElementById("browse-input").value.trim(); if (q.length === 0 || q.length >= 2) loadBrowse(true); }, 300); });
+
 (async function init() {
   if (token) {
     try { const data = await api("/api/me"); currentUser = data.user; afterLogin(); return; } catch (e) { if (e.message !== "banned") { localStorage.removeItem("diogram_token"); token = null; } }
