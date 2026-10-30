@@ -45,7 +45,7 @@ from db import (
     count_reports_by_user_24h, create_report, get_reports,
     update_report_status, count_new_reports,
     ban_user, unban_user, is_ban_expired,
-    update_privacy_settings, get_user_sessions, delete_session,
+    update_privacy_settings, get_user_sessions, delete_session, create_session, session_alive, touch_session, delete_other_sessions,
     get_user_usernames, activate_username, is_username_on_frigdmant, get_owned_username_holder,
     get_reserved_usernames, add_reserved_username, give_reserved_username, remove_reserved_username, is_username_reserved,
     create_frigdmant_listing, get_frigdmant_listings, get_user_listings,
@@ -137,9 +137,24 @@ rate_limit_store = defaultdict(list)
 _rate_limit_last_cleanup = 0.0
 
 # ==================== HELPERS ====================
-def make_token(user_id):
+def make_token(user_id, sid=None):
     payload = {"user_id": user_id, "exp": datetime.now(timezone.utc) + timedelta(days=JWT_EXP_DAYS)}
+    if sid is not None: payload["sid"] = sid   # id сессии: удалили сессию в настройках — токен перестаёт работать
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
+
+def device_label(ua):
+    """Короткое название устройства из User-Agent: «Chrome · Windows»."""
+    ua = ua or ""
+    browser = next((n for k, n in (("Edg/", "Edge"), ("OPR/", "Opera"), ("YaBrowser", "Яндекс Браузер"), ("Firefox", "Firefox"), ("Chrome", "Chrome"), ("Safari", "Safari")) if k in ua), "Браузер")
+    system = next((n for k, n in (("Android", "Android"), ("iPhone", "iPhone"), ("iPad", "iPad"), ("Windows", "Windows"), ("Mac OS", "macOS"), ("Linux", "Linux")) if k in ua), "")
+    return f"{browser} · {system}" if system else browser
+
+def start_session(user_id):
+    """Создаёт запись сессии и возвращает токен с её id. Если база сессий недоступна — обычный токен (вход не ломаем)."""
+    sid = None
+    try: sid = create_session(user_id, device_label(request.headers.get("User-Agent", "")))
+    except Exception as e: print(f"[session] {e}")
+    return make_token(user_id, sid)
 
 _UNSET = object()
 
@@ -150,6 +165,8 @@ MEMBER_CACHE_TTL = 10
 LAST_SEEN_EVERY = 20    # писать last_seen в базу не чаще, чем раз в N секунд на пользователя
 _cache_lock = threading.Lock()
 _user_cache = {}; _chat_cache = {}; _member_cache = {}; _last_seen_written = {}
+_session_cache = {}; _session_touched = {}
+SESSION_CACHE_TTL = 10   # завершённая сессия перестаёт работать не позже чем через это время (сброс кэша при удалении — сразу)
 
 def _cache_get(store, key, ttl):
     with _cache_lock:
@@ -164,7 +181,7 @@ def _cache_put(store, key, value, limit=5000):
 
 def clear_caches():
     with _cache_lock:
-        _user_cache.clear(); _chat_cache.clear(); _member_cache.clear()
+        _user_cache.clear(); _chat_cache.clear(); _member_cache.clear(); _session_cache.clear()
 
 def get_chat_cached(chat_id):
     hit = _cache_get(_chat_cache, chat_id, CHAT_CACHE_TTL)
@@ -183,6 +200,16 @@ def is_member_cached(chat_id, user_id):
 def has_chat_access(chat, user_id):
     if chat.get("is_group"): return is_member_cached(chat["id"], user_id)
     return user_id in (chat["user1_id"], chat["user2_id"])
+
+def _touch_session(sid):
+    """last_used сессии не чаще раза в минуту."""
+    now = time.time()
+    with _cache_lock:
+        if now - _session_touched.get(sid, 0) < 60: return
+        if len(_session_touched) > 20000: _session_touched.clear()
+        _session_touched[sid] = now
+    try: touch_session(sid)
+    except Exception as e: print(f"[session touch] {e}")
 
 _real_update_last_seen = update_last_seen
 def update_last_seen(user_id):
@@ -214,6 +241,16 @@ def get_current_user():
         try:
             payload = jwt.decode(auth[7:], JWT_SECRET, algorithms=[JWT_ALGO])
             uid = payload["user_id"]
+            sid = payload.get("sid")
+            if sid is not None:   # токены без sid выданы до появления сессий: работают до конца срока
+                alive = _cache_get(_session_cache, (sid, uid), SESSION_CACHE_TTL)
+                if alive is _UNSET:
+                    alive = bool(session_alive(sid, uid)); _cache_put(_session_cache, (sid, uid), alive)
+                if not alive:
+                    g._session_revoked = True; g._current_user = None
+                    return None
+                g._sid = sid
+                _touch_session(sid)
             hit = _cache_get(_user_cache, uid, USER_CACHE_TTL)
             if hit is not _UNSET: user = dict(hit) if hit else None
             else:
@@ -379,8 +416,10 @@ BAN_EXEMPT_PATHS = {"/api/login", "/api/register", "/api/verify", "/api/me"}
 def block_banned_users():
     path = request.path
     if request.method == "OPTIONS" or not path.startswith("/api/"): return None
-    if path in BAN_EXEMPT_PATHS or path.startswith("/api/worker/"): return None
+    if path in BAN_EXEMPT_PATHS and path != "/api/me" or path.startswith("/api/worker/"): return None
     user = get_current_user()
+    if g.get("_session_revoked"): return jsonify({"error": "Сессия завершена", "session_revoked": True}), 401
+    if path == "/api/me": return None  # /api/me сам разбирается с баном
     if not user: return None  # неавторизованным ответит сам эндпоинт (401)
     is_banned, ban_reason = check_banned(user)
     if is_banned: return banned_response(user, ban_reason)
@@ -491,7 +530,7 @@ def api_verify():
     user = create_user(email=email, password=password)
     if not user: return jsonify({"error": "Ошибка создания аккаунта"}), 500
     subs_count = subscribe_new_user_to_secret_channels(user["id"])
-    token = make_token(user["id"])
+    token = start_session(user["id"])
     return jsonify({"ok": True, "token": token, "user": user_to_dict(user), "auto_subscribed_channels": subs_count})
 
 @app.route("/api/login", methods=["POST"])
@@ -508,7 +547,7 @@ def api_login():
     is_banned, ban_reason = check_banned(user)
     if is_banned: return banned_response(user, ban_reason)
     update_last_seen(user["id"])
-    token = make_token(user["id"])
+    token = start_session(user["id"])
     return jsonify({"ok": True, "token": token, "user": user_to_dict(user)})
 
 @app.route("/api/me")
@@ -624,13 +663,29 @@ def api_privacy():
 def api_sessions_get():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    return jsonify({"sessions": get_user_sessions(user["id"])})
+    cur = g.get("_sid")
+    return jsonify({"sessions": [{"id": s["id"], "device": s.get("device"), "created_at": s.get("created_at"), "last_used": s.get("last_used"), "current": s["id"] == cur} for s in get_user_sessions(user["id"])]})
 
 @app.route("/api/sessions/<int:sid>", methods=["DELETE"])
 def api_sessions_del(sid):
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
     delete_session(sid, user["id"])
+    return jsonify({"ok": True})
+
+@app.route("/api/sessions/revoke_others", methods=["POST"])
+def api_sessions_revoke_others():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    delete_other_sessions(user["id"], g.get("_sid"))
+    return jsonify({"ok": True})
+
+@app.route("/api/logout", methods=["POST"])
+def api_logout():
+    user = get_current_user()
+    if not user: return jsonify({"ok": True})
+    sid = g.get("_sid")
+    if sid is not None: delete_session(sid, user["id"])
     return jsonify({"ok": True})
 
 # ==================== USERS ====================

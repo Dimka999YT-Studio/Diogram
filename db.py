@@ -1128,6 +1128,34 @@ def delete_session(session_id: int, user_id: int):
     supabase.table("user_sessions").delete().eq("id", session_id).eq("user_id", user_id).execute()
 
 
+MAX_SESSIONS_PER_USER = 20
+
+
+def create_session(user_id: int, device: str):
+    """Новая сессия (вход с устройства). Возвращает id. Старше MAX_SESSIONS_PER_USER последних удаляются."""
+    res = supabase.table("user_sessions").insert({"user_id": user_id, "device": (device or "Устройство")[:120]}).execute()
+    sid = res.data[0]["id"] if res.data else None
+    old = supabase.table("user_sessions").select("id").eq("user_id", user_id).order("last_used", desc=True).range(MAX_SESSIONS_PER_USER, MAX_SESSIONS_PER_USER + 200).execute()
+    ids = [r["id"] for r in (old.data or [])]
+    if ids: supabase.table("user_sessions").delete().in_("id", ids).execute()
+    return sid
+
+
+def session_alive(session_id: int, user_id: int) -> bool:
+    res = supabase.table("user_sessions").select("id").eq("id", session_id).eq("user_id", user_id).limit(1).execute()
+    return bool(res.data)
+
+
+def touch_session(session_id: int) -> None:
+    supabase.table("user_sessions").update({"last_used": datetime.now(timezone.utc).isoformat()}).eq("id", session_id).execute()
+
+
+def delete_other_sessions(user_id: int, keep_session_id) -> None:
+    q = supabase.table("user_sessions").delete().eq("user_id", user_id)
+    if keep_session_id is not None: q = q.neq("id", keep_session_id)
+    q.execute()
+
+
 # ============ FRIGDMANT И ИНВЕНТАРЬ ============
 
 def get_user_usernames(user_id: int) -> list:

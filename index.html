@@ -835,6 +835,7 @@ async function api(path, opts = {}) {
   const res = await fetch(API + path, { ...opts, headers });
   const data = await res.json().catch(() => ({}));
   if (res.status === 403 && data.banned) { showBanScreen(data); throw new Error("banned"); }
+  if (res.status === 401 && data.session_revoked) { localStorage.removeItem("diogram_token"); location.reload(); throw new Error("session_revoked"); }
   if (!res.ok) throw new Error(data.error || "Ошибка сервера");
   return data;
 }
@@ -1550,8 +1551,13 @@ async function openSettings() {
     if (!sess.sessions.length) box.innerHTML = '<div style="padding:16px;color:#7e8b99;font-size:13px;">Нет активных сессий</div>';
     for (const s of sess.sessions) {
       const el = document.createElement("div"); el.className = "settings-row";
-      el.innerHTML = `<div><div class="settings-label">${escapeHtml(s.device || "Устройство")}</div><div class="settings-desc">${new Date(s.last_used).toLocaleString("ru-RU")}</div></div><button class="admin-btn danger" onclick="deleteSession(${s.id})">Выйти</button>`;
+      el.innerHTML = `<div><div class="settings-label">${escapeHtml(s.device || "Устройство")}${s.current ? " (это устройство)" : ""}</div><div class="settings-desc">${new Date(s.last_used).toLocaleString("ru-RU")}</div></div>` + (s.current ? "" : `<button class="admin-btn danger" onclick="deleteSession(${Number(s.id)})">Завершить</button>`);
       box.appendChild(el);
+    }
+    if (sess.sessions.filter(s => !s.current).length > 0) {
+      const all = document.createElement("div"); all.className = "settings-row";
+      all.innerHTML = '<button class="admin-btn danger" id="btn-revoke-others">Завершить все остальные сессии</button>'; box.appendChild(all);
+      document.getElementById("btn-revoke-others").onclick = async () => { if (!confirm("Выйти на всех остальных устройствах?")) return; try { await api("/api/sessions/revoke_others", { method: "POST" }); openSettings(); } catch (e) { alert(e.message); } };
     }
   } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
 }
@@ -1725,7 +1731,8 @@ async function activateMyUsername(uname) {
 }
 
 document.getElementById("btn-profile-back").onclick = () => { show("screen-list"); loadList(); };
-document.getElementById("btn-logout").onclick = () => { if (!confirm("Выйти?")) return; localStorage.removeItem("diogram_token"); location.reload(); };
+async function doLogout() { try { await api("/api/logout", { method: "POST" }); } catch (e) {} localStorage.removeItem("diogram_token"); location.reload(); }
+document.getElementById("btn-logout").onclick = () => { if (!confirm("Выйти?")) return; doLogout(); };
 document.getElementById("profile-avatar").onclick = () => {
   const input = document.createElement("input"); input.type = "file"; input.accept = "image/*";
   input.onchange = async (e) => {
@@ -2152,7 +2159,7 @@ overlay.onclick = closeMenu;
 document.getElementById("btn-menu").onclick = openMenu;
 document.getElementById("menu-profile").onclick = () => { closeMenu(); openProfile(); };
 document.getElementById("menu-shop").onclick = () => { closeMenu(); openShop(); };
-document.getElementById("menu-logout").onclick = () => { if (!confirm("Выйти?")) return; localStorage.removeItem("diogram_token"); location.reload(); };
+document.getElementById("menu-logout").onclick = () => { if (!confirm("Выйти?")) return; doLogout(); };
 document.getElementById("menu-admin").onclick = () => { closeMenu(); openAdmin(); };
 document.getElementById("menu-new-channel").onclick = () => { closeMenu(); createChannelDialog(); };
 
