@@ -7,6 +7,7 @@ import io
 import re
 import random
 import threading
+import functools
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict, Counter
 from flask import Flask, request, jsonify, send_from_directory, g
@@ -326,6 +327,19 @@ def user_public_dict(u):
         res["last_seen"] = None; res["is_online"] = False
     return res
 
+_user_locks = defaultdict(threading.Lock); _user_locks_guard = threading.Lock()
+def serialized_per_user(fn):
+    """Запросы одного пользователя к этому эндпоинту идут по очереди: проверка лимита и запись результата
+    раньше были раздельными, и параллельные запросы обходили лимиты (1 фото в неделю, квота файлов, 4 канала).
+    Верно, пока сервис работает одним процессом."""
+    @functools.wraps(fn)
+    def wrapper(*a, **k):
+        user = get_current_user()
+        if not user: return fn(*a, **k)
+        with _user_locks_guard: lock = _user_locks[user["id"]]
+        with lock: return fn(*a, **k)
+    return wrapper
+
 def check_banned(user):
     if not user or not user.get("banned"): return False, None
     if is_ban_expired(user):
@@ -531,7 +545,12 @@ def api_profile():
     conflict = username_conflict(username, user["id"])
     if conflict: return jsonify({"error": conflict}), 400
     if is_username_on_frigdmant(username): return jsonify({"error": "Этот юзернейм сейчас на продаже на Frigdmant"}), 400
+    # Раньше этим эндпоинтом можно было менять ник сколько угодно раз в обход лимита смен: считаем смену так же, как /api/profile/username.
+    changing = bool(user.get("profile_completed")) and username.lower() != (user.get("username") or "").lower()
+    if changing and user.get("role") not in ("owner", "developer") and count_username_changes_24h(user["id"]) >= USERNAME_CHANGE_LIMIT_24H:
+        return jsonify({"error": f"Лимит {USERNAME_CHANGE_LIMIT_24H} смен @username за 24 часа"}), 429
     updated = update_user_profile(user["id"], username, first_name, last_name)
+    if changing: register_username_change(user["id"])
     return jsonify({"ok": True, "user": user_to_dict(updated)})
 
 @app.route("/api/profile/name", methods=["POST"])
@@ -756,7 +775,7 @@ def api_shop_buy():
     if not user: return jsonify({"error": "Не авторизован"}), 401
     data = json_body()
     item_id = data.get("item_id")
-    if item_id not in SHOP_ITEMS: return jsonify({"error": "Товар не найден"}), 404
+    if not isinstance(item_id, str) or item_id not in SHOP_ITEMS: return jsonify({"error": "Товар не найден"}), 404
     item = SHOP_ITEMS[item_id]
     if item["category"] == "pdg":
         success, err = activate_premium(user["id"], item["days"], int(item["price"]), f"Покупка {item['name']}")
@@ -1030,6 +1049,7 @@ def _process_image(file_bytes, mime):
     return output.getvalue(), ext
 
 @app.route("/api/upload/avatar", methods=["POST"])
+@serialized_per_user
 def api_upload_avatar():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
@@ -1052,6 +1072,7 @@ def api_upload_avatar():
     return jsonify({"ok": True, "avatar_url": public_url, "user": user_to_dict(updated)})
 
 @app.route("/api/upload/photo", methods=["POST"])
+@serialized_per_user
 def api_upload_photo():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
@@ -1085,6 +1106,7 @@ def api_upload_photo():
     return jsonify({"ok": True, "message": msg})
 
 @app.route("/api/upload/file", methods=["POST"])
+@serialized_per_user
 def api_upload_file():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
@@ -1138,13 +1160,15 @@ def api_photo_limit():
 
 # ==================== CHANNELS ====================
 @app.route("/api/channels", methods=["POST"])
+@serialized_per_user
 def api_channels_create():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
     if count_user_channels(user["id"]) >= 4: return jsonify({"error": "Максимум 4 канала на аккаунт"}), 400
     data = json_body()
-    name = (data.get("name") or "").strip(); username = (data.get("username") or "").strip().lstrip("@")
-    description = (data.get("description") or "").strip() or None; ch_type = data.get("type", "public")
+    name = str_field(data, "name"); username = str_field(data, "username").lstrip("@")
+    description = str_field(data, "description") or None; ch_type = data.get("type", "public")
+    if description and len(description) > 500: return jsonify({"error": "Описание максимум 500 символов"}), 400
     if not name: return jsonify({"error": "Название обязательно"}), 400
     if len(name) > 64: return jsonify({"error": "Название слишком длинное"}), 400
     if ch_type == "secret":
@@ -1159,6 +1183,7 @@ def api_channels_create():
         if existing: return jsonify({"error": "Этот @username канала занят"}), 400
         conflict = username_conflict(username, user["id"])
         if conflict: return jsonify({"error": conflict}), 400
+        if is_username_on_frigdmant(username): return jsonify({"error": "Этот юзернейм сейчас на продаже на Frigdmant"}), 400
     ch = create_channel(user["id"], name, username, description, ch_type)
     if not ch: return jsonify({"error": "Ошибка создания"}), 500
     if ch_type == "secret":
@@ -1196,6 +1221,7 @@ def api_channel_update(channel_id):
     if not ch or ch["owner_id"] != user["id"]: return jsonify({"error": "Нет доступа"}), 403
     data = json_body()
     name = data.get("name"); username = data.get("username"); ch_type = data.get("type")
+    if (name is not None and not isinstance(name, str)) or (username is not None and not isinstance(username, str)): return jsonify({"error": "Неверный формат"}), 400
     if name is not None:
         name = name.strip()
         if not name: return jsonify({"error": "Название не может быть пустым"}), 400
@@ -1215,6 +1241,7 @@ def api_channel_update(channel_id):
             if existing and existing["id"] != channel_id: return jsonify({"error": "Этот @username канала занят"}), 400
             conflict = username_conflict(username, user["id"])
             if conflict: return jsonify({"error": conflict}), 400
+            if is_username_on_frigdmant(username): return jsonify({"error": "Этот юзернейм сейчас на продаже на Frigdmant"}), 400
     else: username = None
     updated = update_channel_full(channel_id, name=name if name is not None else ch["name"], username=username, ch_type=final_type)
     if final_type == "public": subscribe_to_channel(channel_id, user["id"])
@@ -1449,8 +1476,9 @@ def api_report_create():
     used = count_reports_by_user_24h(user["id"])
     if used >= REPORT_LIMIT_24H: return jsonify({"error": f"Лимит {REPORT_LIMIT_24H} жалоб в сутки"}), 429
     data = json_body()
-    reason = (data.get("reason") or "").strip(); comment = (data.get("comment") or "").strip() or None
-    reported_user_id = data.get("reported_user_id"); reported_message_id = data.get("reported_message_id"); reported_channel_id = data.get("reported_channel_id")
+    reason = str_field(data, "reason"); comment = str_field(data, "comment") or None
+    if comment and len(comment) > 1000: return jsonify({"error": "Комментарий максимум 1000 символов"}), 400
+    reported_user_id = to_int(data.get("reported_user_id")); reported_message_id = to_int(data.get("reported_message_id")); reported_channel_id = to_int(data.get("reported_channel_id"))
     if reason not in REPORT_REASONS: return jsonify({"error": "Неверная причина"}), 400
     if not (reported_user_id or reported_message_id or reported_channel_id): return jsonify({"error": "Нужно указать на кого/что жалуешься"}), 400
     if reported_user_id and reported_user_id == user["id"]: return jsonify({"error": "Нельзя жаловаться на себя"}), 400
@@ -1600,7 +1628,7 @@ def api_admin_unban():
     admin = get_current_user()
     if not admin or admin.get("role") not in ("owner", "developer"): return jsonify({"error": "Нет доступа"}), 403
     data = json_body()
-    target_id = data.get("user_id")
+    target_id = to_int(data.get("user_id"))
     if not target_id: return jsonify({"error": "user_id обязателен"}), 400
     unban_user(target_id)
     return jsonify({"ok": True})
@@ -1673,5 +1701,5 @@ def worker_task_done():
     if not worker_authorized(): return jsonify({"error": "Unauthorized"}), 401
     data = json_body()
     email = data.get("email")
-    if email: supabase.table("pending_codes").update({"sent": True}).eq("email", email.lower()).execute()
+    if isinstance(email, str) and email: supabase.table("pending_codes").update({"sent": True}).eq("email", email.lower()).execute()
     return jsonify({"ok": True})

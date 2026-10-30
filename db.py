@@ -204,7 +204,16 @@ def get_user_transactions(user_id: int, limit: int = 50) -> list:
 
 # ============ ПОДПИСКИ ============
 
+# Верно, пока сервис работает одним процессом (Procfile: --workers 1).
+_sub_lock = threading.Lock()
+
+
 def activate_premium(user_id: int, days: int, cost: int, description: str) -> tuple:
+    with _sub_lock:
+        return _activate_premium(user_id, days, cost, description)
+
+
+def _activate_premium(user_id: int, days: int, cost: int, description: str) -> tuple:
     success, err = spend_balance(user_id, cost, description)
     if not success:
         return False, err
@@ -234,6 +243,11 @@ def activate_premium(user_id: int, days: int, cost: int, description: str) -> tu
 
 
 def activate_file_plus(user_id: int, days: int, cost: int, description: str) -> tuple:
+    with _sub_lock:
+        return _activate_file_plus(user_id, days, cost, description)
+
+
+def _activate_file_plus(user_id: int, days: int, cost: int, description: str) -> tuple:
     success, err = spend_balance(user_id, cost, description)
     if not success:
         return False, err
@@ -1192,8 +1206,11 @@ def get_owned_username_holder(username: str):
 
 
 def is_username_on_frigdmant(username: str) -> dict:
-    res = supabase.table("frigdmant_listings").select("*").eq("username", username).eq("status", "active").execute()
-    return res.data[0] if res.data else None
+    # Без учёта регистра: раньше лот "Foo" не мешал занять "foo" (оба считаются одним именем), и покупатель платил за имя, которое уже занято.
+    res = supabase.table("frigdmant_listings").select("*").ilike("username", username).eq("status", "active").limit(50).execute()
+    for row in (res.data or []):
+        if (row.get("username") or "").lower() == (username or "").lower(): return row
+    return None
 
 
 def create_frigdmant_listing(seller_id: int, target_type: str, target_id: int, username: str, price: int, listing_type: str) -> dict:
