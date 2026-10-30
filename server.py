@@ -1153,7 +1153,13 @@ _coin = {"data": None, "at": 0.0}
 def asset_coin():
     now = time.time()
     if _coin["data"] is None or now - _coin["at"] > 3600:
-        try: _coin["data"] = supabase.storage.from_(FILES_BUCKET).download("Diogram.coin.di.jpg"); _coin["at"] = now
+        try:
+            raw = supabase.storage.from_(FILES_BUCKET).download("Diogram.coin.di.jpg")
+            try:   # оригинал ~750 КБ, а показывается значок 16–40 px: отдаём уменьшенную копию
+                img = Image.open(io.BytesIO(raw)).convert("RGB"); img.thumbnail((160, 160), Image.LANCZOS)
+                out = io.BytesIO(); img.save(out, format="JPEG", quality=88, optimize=True); raw = out.getvalue()
+            except Exception as e: print(f"[coin resize] {e}")
+            _coin["data"] = raw; _coin["at"] = now
         except Exception as e: print(f"[coin] {e}")
     if not _coin["data"]: return jsonify({"error": "Не найдено"}), 404
     resp = Response(_coin["data"], mimetype="image/jpeg"); resp.headers["Cache-Control"] = "public, max-age=86400"
