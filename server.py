@@ -8,9 +8,11 @@ import re
 import random
 import threading
 import functools
+import hashlib
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict, Counter
-from flask import Flask, request, jsonify, send_from_directory, g
+from flask import Flask, request, jsonify, send_from_directory, g, redirect, Response
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 from PIL import Image
@@ -954,7 +956,7 @@ def api_chat_messages(chat_id):
     is_allowed = is_chat_member(chat_id, user["id"]) if chat.get("is_group") else user["id"] in (chat["user1_id"], chat["user2_id"])
     if not is_allowed: return jsonify({"error": "Нет доступа"}), 403
     limit = int_arg("limit", 50, 1, 100); offset = int_arg("offset", 0, 0, 100000)
-    messages = get_messages(chat_id, limit, offset)
+    messages = sign_attachments(get_messages(chat_id, limit, offset))
     mark_messages_read(chat_id, user["id"]); update_last_seen(user["id"])
     if chat.get("is_group"):
         sender_names(messages)
@@ -1018,6 +1020,7 @@ def api_send():
             # Каждый ответ Дио — платный вызов Groq и отдельный поток: ограничиваем и по пользователю, и глобально.
             if should_reply and check_rate_limit(f"dio_{user['id']}", 8, 300) and check_rate_limit("dio_global", 120, 60):
                 threading.Thread(target=process_ai_reply, args=(chat_id, text[:1000]), daemon=True).start()
+    sign_attachments([msg])
     return jsonify({"ok": True, "message": msg})
 
 @app.route("/api/messages/<int:message_id>", methods=["DELETE"])
@@ -1045,6 +1048,7 @@ def api_poll():
     else:
         after = (request.args.get("after") or "1970-01-01T00:00:00+00:00")[:64]  # старые клиенты
         msgs = supabase.table("messages").select("*").eq("chat_id", chat_id).gt("created_at", after).order("created_at").limit(200).execute().data or []
+    sign_attachments(msgs)
     if chat.get("is_group") and msgs: sender_names(msgs)
     other_id = None if chat.get("is_group") else (chat["user2_id"] if chat["user1_id"] == user["id"] else chat["user1_id"])
     now = time.time()
@@ -1086,6 +1090,80 @@ def file_matches_mime(data, mime):
     if mime in ("audio/mp4", "audio/x-m4a", "audio/m4a"): return data[4:8] == b"ftyp"
     if mime == "text/plain": return b"\x00" not in data[:4096]
     return False
+
+# ==================== ВЛОЖЕНИЯ: приватный бакет chat-photos ====================
+# Файлы лежат в закрытом бакете. В сообщениях сервер подменяет attachment_url на временную ссылку /api/f/<id>/<exp>/<подпись>:
+# её получает только участник чата (проверка при выдаче сообщений), она живёт 1–2 часа и ведёт (302) на подписанный URL хранилища.
+FILES_BUCKET = "chat-photos"
+_FILE_KEY_RE = re.compile(r"/object/(?:public|sign|authenticated)/chat-photos/([^?#]+)")
+FILE_LINK_BUCKET_SEC = 3600
+_FILE_LINK_KEY = hmac.new((JWT_SECRET or secrets.token_hex(32)).encode("utf-8"), b"diogram-file-links", hashlib.sha256).digest()   # без JWT_SECRET ключ случайный: ссылки не подделать
+_signed_cache = {}; _file_key_cache = {}
+
+def _file_sig(mid, exp):
+    return hmac.new(_FILE_LINK_KEY, f"{mid}.{exp}".encode("utf-8"), hashlib.sha256).hexdigest()[:32]
+
+def attachment_key(url):
+    """Имя файла в бакете из сохранённого URL (в базе лежат ссылки вида .../object/public/chat-photos/<имя>)."""
+    m = _FILE_KEY_RE.search(url or "")
+    return urllib.parse.unquote(m.group(1)) if m else None
+
+def file_link(mid):
+    exp = (int(time.time()) // FILE_LINK_BUCKET_SEC + 2) * FILE_LINK_BUCKET_SEC   # одна ссылка на час: браузер может кэшировать
+    return f"/api/f/{mid}/{exp}/{_file_sig(mid, exp)}"
+
+def sign_attachments(messages):
+    """Подменяет attachment_url на временную ссылку. Вызывать для каждого ответа, где сообщения уходят участнику чата."""
+    for m in messages or []:
+        if m and m.get("attachment_url") and m.get("id") is not None and attachment_key(m["attachment_url"]):
+            m["attachment_url"] = file_link(m["id"])
+    return messages
+
+def _signed_file_url(key):
+    hit = _cache_get(_signed_cache, key, 200)
+    if hit is not _UNSET: return hit
+    try: r = supabase.storage.from_(FILES_BUCKET).create_signed_url(key, 300) or {}
+    except Exception as e:
+        print(f"[files] подпись не удалась: {e}"); return None
+    url = r.get("signedURL") or r.get("signedUrl") or r.get("signed_url")
+    if not url: return None
+    if url.startswith("/"): url = (os.environ.get("SUPABASE_URL", "").strip().rstrip("/")) + "/storage/v1" + url
+    _cache_put(_signed_cache, key, url)
+    return url
+
+@app.route("/api/f/<int:mid>/<int:exp>/<sig>")
+def api_file(mid, exp, sig):
+    if not check_rate_limit(f"file_{request.remote_addr}", 600, 60): return jsonify({"error": "Слишком часто"}), 429
+    if exp < time.time() or not hmac.compare_digest(sig.encode("utf-8"), _file_sig(mid, exp).encode("utf-8")):
+        return jsonify({"error": "Ссылка устарела"}), 403
+    key = _cache_get(_file_key_cache, mid, 3600)
+    if key is _UNSET:
+        key = attachment_key((get_message_by_id(mid) or {}).get("attachment_url")); _cache_put(_file_key_cache, mid, key)
+    if not key: return jsonify({"error": "Файл не найден"}), 404
+    url = _signed_file_url(key)
+    if not url: return jsonify({"error": "Файл временно недоступен"}), 502
+    resp = redirect(url, 302)
+    resp.headers["Cache-Control"] = "private, max-age=120"   # меньше срока подписи (300 с), чтобы браузер не пошёл по протухшему адресу
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    return resp
+
+# Иконка монеты лежит в закрытом бакете, но показывается всем (в том числе до входа): отдаём её с сервера и кэшируем в памяти.
+_coin = {"data": None, "at": 0.0}
+@app.route("/assets/coin.jpg")
+def asset_coin():
+    now = time.time()
+    if _coin["data"] is None or now - _coin["at"] > 3600:
+        try:
+            raw = supabase.storage.from_(FILES_BUCKET).download("Diogram.coin.di.jpg")
+            try:   # оригинал ~750 КБ, а показывается значок 16–40 px: отдаём уменьшенную копию
+                img = Image.open(io.BytesIO(raw)).convert("RGB"); img.thumbnail((160, 160), Image.LANCZOS)
+                out = io.BytesIO(); img.save(out, format="JPEG", quality=88, optimize=True); raw = out.getvalue()
+            except Exception as e: print(f"[coin resize] {e}")
+            _coin["data"] = raw; _coin["at"] = now
+        except Exception as e: print(f"[coin] {e}")
+    if not _coin["data"]: return jsonify({"error": "Не найдено"}), 404
+    resp = Response(_coin["data"], mimetype="image/jpeg"); resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
 
 # ==================== UPLOAD ====================
 def _process_image(file_bytes, mime):
@@ -1158,6 +1236,7 @@ def api_upload_photo():
     except Exception as e: return jsonify({"error": f"Ошибка загрузки: {str(e)}"}), 500
     msg = save_message(chat_id, user["id"], caption, "photo", public_url, len(processed), filename)
     register_photo_upload(user["id"])
+    sign_attachments([msg])
     return jsonify({"ok": True, "message": msg})
 
 @app.route("/api/upload/file", methods=["POST"])
@@ -1196,6 +1275,7 @@ def api_upload_file():
     file_category = "audio" if mime.startswith("audio/") else "document"
     msg = save_message(chat_id, user["id"], "", "file", public_url, size, safe_name, file_type=file_category, file_mime=mime)
     register_file_upload(user["id"], size)
+    sign_attachments([msg])
     return jsonify({"ok": True, "message": msg})
 
 @app.route("/api/file-quota")

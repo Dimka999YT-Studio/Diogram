@@ -441,7 +441,7 @@
       
       <div class="balance-block">
         <div class="balance-label">Баланс</div>
-        <div class="balance-value" id="profile-balance"><img src="https://ltpduienoflklktunihc.supabase.co/storage/v1/object/public/chat-photos/Diogram.coin.di.jpg" class="di-icon"> 0 Di</div>
+        <div class="balance-value" id="profile-balance"><img src="/assets/coin.jpg" class="di-icon"> 0 Di</div>
         <div class="balance-sub" id="profile-balance-rub">~0₽</div>
       </div>
 
@@ -596,7 +596,7 @@
     <div class="header"><button class="header-icon" id="btn-shop-back">←</button><h1>🛒 Магазин</h1></div>
     <div class="balance-block">
       <div class="balance-label">Твой баланс</div>
-      <div class="balance-value" id="shop-balance"><img src="https://ltpduienoflklktunihc.supabase.co/storage/v1/object/public/chat-photos/Diogram.coin.di.jpg" class="di-icon"> 0 Di</div>
+      <div class="balance-value" id="shop-balance"><img src="/assets/coin.jpg" class="di-icon"> 0 Di</div>
       <div class="balance-sub" id="shop-balance-rub">~0₽</div>
     </div>
     <div class="shop-tabs">
@@ -791,7 +791,7 @@
 <script>
 const API = location.origin;
 const RATE = 1.59;
-const COIN_URL = "https://ltpduienoflklktunihc.supabase.co/storage/v1/object/public/chat-photos/Diogram.coin.di.jpg";
+const COIN_URL = "/assets/coin.jpg";
 let token = localStorage.getItem("diogram_token") || null;
 let currentUser = null;
 let currentChat = null;
