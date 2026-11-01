@@ -47,7 +47,7 @@ from db import (
     count_reports_by_user_24h, create_report, get_reports,
     update_report_status, count_new_reports,
     ban_user, unban_user, is_ban_expired,
-    update_privacy_settings, get_user_sessions, delete_session, create_session, session_alive, touch_session, delete_other_sessions,
+    update_privacy_settings, get_user_sessions, delete_session, leave_group, is_chat_linked_to_channel, create_session, session_alive, touch_session, delete_other_sessions,
     get_user_usernames, activate_username, is_username_on_frigdmant, get_owned_username_holder,
     get_reserved_usernames, add_reserved_username, give_reserved_username, remove_reserved_username, is_username_reserved,
     create_frigdmant_listing, get_frigdmant_listings, get_user_listings,
@@ -78,6 +78,10 @@ ALLOWED_DOMAINS = ["gmail.com", "yandex.com", "yandex.ru", "mail.ru", "outlook.c
 BLOCKED_KEYWORDS = ["temp", "10minute", "guerrilla", "throwaway", "yopmail", "mailinator"]
 PHOTO_LIMIT_15_DAYS = 8
 REPORT_LIMIT_24H = 5
+API_RATE_PER_MIN = 600        # запросов в минуту с одного аккаунта (обычная работа — десятки; защита от забивания 16 потоков)
+SEARCH_RATE_PER_MIN = 30
+MAX_OWNED_GROUPS = 20
+GROUPS_CREATED_PER_HOUR = 5
 USERNAME_CHANGE_LIMIT_24H = 10
 
 MAX_PHOTO_SIZE = 5 * 1024 * 1024
@@ -425,7 +429,39 @@ def block_banned_users():
     if not user: return None  # неавторизованным ответит сам эндпоинт (401)
     is_banned, ban_reason = check_banned(user)
     if is_banned: return banned_response(user, ban_reason)
+    if not check_rate_limit(f"api_{user['id']}", API_RATE_PER_MIN, 60): return jsonify({"error": "Слишком много запросов. Подожди немного.", "rate_limited": True}), 429
     return None
+
+# ==================== ЗАЩИТНЫЕ ЗАГОЛОВКИ ====================
+# Клиент — один файл с inline-скриптами, поэтому 'unsafe-inline' для скриптов нужен. Остальное закрыто: запросы только на свой сервер
+# (украденный токен нельзя отправить на чужой адрес через fetch), картинки и аудио только с себя и из хранилища Supabase,
+# страницу нельзя встроить в чужую (clickjacking), плагины и <base> запрещены.
+def _csp():
+    sb = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
+    storage = "https://*.supabase.co" + ((" " + sb) if sb.startswith("https://") and not sb.endswith(".supabase.co") else "")
+    return ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+            f"img-src 'self' data: blob: {storage}; media-src 'self' blob: {storage}; connect-src 'self'; font-src 'self'; "
+            "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+CSP_HEADER = _csp()
+
+@app.after_request
+def security_headers(resp):
+    h = resp.headers
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("X-Frame-Options", "DENY")
+    h.setdefault("Referrer-Policy", "no-referrer")
+    h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    if resp.mimetype == "text/html": h["Content-Security-Policy"] = CSP_HEADER
+    if request.is_secure: h.setdefault("Strict-Transport-Security", "max-age=15552000")
+    return resp
+
+@app.errorhandler(Exception)
+def unhandled_error(e):
+    """Любая необработанная ошибка: в лог подробности, клиенту только общий текст (раньше мог утечь текст исключения)."""
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException): return e
+    print(f"[ERROR] {request.method} {request.path}: {e!r}")
+    return jsonify({"error": "Ошибка сервера. Попробуй ещё раз."}), 500
 
 @app.errorhandler(413)
 def request_too_large(e):
@@ -697,6 +733,7 @@ def api_users_search():
     if not user: return jsonify({"error": "Не авторизован"}), 401
     q = request.args.get("q", "").strip()
     if len(q) < 2: return jsonify({"users": [], "channels": []})
+    if not check_rate_limit(f"search_{user['id']}", SEARCH_RATE_PER_MIN, 60): return jsonify({"error": "Слишком часто. Подожди немного."}), 429
     users = search_users(q, user["id"], limit=20)
     channels = search_public_channels(q, limit=20)
     return jsonify({"users": [user_public_dict(u) for u in users], "channels": channels})
@@ -911,6 +948,10 @@ def api_create_group():
         mid = to_int(raw)
         if mid is None: return jsonify({"error": "member_ids: только числовые id"}), 400
         if mid != user["id"] and mid not in member_ids: member_ids.append(mid)
+    staff = user.get("role") in STAFF_ROLES
+    if not staff:
+        if len(get_owned_groups(user["id"])) >= MAX_OWNED_GROUPS: return jsonify({"error": f"Можно владеть не больше чем {MAX_OWNED_GROUPS} группами"}), 400
+        if not check_rate_limit(f"group_create_{user['id']}", GROUPS_CREATED_PER_HOUR, 3600): return jsonify({"error": "Слишком много новых групп. Подожди час."}), 429
     total_members = len(member_ids) + 1
     max_limit = 110 if check_premium(user) else 10
     if total_members > max_limit: return jsonify({"error": f"Лимит группы: {max_limit} человек. У тебя PDG: {check_premium(user)}"}), 400
@@ -943,7 +984,8 @@ def api_chat_avatar(chat_id):
     try:
         supabase.storage.from_("avatars").upload(filename, processed, file_options={"content-type": f"image/{ext if ext != 'jpg' else 'jpeg'}"})
         public_url = supabase.storage.from_("avatars").get_public_url(filename)
-    except Exception as e: return jsonify({"error": f"Ошибка загрузки: {str(e)}"}), 500
+    except Exception as e:
+        print(f"[upload] {e!r}"); return jsonify({"error": "Не удалось загрузить файл. Попробуй ещё раз."}), 500
     supabase.table("chats").update({"avatar_url": public_url}).eq("id", chat_id).execute()
     return jsonify({"ok": True, "avatar_url": public_url})
 
@@ -968,6 +1010,18 @@ def api_chat_messages(chat_id):
     other = get_user_by_id(other_id)
     return jsonify({"messages": messages, "other_user": user_public_dict(other) if other else None})
 
+@app.route("/api/chats/<int:chat_id>/leave", methods=["POST"])
+def api_chat_leave(chat_id):
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    chat = get_chat_by_id(chat_id)
+    if not chat or not chat.get("is_group"): return jsonify({"error": "Группа не найдена"}), 404
+    if not is_chat_member(chat_id, user["id"]): return jsonify({"error": "Ты не участник этой группы"}), 403
+    if chat.get("owner_id") == user["id"] and is_chat_linked_to_channel(chat_id):
+        return jsonify({"error": "Группа привязана к каналу. Сначала отвяжи её в настройках канала."}), 409
+    leave_group(chat_id, user["id"])   # владелец выходит — права переходят к самому давнему участнику
+    return jsonify({"ok": True})
+
 @app.route("/api/chats/<int:chat_id>/read", methods=["POST"])
 def api_chat_read(chat_id):
     user = get_current_user()
@@ -990,7 +1044,8 @@ def api_chat_members(chat_id):
     else:
         if user["id"] not in (chat["user1_id"], chat["user2_id"]): return jsonify({"error": "Нет доступа"}), 403
     member_ids = get_chat_members(chat_id) if chat.get("is_group") else [chat["user1_id"], chat["user2_id"]]
-    members = [user_public_dict(get_user_by_id(uid)) for uid in member_ids if get_user_by_id(uid)]
+    found = get_users_by_ids(member_ids)   # раньше два запроса к базе на каждого участника
+    members = [user_public_dict(found[uid]) for uid in member_ids if uid in found]
     return jsonify({"members": members, "is_owner": chat.get("owner_id") == user["id"] if chat.get("is_group") else False})
 
 @app.route("/api/send", methods=["POST"])
@@ -1200,7 +1255,8 @@ def api_upload_avatar():
     try:
         supabase.storage.from_("avatars").upload(filename, processed, file_options={"content-type": f"image/{ext if ext != 'jpg' else 'jpeg'}"})
         public_url = supabase.storage.from_("avatars").get_public_url(filename)
-    except Exception as e: return jsonify({"error": f"Ошибка загрузки: {str(e)}"}), 500
+    except Exception as e:
+        print(f"[upload] {e!r}"); return jsonify({"error": "Не удалось загрузить файл. Попробуй ещё раз."}), 500
     updated = update_user_avatar(user["id"], public_url)
     return jsonify({"ok": True, "avatar_url": public_url, "user": user_to_dict(updated)})
 
@@ -1233,7 +1289,8 @@ def api_upload_photo():
     try:
         supabase.storage.from_("chat-photos").upload(filename, processed, file_options={"content-type": f"image/{ext if ext != 'jpg' else 'jpeg'}"})
         public_url = supabase.storage.from_("chat-photos").get_public_url(filename)
-    except Exception as e: return jsonify({"error": f"Ошибка загрузки: {str(e)}"}), 500
+    except Exception as e:
+        print(f"[upload] {e!r}"); return jsonify({"error": "Не удалось загрузить файл. Попробуй ещё раз."}), 500
     msg = save_message(chat_id, user["id"], caption, "photo", public_url, len(processed), filename)
     register_photo_upload(user["id"])
     sign_attachments([msg])
@@ -1271,7 +1328,8 @@ def api_upload_file():
     try:
         supabase.storage.from_("chat-photos").upload(filename, file_bytes, file_options={"content-type": mime})
         public_url = supabase.storage.from_("chat-photos").get_public_url(filename)
-    except Exception as e: return jsonify({"error": f"Ошибка загрузки: {str(e)}"}), 500
+    except Exception as e:
+        print(f"[upload] {e!r}"); return jsonify({"error": "Не удалось загрузить файл. Попробуй ещё раз."}), 500
     file_category = "audio" if mime.startswith("audio/") else "document"
     msg = save_message(chat_id, user["id"], "", "file", public_url, size, safe_name, file_type=file_category, file_mime=mime)
     register_file_upload(user["id"], size)
@@ -1332,6 +1390,7 @@ def api_channels_search():
     if not user: return jsonify({"error": "Не авторизован"}), 401
     q = request.args.get("q", "").strip()
     if len(q) < 2: return jsonify({"channels": []})
+    if not check_rate_limit(f"chsearch_{user['id']}", SEARCH_RATE_PER_MIN, 60): return jsonify({"error": "Слишком часто. Подожди немного."}), 429
     result = []
     for ch in search_public_channels(q, limit=20):
         owner = get_user_by_id(ch["owner_id"]); subs = supabase.table("channel_subscribers").select("id").eq("channel_id", ch["id"]).execute()
@@ -1398,7 +1457,8 @@ def api_channel_avatar(channel_id):
     try:
         supabase.storage.from_("avatars").upload(filename, processed, file_options={"content-type": f"image/{ext if ext != 'jpg' else 'jpeg'}"})
         public_url = supabase.storage.from_("avatars").get_public_url(filename)
-    except Exception as e: return jsonify({"error": f"Ошибка загрузки: {str(e)}"}), 500
+    except Exception as e:
+        print(f"[upload] {e!r}"); return jsonify({"error": "Не удалось загрузить файл. Попробуй ещё раз."}), 500
     updated = update_channel_avatar(channel_id, public_url)
     return jsonify({"ok": True, "avatar_url": public_url, "channel": updated})
 
