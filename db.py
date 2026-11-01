@@ -1386,3 +1386,20 @@ def get_username_purchase_info(username):
         listing = res.data[0]
         return {"price": listing.get("price", 0), "date": listing.get("updated_at") or listing.get("created_at")}
     return None
+
+
+# ==================== РЕАКЦИИ НА СООБЩЕНИЯ ====================
+def set_reaction(message_id: int, chat_id: int, user_id: int, emoji) -> None:
+    """Одна реакция от пользователя на сообщение: новая заменяет старую, emoji=None снимает."""
+    if not emoji:
+        supabase.table("message_reactions").delete().eq("message_id", message_id).eq("user_id", user_id).execute()
+        return
+    supabase.table("message_reactions").upsert(
+        {"message_id": message_id, "chat_id": chat_id, "user_id": user_id, "emoji": emoji},
+        on_conflict="message_id,user_id").execute()
+
+
+def get_reactions(chat_id: int, min_message_id: int = 0, limit: int = 5000) -> list:
+    res = supabase.table("message_reactions").select("message_id,user_id,emoji").eq("chat_id", chat_id) \
+        .gte("message_id", min_message_id).limit(limit).execute()
+    return res.data or []
