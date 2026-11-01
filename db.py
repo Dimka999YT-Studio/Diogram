@@ -1400,6 +1400,9 @@ def set_reaction(message_id: int, chat_id: int, user_id: int, emoji) -> None:
 
 
 def get_reactions(chat_id: int, min_message_id: int = 0, limit: int = 5000) -> list:
-    res = supabase.table("message_reactions").select("message_id,user_id,emoji").eq("chat_id", chat_id) \
-        .gte("message_id", min_message_id).limit(limit).execute()
+    try:
+        res = supabase.table("message_reactions").select("message_id,user_id,emoji").eq("chat_id", chat_id) \
+            .gte("message_id", min_message_id).limit(limit).execute()
+    except Exception as e:   # таблицы ещё нет (миграцию не применили): чат должен открываться и без реакций
+        print(f"[reactions] {e!r}"); return []
     return res.data or []
