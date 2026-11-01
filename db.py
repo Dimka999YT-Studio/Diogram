@@ -169,7 +169,8 @@ def spend_balance(user_id: int, amount: int, description: str) -> tuple:
             return True, None
         return False, "Недостаточно средств"
     except Exception as e:
-        return False, str(e)
+        print(f"[spend_balance] {e!r}")
+        return False, "Не удалось выполнить покупку. Попробуй ещё раз."
 
 
 def add_balance(user_id: int, amount: int, description: str, admin_id: int = None) -> bool:
@@ -1295,7 +1296,8 @@ def buy_frigdmant_listing(listing_id: int, buyer_id: int) -> tuple:
             return True, None
         return False, res.data[0]["error_msg"] if res.data else "Ошибка"
     except Exception as e:
-        return False, str(e)
+        print(f"[frigdmant] {e!r}")
+        return False, "Не удалось выполнить операцию. Попробуй ещё раз."
 
 
 def place_frigdmant_bid(listing_id: int, bidder_id: int, amount: int) -> tuple:
@@ -1305,7 +1307,8 @@ def place_frigdmant_bid(listing_id: int, bidder_id: int, amount: int) -> tuple:
             return True, None
         return False, res.data[0]["error_msg"] if res.data else "Ошибка"
     except Exception as e:
-        return False, str(e)
+        print(f"[frigdmant] {e!r}")
+        return False, "Не удалось выполнить операцию. Попробуй ещё раз."
 
 
 # ============ ГРУППЫ И КОЛЛЕКЦИИ ============
@@ -1357,6 +1360,21 @@ def create_group_chat(owner_id, name, member_ids):
 def get_chat_members(chat_id):
     res = supabase.table("chat_members").select("user_id").eq("chat_id", chat_id).execute()
     return [m["user_id"] for m in (res.data or [])]
+
+
+def is_chat_linked_to_channel(chat_id: int) -> bool:
+    res = supabase.table("channels").select("id").eq("linked_chat_id", chat_id).limit(1).execute()
+    return bool(res.data)
+
+
+def leave_group(chat_id: int, user_id: int) -> None:
+    """Участник выходит из группы. Если выходит владелец, группа переходит к самому давнему из оставшихся участников."""
+    supabase.table("chat_members").delete().eq("chat_id", chat_id).eq("user_id", user_id).execute()
+    chat = get_chat_by_id(chat_id)
+    if chat and chat.get("owner_id") == user_id:
+        nxt = supabase.table("chat_members").select("user_id").eq("chat_id", chat_id).order("id", desc=False).limit(1).execute()
+        if nxt.data:
+            supabase.table("chats").update({"owner_id": nxt.data[0]["user_id"]}).eq("id", chat_id).execute()
 
 def is_chat_member(chat_id, user_id):
     res = supabase.table("chat_members").select("id").eq("chat_id", chat_id).eq("user_id", user_id).execute()

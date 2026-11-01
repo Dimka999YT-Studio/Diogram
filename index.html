@@ -269,6 +269,9 @@
   .photo-viewer img { max-width: 100%; max-height: 100%; object-fit: contain; }
   .photo-viewer-close { position: absolute; top: 20px; right: 20px; width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.1); border: none; color: #fff; font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 
+  .gi-owner { margin-left: auto; font-size: 12px; color: #7e8b99; }
+  .gi-ava { width: 40px; height: 40px; border-radius: 50%; background: #2b5278; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; overflow: hidden; flex: none; }
+  .gi-ava img { width: 100%; height: 100%; object-fit: cover; }
   .ch-info-screen { flex: 1; overflow-y: auto; padding-bottom: 20px; }
   .ch-info-top { display: flex; flex-direction: column; align-items: center; padding: 30px 20px 20px; gap: 10px; }
   .ch-info-avatar { width: 120px; height: 120px; border-radius: 24px; background: linear-gradient(135deg, #ffb800, #ff6b00); display: flex; align-items: center; justify-content: center; font-size: 56px; color: #fff; overflow: hidden; position: relative; }
@@ -545,6 +548,23 @@
       <button class="profile-btn secondary" id="btn-ch-info-subscribe" style="display:none;">➕ Подписаться</button>
       <button class="profile-btn secondary" id="btn-ch-info-unsubscribe" style="display:none;">🔕 Отписаться</button>
       <button class="profile-btn danger" id="btn-ch-info-delete" style="display:none;">🗑️ Удалить канал</button>
+    </div>
+  </div>
+
+  <!-- ИНФОРМАЦИЯ О ГРУППЕ -->
+  <div class="screen" id="screen-group-info">
+    <div class="header">
+      <button class="header-icon" id="btn-group-info-back">←</button>
+      <h1>Информация о группе</h1>
+    </div>
+    <div class="ch-info-screen">
+      <div class="ch-info-top">
+        <div class="ch-info-avatar" id="gi-avatar">👥</div>
+        <div class="ch-info-name" id="gi-name">Группа</div>
+        <div class="ch-info-subs" id="gi-count"></div>
+      </div>
+      <div id="gi-members"></div>
+      <button class="profile-btn danger" id="btn-group-leave">🚪 Выйти из группы</button>
     </div>
   </div>
 
@@ -1200,7 +1220,44 @@ function startChatPolling() {
 }
 
 document.getElementById("btn-back-chat").onclick = () => { chatPollToken++; if (chatPollInterval) clearTimeout(chatPollInterval); currentChat = null; show("screen-list"); loadList(); };
-document.getElementById("chat-header-info").onclick = () => { if (currentChat && currentChat.other && !currentChat.other.is_group) openUserProfile(currentChat.other.id); };
+document.getElementById("chat-header-info").onclick = () => { if (!currentChat || !currentChat.other) return; if (currentChat.other.is_group) openGroupInfo(); else openUserProfile(currentChat.other.id); };
+
+// ---- информация о группе: участники и выход ----
+async function openGroupInfo() {
+  if (!currentChat || !currentChat.other || !currentChat.other.is_group) return;
+  const chatId = currentChat.id, o = currentChat.other;
+  document.getElementById("gi-name").textContent = o.name || "Группа";
+  const av = document.getElementById("gi-avatar"); av.textContent = "";
+  if (o.avatar_url) { const im = document.createElement("img"); im.src = o.avatar_url; im.style.cssText = "width:100%;height:100%;object-fit:cover;"; av.appendChild(im); } else av.textContent = "👥";
+  document.getElementById("gi-count").textContent = "";
+  const box = document.getElementById("gi-members"); box.textContent = "";
+  show("screen-group-info");
+  try {
+    const data = await api("/api/chats/" + chatId + "/members");
+    if (!currentChat || currentChat.id !== chatId) return;
+    document.getElementById("gi-count").textContent = data.members.length + " участников";
+    const ownerId = o.owner_id;
+    for (const m of data.members) {
+      const row = document.createElement("div"); row.className = "list-item";
+      const a = document.createElement("div"); a.className = "gi-ava";
+      const nm = ((m.first_name || "") + " " + (m.last_name || "")).trim() || m.username || "Пользователь";
+      if (m.avatar_url) { const im = document.createElement("img"); im.src = m.avatar_url; a.appendChild(im); } else a.textContent = nm.charAt(0).toUpperCase();
+      const t = document.createElement("div"); t.textContent = nm + (m.username ? "  @" + m.username : "");
+      row.appendChild(a); row.appendChild(t);
+      if (ownerId != null && m.id === ownerId) { const b = document.createElement("div"); b.className = "gi-owner"; b.textContent = "владелец"; row.appendChild(b); }
+      row.onclick = () => { if (m.id !== (currentUser && currentUser.id)) openUserProfile(m.id); };
+      box.appendChild(row);
+    }
+  } catch (e) { if (e.message !== "banned") { const d = document.createElement("div"); d.className = "empty-state"; d.textContent = "Ошибка: " + e.message; box.appendChild(d); } }
+}
+document.getElementById("btn-group-info-back").onclick = () => show("screen-chat");
+document.getElementById("btn-group-leave").onclick = async () => {
+  if (!currentChat || !confirm("Выйти из группы? Вернуться можно будет только по новому приглашению.")) return;
+  try {
+    await api("/api/chats/" + currentChat.id + "/leave", { method: "POST" });
+    chatPollToken++; if (chatPollInterval) clearTimeout(chatPollInterval); currentChat = null; show("screen-list"); loadList();
+  } catch (e) { if (e.message !== "banned") alert(e.message); }
+};
 document.getElementById("btn-chat-report").onclick = () => { if (!currentChat) return; reportTarget = { type: "user", user_id: currentChat.other.id, name: currentChat.other.first_name || currentChat.other.username }; openReportModal(); };
 
 async function openChannel(channelId) {
