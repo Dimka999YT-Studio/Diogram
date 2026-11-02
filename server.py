@@ -20,7 +20,7 @@ from groq import Groq
 import httpx
 
 from db import (
-    set_reaction, get_reactions, set_channel_reaction,
+    get_archived, set_archived, MAX_ARCHIVED_PER_USER, set_reaction, get_reactions, set_channel_reaction,
     email_exists, create_user, get_user_by_email,
     get_user_by_id, get_user_by_username, search_users,
     update_user_profile, update_user_name, update_user_username,
@@ -914,8 +914,31 @@ def api_all_list():
         print(f"[ALL_LIST] Ошибка групп: {e}")
 
     items = chats + channels
+    arch = get_archived(user["id"])
+    for it in items:
+        it["archived"] = (("channel", it.get("channel_id")) if it.get("type") == "channel" else ("chat", it.get("chat_id"))) in arch
     items.sort(key=lambda x: x.get("last_message_at") or "", reverse=True)
     return jsonify({"items": items})
+
+@app.route("/api/archive", methods=["POST"])
+def api_archive():
+    """Убрать чат/группу/канал в личный архив или вернуть из него: {type: "chat"|"channel", id, archived: bool}."""
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    data = json_body()
+    kind = data.get("type"); target = to_int(data.get("id")); archived = data.get("archived", True)
+    if kind not in ("chat", "channel") or not target or not isinstance(archived, bool): return jsonify({"error": "Некорректный запрос"}), 400
+    if not check_rate_limit(f"archive_{user['id']}", 60, 60): return jsonify({"error": "Слишком часто"}), 429
+    if kind == "chat":
+        chat = get_chat_by_id(target)
+        if not chat: return jsonify({"error": "Чат не найден"}), 404
+        if not has_chat_access(chat, user["id"]): return jsonify({"error": "Нет доступа"}), 403
+    else:
+        ch, err = channel_reader(target, user)
+        if err: return err
+    if archived and len(get_archived(user["id"])) >= MAX_ARCHIVED_PER_USER: return jsonify({"error": "Архив переполнен"}), 400
+    set_archived(user["id"], kind, target, archived)
+    return jsonify({"ok": True})
 
 @app.route("/api/chats", methods=["POST"])
 def api_chats_create():

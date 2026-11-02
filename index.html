@@ -73,7 +73,8 @@
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
   .msg.own { background: linear-gradient(135deg, #5b8bff, #4a7aff); align-self: flex-end; border-bottom-right-radius: 4px; }
   .msg.other { background: #1c2a38; align-self: flex-start; border-bottom-left-radius: 4px; }
-  @media (hover: none) { #messages .msg, #channel-messages .msg { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } }
+  @media (hover: none) { #messages .msg, #channel-messages .msg, #list-container .list-item { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } }
+  .rx-picker .ctx-btn { font-size: 14px; padding: 8px 14px; white-space: nowrap; color: #e8eef5; }
   .rx-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
   .rx-row:empty { display: none; }
   .rx-chip { font-size: 13px; padding: 2px 7px; border-radius: 12px; background: rgba(255,255,255,0.14); cursor: pointer; user-select: none; }
@@ -1014,14 +1015,54 @@ function startAdminPoll() {
   check(); adminPollInterval = setInterval(check, 30000);
 }
 
+let listView = "main";   // "main" — обычный список, "archive" — архив
+function listRow(icon, title, sub, badge, onclick) {
+  const el = document.createElement("div"); el.className = "list-item";
+  const av = document.createElement("div"); av.className = "avatar"; av.textContent = icon;
+  const info = document.createElement("div"); info.className = "list-info";
+  const n = document.createElement("div"); n.className = "list-name"; n.textContent = title; info.appendChild(n);
+  if (sub) { const l = document.createElement("div"); l.className = "list-last"; l.textContent = sub; info.appendChild(l); }
+  el.appendChild(av); el.appendChild(info);
+  if (badge > 0) { const m = document.createElement("div"); m.className = "list-meta"; const bd = document.createElement("div"); bd.className = "badge-unread"; bd.textContent = badge; m.appendChild(bd); el.appendChild(m); }
+  el.onclick = onclick; return el;
+}
+async function setArchived(item, archived) {
+  try { await api("/api/archive", { method: "POST", body: JSON.stringify({ type: item.type === "channel" ? "channel" : "chat", id: item.type === "channel" ? item.channel_id : item.chat_id, archived }) }); }
+  catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
+  loadList();
+}
+function showListMenu(el) {
+  const item = el._item; if (!item) return;
+  closeRxPicker();
+  const p = document.createElement("div"); p.id = "rx-picker"; p.className = "rx-picker";
+  const bt = document.createElement("span"); bt.className = "ctx-btn"; bt.textContent = item.archived ? "📤 Вернуть из архива" : "📦 В архив";
+  bt.onclick = (ev) => { ev.stopPropagation(); closeRxPicker(); setArchived(item, !item.archived); };
+  p.appendChild(bt); document.body.appendChild(p);
+  const rc = el.getBoundingClientRect(), pw = p.offsetWidth, ph = p.offsetHeight;
+  p.style.left = Math.max(8, Math.min(window.innerWidth - pw - 8, rc.left + rc.width / 2 - pw / 2)) + "px";
+  p.style.top = Math.max(8, Math.min(window.innerHeight - ph - 8, rc.top + rc.height / 2 - ph / 2)) + "px";
+}
+(function () {   // ПКМ или долгое нажатие на чате в списке
+  const box = document.getElementById("list-container"); let timer = null, lpUntil = 0;
+  const target = (ev) => { const el = ev.target.closest ? ev.target.closest(".list-item") : null; return el && el._item ? el : null; };
+  box.addEventListener("click", ev => { if (Date.now() < lpUntil) { ev.stopPropagation(); ev.preventDefault(); } }, true);   // клик после долгого нажатия не открывает чат
+  box.addEventListener("contextmenu", ev => { const el = target(ev); if (!el) return; ev.preventDefault(); showListMenu(el); });
+  box.addEventListener("touchstart", ev => { const el = target(ev); if (!el) return; clearTimeout(timer); timer = setTimeout(() => { lpUntil = Date.now() + 800; showListMenu(el); }, 450); }, { passive: true });
+  for (const t of ["touchend", "touchmove", "touchcancel"]) box.addEventListener(t, () => clearTimeout(timer), { passive: true });
+})();
 async function loadList() {
   const box = document.getElementById("list-container");
   try {
     const data = await api("/api/all_list");
-    if (!data.items.length) { box.innerHTML = '<div class="empty-state">Пока ничего нет.<br>Нажми 🔍 чтобы найти людей,<br>или 👥 чтобы создать группу.</div>'; return; }
+    const archived = data.items.filter(i => i.archived);
+    if (listView === "archive" && !archived.length) listView = "main";   // из пустого архива сразу в обычный список
+    const shown = data.items.filter(i => !!i.archived === (listView === "archive"));
     box.innerHTML = "";
-    for (const item of data.items) {
-      const el = document.createElement("div"); el.className = "list-item";
+    if (listView === "archive") box.appendChild(listRow("←", "Архив", "Нажми и держи чат, чтобы вернуть его", 0, () => { listView = "main"; loadList(); }));
+    else if (archived.length) box.appendChild(listRow("📦", "Архив", archived.length + " чатов", archived.reduce((n, i) => n + (i.unread_count || 0), 0), () => { listView = "archive"; loadList(); }));
+    if (!shown.length && !archived.length) { box.innerHTML = '<div class="empty-state">Пока ничего нет.<br>Нажми 🔍 чтобы найти людей,<br>или 👥 чтобы создать группу.</div>'; return; }
+    for (const item of shown) {
+      const el = document.createElement("div"); el.className = "list-item"; el._item = item;
       
       // Если это группа
       if (item.type === "group") {

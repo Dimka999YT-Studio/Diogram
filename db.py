@@ -1420,6 +1420,28 @@ def get_reactions(chat_id: int, min_message_id: int = 0, limit: int = 5000) -> l
     return res.data or []
 
 
+# ==================== АРХИВ ЧАТОВ =============
+
+
+MAX_ARCHIVED_PER_USER = 1000
+
+
+def get_archived(user_id: int) -> set:
+    """{(kind, target_id)} архива пользователя. Нет таблицы (миграцию не применили) — пустой архив, список чатов работает."""
+    try:
+        rows = supabase.table("user_archive").select("kind,target_id").eq("user_id", user_id).limit(MAX_ARCHIVED_PER_USER + 1).execute().data or []
+    except Exception as e:
+        print(f"[archive] {e!r}"); return set()
+    return {(r["kind"], r["target_id"]) for r in rows}
+
+
+def set_archived(user_id: int, kind: str, target_id: int, archived: bool) -> None:
+    if archived:
+        supabase.table("user_archive").upsert({"user_id": user_id, "kind": kind, "target_id": target_id}, on_conflict="user_id,kind,target_id").execute()
+    else:
+        supabase.table("user_archive").delete().eq("user_id", user_id).eq("kind", kind).eq("target_id", target_id).execute()
+
+
 def set_channel_reaction(message_id: int, user_id: int, emoji) -> None:
     """Реакция на пост канала: одна от пользователя, новая заменяет старую, emoji=None снимает."""
     if not emoji:
