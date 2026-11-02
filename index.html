@@ -73,7 +73,7 @@
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
   .msg.own { background: linear-gradient(135deg, #5b8bff, #4a7aff); align-self: flex-end; border-bottom-right-radius: 4px; }
   .msg.other { background: #1c2a38; align-self: flex-start; border-bottom-left-radius: 4px; }
-  @media (hover: none) { #messages .msg { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } }
+  @media (hover: none) { #messages .msg, #channel-messages .msg { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } }
   .rx-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
   .rx-row:empty { display: none; }
   .rx-chip { font-size: 13px; padding: 2px 7px; border-radius: 12px; background: rgba(255,255,255,0.14); cursor: pointer; user-select: none; }
@@ -1093,15 +1093,18 @@ let renderedIds = new Set(); let lastMessageId = 0;
 const RX_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥", "👎", "🎉"];
 let rxByMsg = {}; let rxVer = null;
 function setReactions(list, ver) { rxByMsg = {}; for (const r of list || []) (rxByMsg[r.message_id] = rxByMsg[r.message_id] || []).push(r); if (ver != null) rxVer = ver; }
-function renderRx(el) {
-  const mid = parseInt(el.getAttribute("data-mid"), 10); if (!mid) return;
+function fillRxRow(el, list, onPick) {
   let row = el.querySelector(".rx-row"); if (!row) { row = document.createElement("div"); row.className = "rx-row"; el.appendChild(row); }
   row.textContent = "";
-  for (const r of rxByMsg[mid] || []) {
+  for (const r of list || []) {
     const c = document.createElement("span"); c.className = "rx-chip" + (r.mine ? " mine" : ""); c.textContent = r.emoji + " " + r.count;
-    c.onclick = (ev) => { ev.stopPropagation(); reactTo(mid, r.mine ? null : r.emoji); };
+    c.onclick = (ev) => { ev.stopPropagation(); onPick(r.mine ? null : r.emoji); };
     row.appendChild(c);
   }
+}
+function renderRx(el) {
+  const mid = parseInt(el.getAttribute("data-mid"), 10); if (!mid) return;
+  fillRxRow(el, rxByMsg[mid], (emoji) => reactTo(mid, emoji));
 }
 function refreshAllRx() { document.querySelectorAll("#messages .msg[data-mid]").forEach(renderRx); }
 function myReaction(mid) { const r = (rxByMsg[mid] || []).find(x => x.mine); return r ? r.emoji : null; }
@@ -1117,24 +1120,43 @@ async function reactTo(mid, emoji) {
 }
 function closeRxPicker() { const p = document.getElementById("rx-picker"); if (p) p.remove(); }
 function showRxPicker(el) {
-  closeRxPicker();
   const mid = parseInt(el.getAttribute("data-mid"), 10); if (!mid) return;
-  const p = document.createElement("div"); p.id = "rx-picker"; p.className = "rx-picker"; const mine = myReaction(mid);
-  for (const e of RX_EMOJIS) { const b = document.createElement("span"); b.textContent = e; if (e === mine) b.className = "sel"; b.onclick = (ev) => { ev.stopPropagation(); reactTo(mid, e === mine ? null : e); }; p.appendChild(b); }
+  openRxPicker(el, myReaction(mid), (emoji) => reactTo(mid, emoji));
+}
+function openRxPicker(el, mine, onPick) {
+  closeRxPicker();
+  const p = document.createElement("div"); p.id = "rx-picker"; p.className = "rx-picker";
+  for (const e of RX_EMOJIS) { const b = document.createElement("span"); b.textContent = e; if (e === mine) b.className = "sel"; b.onclick = (ev) => { ev.stopPropagation(); closeRxPicker(); onPick(e === mine ? null : e); }; p.appendChild(b); }
   document.body.appendChild(p);
   const rc = el.getBoundingClientRect(), pw = p.offsetWidth, ph = p.offsetHeight;
   p.style.left = Math.max(8, Math.min(window.innerWidth - pw - 8, rc.left + rc.width / 2 - pw / 2)) + "px";
   p.style.top = Math.max(8, rc.top - ph - 6) + "px";
 }
-(function () {
-  const box = document.getElementById("messages"); let timer = null;
+function bindRxGestures(box, show) {
+  let timer = null;
   const target = (ev) => ev.target.closest ? ev.target.closest(".msg[data-mid]") : null;
-  box.addEventListener("contextmenu", ev => { const el = target(ev); if (!el) return; ev.preventDefault(); showRxPicker(el); });
-  box.addEventListener("dblclick", ev => { const el = target(ev); if (el) showRxPicker(el); });
-  box.addEventListener("touchstart", ev => { const el = target(ev); if (!el) return; clearTimeout(timer); timer = setTimeout(() => showRxPicker(el), 450); }, { passive: true });
+  box.addEventListener("contextmenu", ev => { const el = target(ev); if (!el) return; ev.preventDefault(); show(el); });
+  box.addEventListener("dblclick", ev => { const el = target(ev); if (el) show(el); });
+  box.addEventListener("touchstart", ev => { const el = target(ev); if (!el) return; clearTimeout(timer); timer = setTimeout(() => show(el), 450); }, { passive: true });
   for (const t of ["touchend", "touchmove", "touchcancel"]) box.addEventListener(t, () => clearTimeout(timer), { passive: true });
-  document.addEventListener("click", closeRxPicker); box.addEventListener("scroll", closeRxPicker, { passive: true });
-})();
+  box.addEventListener("scroll", closeRxPicker, { passive: true });
+}
+bindRxGestures(document.getElementById("messages"), showRxPicker);
+document.addEventListener("click", closeRxPicker);
+// ---- реакции на посты каналов (реакции приходят вместе с постами в поле reactions) ----
+function showChannelRxPicker(el) {
+  const mid = parseInt(el.getAttribute("data-mid"), 10); if (!mid || !currentChannel) return;
+  if (!el.isConnected) { el = document.querySelector('#channel-messages .msg[data-mid="' + mid + '"]'); if (!el) return; }   // пост перерисовался опросом
+  openRxPicker(el, el.getAttribute("data-myrx") || null, (emoji) => reactChannel(mid, emoji));
+}
+async function reactChannel(mid, emoji) {
+  if (!currentChannel) return; const chId = currentChannel.id;
+  try {
+    await api("/api/channels/" + chId + "/messages/" + mid + "/react", { method: "POST", body: JSON.stringify({ emoji }) });
+    if (currentChannel && currentChannel.id === chId) { const data = await api("/api/channels/" + chId + "/messages"); renderChannelMessages(data.messages); }
+  } catch (err) { if (err.message !== "banned") alert("Ошибка: " + err.message); }
+}
+bindRxGestures(document.getElementById("channel-messages"), showChannelRxPicker);
 function renderMessages(msgs) { const box = document.getElementById("messages"); box.innerHTML = ""; renderedIds = new Set(); lastMessageId = 0; if (!msgs.length) { box.innerHTML = '<div class="empty-state">Напиши первое сообщение 👋</div>'; return; } for (const m of msgs) appendMessage(m); }
 
 function appendMessage(m) {
@@ -1352,6 +1374,8 @@ function appendChannelMessage(m) {
   const d = document.createElement("div"); d.className = "msg other"; d.setAttribute("data-mid", String(parseInt(m.id, 10) || 0));
   d.innerHTML = (m.poll ? pollHtml(m) : linkify(m.text)) + '<span class="time">' + fmtTime(m.created_at) + '</span>'
     + (m.discussion_message_id ? '<button class="comments-btn" data-comments="1">💬 Комментарии' + (m.comments_count ? " (" + (parseInt(m.comments_count, 10) || 0) + ")" : "") + '</button>' : "");
+  const mineRx = (m.reactions || []).find(r => r.mine); if (mineRx) d.setAttribute("data-myrx", mineRx.emoji);
+  fillRxRow(d, m.reactions, (emoji) => reactChannel(parseInt(m.id, 10), emoji));
   box.appendChild(d);
 }
 document.getElementById("channel-messages").addEventListener("click", async (e) => {
