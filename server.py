@@ -94,7 +94,9 @@ ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 VIDEO_AVATAR_ROLES = ("owner", "developer")
 VIDEO_AVATAR_MIME = {"video/mp4", "video/webm"}
 VIDEO_AVATAR_MAX = 10 * 1024 * 1024   # бакет avatars должен разрешать не меньше (file_size_limit); MAX_REQUEST_BYTES (12 МБ) это покрывает
-_MP4_BRANDS = (b"isom", b"iso2", b"iso4", b"iso5", b"iso6", b"mp41", b"mp42", b"avc1", b"M4V ", b"dash")
+# Бренды ftyp, которые видео-аватаркой быть не могут: картинки HEIF/AVIF/RAW, аудио, QuickTime (.mov).
+# Остальные бренды (isom, mp42, MSNV, 3gp4, avc1, f4v и прочие от телефонов и редакторов) пропускаем: настоящую проверку делает чтение длительности из moov/mvhd.
+_NOT_VIDEO_BRANDS = (b"heic", b"heix", b"hevc", b"hevx", b"heim", b"heis", b"mif1", b"msf1", b"avif", b"avis", b"crx ", b"jp2 ", b"M4A ", b"M4B ", b"M4P ", b"F4A ", b"F4B ", b"qt  ")
 
 VIDEO_AVATAR_MAX_SEC = 60
 
@@ -165,7 +167,7 @@ def video_duration(data, kind):
 
 def sniff_video(data):
     """'mp4' / 'webm' по содержимому (заявленный клиентом mime нельзя считать доказательством) или None."""
-    if len(data) > 12 and data[4:8] == b"ftyp" and data[8:12] in _MP4_BRANDS: return "mp4"
+    if len(data) > 12 and data[4:8] == b"ftyp" and data[8:12] not in _NOT_VIDEO_BRANDS: return "mp4"
     if data[:4] == b"\x1a\x45\xdf\xa3": return "webm"
     return None
 
@@ -1394,7 +1396,10 @@ def api_upload_avatar():
         processed = file.read(VIDEO_AVATAR_MAX + 1)
         if len(processed) > VIDEO_AVATAR_MAX: return jsonify({"error": "Видео больше 10 МБ"}), 400
         ext = sniff_video(processed)
-        if not ext: return jsonify({"error": "Нужен MP4 (H.264) или WebM"}), 400
+        if not ext:
+            head = processed[:12]
+            brand = head[8:12].decode("ascii", "replace") if head[4:8] == b"ftyp" else "".join(chr(b) if 32 <= b < 127 else "." for b in head[:8])
+            return jsonify({"error": "Нужен MP4 (H.264) или WebM. Тип файла: " + brand.strip()}), 400
         dur = video_duration(processed, ext)
         if not dur or dur <= 0: return jsonify({"error": "Не удалось определить длительность видео. Сохрани ролик как обычный MP4 или WebM."}), 400
         if dur > VIDEO_AVATAR_MAX_SEC: return jsonify({"error": "Видео длиннее 1 минуты"}), 400
