@@ -20,7 +20,7 @@ from groq import Groq
 import httpx
 
 from db import (
-    get_archived, set_archived, MAX_ARCHIVED_PER_USER, set_reaction, get_reactions,
+    get_archived, set_archived, MAX_ARCHIVED_PER_USER, set_reaction, get_reactions, set_channel_reaction,
     email_exists, create_user, get_user_by_email,
     get_user_by_id, get_user_by_username, search_users,
     update_user_profile, update_user_name, update_user_username,
@@ -1657,6 +1657,19 @@ def api_channel_vote(channel_id, msg_id):
     try: set_poll_votes(msg_id, user["id"], picked)
     except Exception: return jsonify({"error": "Не удалось проголосовать, попробуй ещё раз"}), 409
     return jsonify({"ok": True, "poll_results": decorate_channel_messages([post], user["id"])[0]["poll_results"]})
+
+@app.route("/api/channels/<int:channel_id>/messages/<int:msg_id>/react", methods=["POST"])
+def api_channel_react(channel_id, msg_id):
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    ch, err = channel_reader(channel_id, user)
+    if err: return err
+    emoji = json_body().get("emoji")
+    if emoji is not None and emoji not in REACTION_EMOJIS: return jsonify({"error": "Такой реакции нет"}), 400
+    if not check_rate_limit(f"react_{user['id']}", 30, 10): return jsonify({"error": "Слишком часто"}), 429
+    if not get_channel_message(msg_id, channel_id): return jsonify({"error": "Пост не найден"}), 404
+    set_channel_reaction(msg_id, user["id"], emoji)
+    return jsonify({"ok": True})
 
 def comments_context(channel_id, msg_id, user):
     """(канал, пост, группа, ошибка-ответ) для комментариев к посту."""
