@@ -917,6 +917,18 @@ def decorate_channel_messages(messages: list, user_id: int) -> list:
                 voters.add(v["user_id"])
                 if v["user_id"] == user_id: mine.append(v["option_index"])
             m["poll_results"] = {"counts": counts, "voters": len(voters), "my": sorted(mine)}
+    ids = [m["id"] for m in messages if m.get("id") is not None]
+    if ids:
+        try: rx = supabase.table("channel_message_reactions").select("message_id,user_id,emoji").in_("message_id", ids).execute().data or []
+        except Exception as e:   # таблицы ещё нет (миграцию не применили): посты должны открываться и без реакций
+            print(f"[channel reactions] {e!r}"); rx = []
+        agg = {}
+        for r in rx:
+            e = agg.setdefault((r["message_id"], r["emoji"]), {"emoji": r["emoji"], "count": 0, "mine": False})
+            e["count"] += 1
+            if r["user_id"] == user_id: e["mine"] = True
+        for m in messages:
+            m["reactions"] = [v for (mid, _), v in agg.items() if mid == m["id"]]
     disc_ids = [m["discussion_message_id"] for m in messages if m.get("discussion_message_id")]
     if disc_ids:
         rows = supabase.table("messages").select("reply_to_message_id").in_("reply_to_message_id", disc_ids).execute().data or []
@@ -1406,3 +1418,12 @@ def get_reactions(chat_id: int, min_message_id: int = 0, limit: int = 5000) -> l
     except Exception as e:   # таблицы ещё нет (миграцию не применили): чат должен открываться и без реакций
         print(f"[reactions] {e!r}"); return []
     return res.data or []
+
+
+def set_channel_reaction(message_id: int, user_id: int, emoji) -> None:
+    """Реакция на пост канала: одна от пользователя, новая заменяет старую, emoji=None снимает."""
+    if not emoji:
+        supabase.table("channel_message_reactions").delete().eq("message_id", message_id).eq("user_id", user_id).execute()
+        return
+    supabase.table("channel_message_reactions").upsert(
+        {"message_id": message_id, "user_id": user_id, "emoji": emoji}, on_conflict="message_id,user_id").execute()
