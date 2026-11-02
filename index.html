@@ -73,6 +73,13 @@
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
   .msg.own { background: linear-gradient(135deg, #5b8bff, #4a7aff); align-self: flex-end; border-bottom-right-radius: 4px; }
   .msg.other { background: #1c2a38; align-self: flex-start; border-bottom-left-radius: 4px; }
+  .rx-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .rx-row:empty { display: none; }
+  .rx-chip { font-size: 13px; padding: 2px 7px; border-radius: 12px; background: rgba(255,255,255,0.14); cursor: pointer; user-select: none; }
+  .rx-chip.mine { background: rgba(91,139,255,0.55); }
+  .rx-picker { position: fixed; z-index: 90; display: flex; gap: 2px; padding: 6px 8px; background: #1c2a38; border: 1px solid #2a3b4d; border-radius: 22px; box-shadow: 0 6px 20px rgba(0,0,0,0.45); }
+  .rx-picker span { font-size: 22px; padding: 2px 4px; cursor: pointer; border-radius: 10px; }
+  .rx-picker span.sel { background: rgba(91,139,255,0.4); }
   .msg .time { display: inline-block; font-size: 10px; opacity: 0.65; margin-left: 6px; }
   .msg .checks { font-size: 12px; margin-left: 4px; opacity: 0.85; }
   .msg .checks.read { color: #b3d4ff; }
@@ -1072,6 +1079,7 @@ async function openChat(chatId, otherUser) {
   show("screen-chat");
   try {
     const data = await api("/api/chats/" + chatId + "/messages");
+    setReactions(data.reactions, data.rv);
     renderMessages(data.messages);
     if (data.other_user) { currentChat.other = data.other_user; document.getElementById("chat-status").textContent = data.other_user.is_group ? "группа" : statusText(data.other_user); }
     if (data.messages.length) lastMessageTime = data.messages[data.messages.length - 1].created_at;
@@ -1080,6 +1088,52 @@ async function openChat(chatId, otherUser) {
 }
 
 let renderedIds = new Set(); let lastMessageId = 0;
+// ---- реакции на сообщения ----
+const RX_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥", "👎", "🎉"];
+let rxByMsg = {}; let rxVer = null;
+function setReactions(list, ver) { rxByMsg = {}; for (const r of list || []) (rxByMsg[r.message_id] = rxByMsg[r.message_id] || []).push(r); if (ver != null) rxVer = ver; }
+function renderRx(el) {
+  const mid = parseInt(el.getAttribute("data-mid"), 10); if (!mid) return;
+  let row = el.querySelector(".rx-row"); if (!row) { row = document.createElement("div"); row.className = "rx-row"; el.appendChild(row); }
+  row.textContent = "";
+  for (const r of rxByMsg[mid] || []) {
+    const c = document.createElement("span"); c.className = "rx-chip" + (r.mine ? " mine" : ""); c.textContent = r.emoji + " " + r.count;
+    c.onclick = (ev) => { ev.stopPropagation(); reactTo(mid, r.mine ? null : r.emoji); };
+    row.appendChild(c);
+  }
+}
+function refreshAllRx() { document.querySelectorAll("#messages .msg[data-mid]").forEach(renderRx); }
+function myReaction(mid) { const r = (rxByMsg[mid] || []).find(x => x.mine); return r ? r.emoji : null; }
+async function reactTo(mid, emoji) {
+  closeRxPicker();
+  const list = (rxByMsg[mid] || []).slice(); const prev = list.findIndex(x => x.mine);
+  if (prev >= 0) { list[prev] = Object.assign({}, list[prev], { count: list[prev].count - 1, mine: false }); }
+  let next = list.filter(x => x.count > 0);
+  if (emoji) { const e = next.find(x => x.emoji === emoji); if (e) { e.count++; e.mine = true; } else next.push({ message_id: mid, emoji, count: 1, mine: true }); }
+  const old = rxByMsg[mid]; rxByMsg[mid] = next; refreshAllRx();
+  try { await api("/api/messages/" + mid + "/react", { method: "POST", body: JSON.stringify({ emoji }) }); }
+  catch (e) { rxByMsg[mid] = old; refreshAllRx(); if (e.message !== "banned") alert("Ошибка: " + e.message); }
+}
+function closeRxPicker() { const p = document.getElementById("rx-picker"); if (p) p.remove(); }
+function showRxPicker(el) {
+  closeRxPicker();
+  const mid = parseInt(el.getAttribute("data-mid"), 10); if (!mid) return;
+  const p = document.createElement("div"); p.id = "rx-picker"; p.className = "rx-picker"; const mine = myReaction(mid);
+  for (const e of RX_EMOJIS) { const b = document.createElement("span"); b.textContent = e; if (e === mine) b.className = "sel"; b.onclick = (ev) => { ev.stopPropagation(); reactTo(mid, e === mine ? null : e); }; p.appendChild(b); }
+  document.body.appendChild(p);
+  const rc = el.getBoundingClientRect(), pw = p.offsetWidth, ph = p.offsetHeight;
+  p.style.left = Math.max(8, Math.min(window.innerWidth - pw - 8, rc.left + rc.width / 2 - pw / 2)) + "px";
+  p.style.top = Math.max(8, rc.top - ph - 6) + "px";
+}
+(function () {
+  const box = document.getElementById("messages"); let timer = null;
+  const target = (ev) => ev.target.closest ? ev.target.closest(".msg[data-mid]") : null;
+  box.addEventListener("contextmenu", ev => { const el = target(ev); if (!el) return; ev.preventDefault(); showRxPicker(el); });
+  box.addEventListener("dblclick", ev => { const el = target(ev); if (el) showRxPicker(el); });
+  box.addEventListener("touchstart", ev => { const el = target(ev); if (!el) return; clearTimeout(timer); timer = setTimeout(() => showRxPicker(el), 450); }, { passive: true });
+  for (const t of ["touchend", "touchmove", "touchcancel"]) box.addEventListener(t, () => clearTimeout(timer), { passive: true });
+  document.addEventListener("click", closeRxPicker); box.addEventListener("scroll", closeRxPicker, { passive: true });
+})();
 function renderMessages(msgs) { const box = document.getElementById("messages"); box.innerHTML = ""; renderedIds = new Set(); lastMessageId = 0; if (!msgs.length) { box.innerHTML = '<div class="empty-state">Напиши первое сообщение 👋</div>'; return; } for (const m of msgs) appendMessage(m); }
 
 function appendMessage(m) {
@@ -1112,7 +1166,7 @@ function appendMessage(m) {
   let checks = "";
   if (isOwn) checks = m.read_at ? '<span class="checks read">✓✓</span>' : '<span class="checks">✓</span>';
   d.innerHTML = content + '<span class="time">' + time + checks + '</span>';
-  if (m.id != null) d.setAttribute("data-mid", String(m.id));
+  if (m.id != null) { d.setAttribute("data-mid", String(m.id)); renderRx(d); }
   box.appendChild(d); box.scrollTop = box.scrollHeight;
   return d;
 }
@@ -1203,8 +1257,10 @@ function startChatPolling() {
     const chatId = currentChat.id;
     try {
       if (!document.hidden) {
-        const data = await api("/api/poll?chat_id=" + chatId + "&after_id=" + lastMessageId);
+        const data = await api("/api/poll?chat_id=" + chatId + "&after_id=" + lastMessageId + "&rv=" + (rxVer == null ? "" : rxVer) + "&rmin=" + (renderedIds.size ? Math.min(...renderedIds) : 0));
         if (token !== chatPollToken || !currentChat || currentChat.id !== chatId) return;
+        if (data.reactions) setReactions(data.reactions, data.rv); else if (data.rv != null) rxVer = data.rv;
+        if (data.reactions) refreshAllRx();
         if (data.messages && data.messages.length) {
           let fromOthers = false;
           for (const m of data.messages) { if (appendMessage(m) && m.sender_id !== currentUser.id) fromOthers = true; }

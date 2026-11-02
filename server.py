@@ -20,6 +20,7 @@ from groq import Groq
 import httpx
 
 from db import (
+    set_reaction, get_reactions,
     email_exists, create_user, get_user_by_email,
     get_user_by_id, get_user_by_username, search_users,
     update_user_profile, update_user_name, update_user_username,
@@ -271,7 +272,7 @@ CACHE_KEEP_PATHS = ("/api/send", "/api/typing", "/api/poll")
 @app.after_request
 def invalidate_caches_on_write(resp):
     if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.path.startswith("/api/") \
-       and request.path not in CACHE_KEEP_PATHS and not request.path.endswith("/read") and "/comments" not in request.path and "/vote" not in request.path:
+       and request.path not in CACHE_KEEP_PATHS and not request.path.endswith("/read") and "/comments" not in request.path and "/vote" not in request.path and not request.path.endswith("/react"):
         clear_caches()
     return resp
 
@@ -1000,15 +1001,17 @@ def api_chat_messages(chat_id):
     limit = int_arg("limit", 50, 1, 100); offset = int_arg("offset", 0, 0, 100000)
     messages = sign_attachments(get_messages(chat_id, limit, offset))
     mark_messages_read(chat_id, user["id"]); update_last_seen(user["id"])
+    rx = reactions_summary(get_reactions(chat_id, messages[0]["id"] if messages else 0), user["id"])
+    rv = _reaction_ver[chat_id]
     if chat.get("is_group"):
         sender_names(messages)
         members = get_chat_members(chat_id)
         mu = get_users_by_ids(members)
         users_data = [user_public_dict(mu[uid]) for uid in members if uid in mu]
-        return jsonify({"messages": messages, "other_user": {"is_group": True, "name": chat.get("name"), "avatar_url": chat.get("avatar_url"), "members": users_data, "owner_id": chat.get("owner_id")}})
+        return jsonify({"messages": messages, "reactions": rx, "rv": rv, "other_user": {"is_group": True, "name": chat.get("name"), "avatar_url": chat.get("avatar_url"), "members": users_data, "owner_id": chat.get("owner_id")}})
     other_id = chat["user2_id"] if chat["user1_id"] == user["id"] else chat["user1_id"]
     other = get_user_by_id(other_id)
-    return jsonify({"messages": messages, "other_user": user_public_dict(other) if other else None})
+    return jsonify({"messages": messages, "reactions": rx, "rv": rv, "other_user": user_public_dict(other) if other else None})
 
 @app.route("/api/chats/<int:chat_id>/leave", methods=["POST"])
 def api_chat_leave(chat_id):
@@ -1088,6 +1091,39 @@ def api_message_delete(message_id):
     delete_message(message_id)
     return jsonify({"ok": True})
 
+# ==================== РЕАКЦИИ ====================
+REACTION_EMOJIS = ("👍", "❤️", "😂", "😮", "😢", "🔥", "👎", "🎉")
+# «Версия» реакций чата: растёт при каждой реакции, опрос присылает полный список, только если версия клиента устарела.
+# Старт от времени, чтобы после перезапуска сервера клиенты с прежней версией получили свежие данные. Работает при одном процессе.
+_reaction_ver = defaultdict(lambda: int(time.time()))
+_reaction_ver_lock = threading.Lock()
+
+def reactions_summary(rows, user_id):
+    """[{message_id, emoji, count, mine}] из строк message_reactions."""
+    agg = {}
+    for r in rows or []:
+        e = agg.setdefault((r["message_id"], r["emoji"]), {"message_id": r["message_id"], "emoji": r["emoji"], "count": 0, "mine": False})
+        e["count"] += 1
+        if r["user_id"] == user_id: e["mine"] = True
+    return list(agg.values())
+
+@app.route("/api/messages/<int:message_id>/react", methods=["POST"])
+def api_message_react(message_id):
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    data = json_body()
+    emoji = data.get("emoji")
+    if emoji is not None and emoji not in REACTION_EMOJIS: return jsonify({"error": "Такой реакции нет"}), 400
+    if not check_rate_limit(f"react_{user['id']}", 30, 10): return jsonify({"error": "Слишком часто"}), 429
+    msg = get_message_by_id(message_id)
+    if not msg: return jsonify({"error": "Сообщение не найдено"}), 404
+    chat = get_chat_cached(msg["chat_id"])
+    if not chat or not has_chat_access(chat, user["id"]): return jsonify({"error": "Нет доступа"}), 403
+    set_reaction(message_id, msg["chat_id"], user["id"], emoji)
+    with _reaction_ver_lock:
+        _reaction_ver[msg["chat_id"]] += 1
+    return jsonify({"ok": True})
+
 @app.route("/api/poll")
 def api_poll():
     user = get_current_user()
@@ -1108,7 +1144,11 @@ def api_poll():
     other_id = None if chat.get("is_group") else (chat["user2_id"] if chat["user1_id"] == user["id"] else chat["user1_id"])
     now = time.time()
     typing_users = [uid for uid, ts in typing_store.get(chat_id, {}).items() if uid != user["id"] and (other_id is None or uid == other_id) and now - ts < 5]
-    return jsonify({"messages": msgs, "typing": len(typing_users) > 0})
+    out = {"messages": msgs, "typing": len(typing_users) > 0}
+    ver = _reaction_ver[chat_id]; out["rv"] = ver
+    if to_int(request.args.get("rv")) != ver:
+        out["reactions"] = reactions_summary(get_reactions(chat_id, to_int(request.args.get("rmin")) or 0), user["id"])
+    return jsonify(out)
 
 @app.route("/api/typing", methods=["POST"])
 def api_typing():
