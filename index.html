@@ -1924,7 +1924,7 @@ document.getElementById("profile-avatar").onclick = () => {
   const input = document.createElement("input"); input.type = "file"; input.accept = canVideo ? "image/*,video/mp4,video/webm" : "image/*";
   input.onchange = async (e) => {
     const file = e.target.files[0]; if (!file) return;
-    if (file.type.startsWith("video/")) { if (file.size > 3 * 1024 * 1024) return alert("Видео больше 3 МБ (лучше 3–5 секунд)"); }
+    if (file.type.startsWith("video/")) { if (file.size > 10 * 1024 * 1024) return alert("Видео больше 10 МБ (и не длиннее 1 минуты)"); }
     else if (file.size > 5 * 1024 * 1024) return alert("Файл больше 5 МБ");
     const fd = new FormData(); fd.append("file", file);
     try { const data = await api("/api/upload/avatar", { method: "POST", body: fd }); currentUser = data.user; openProfile(); alert("Аватарка обновлена!"); } catch (e) { alert("Ошибка: " + e.message); }

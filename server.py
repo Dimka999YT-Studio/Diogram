@@ -7,6 +7,7 @@ import io
 import re
 import random
 import threading
+import struct
 import functools
 import hashlib
 import urllib.parse
@@ -89,11 +90,78 @@ MAX_PHOTO_SIZE = 5 * 1024 * 1024
 MAX_DIMENSION = 1600
 COMPRESS_THRESHOLD = 4 * 1024 * 1024
 ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/gif"}
-# Видео-аватарка: только владелец и разработчики, короткий ролик (MP4/WebM) до 3 МБ.
+# Видео-аватарка: только владелец и разработчики, ролик (MP4/WebM) до 10 МБ и до 1 минуты.
 VIDEO_AVATAR_ROLES = ("owner", "developer")
 VIDEO_AVATAR_MIME = {"video/mp4", "video/webm"}
-VIDEO_AVATAR_MAX = 3 * 1024 * 1024
+VIDEO_AVATAR_MAX = 10 * 1024 * 1024   # бакет avatars должен разрешать не меньше (file_size_limit); MAX_REQUEST_BYTES (12 МБ) это покрывает
 _MP4_BRANDS = (b"isom", b"iso2", b"iso4", b"iso5", b"iso6", b"mp41", b"mp42", b"avc1", b"M4V ", b"dash")
+
+VIDEO_AVATAR_MAX_SEC = 60
+
+def _ebml_vint(data, pos, strip):
+    """Число переменной длины (EBML). strip=False для id элемента (с маркером), True для размера. -> (значение, длина, «размер неизвестен»)."""
+    if pos >= len(data): return None
+    b = data[pos]; ln = 1; mask = 0x80
+    while ln <= 8 and not (b & mask): ln += 1; mask >>= 1
+    if ln > 8 or pos + ln > len(data): return None
+    val = (b & (mask - 1)) if strip else b
+    for i in range(1, ln): val = (val << 8) | data[pos + i]
+    return val, ln, bool(strip and val == (1 << (7 * ln)) - 1)
+
+def _webm_duration(data):
+    """Длительность WebM в секундах из Segment/Info/Duration или None, если в заголовке её нет."""
+    st = {"scale": 1000000, "dur": None}
+    def walk(pos, end):
+        n = 0
+        while pos < end and n < 5000:
+            n += 1
+            i = _ebml_vint(data, pos, False)
+            if not i: return
+            eid, il, _ = i
+            sz = _ebml_vint(data, pos + il, True)
+            if not sz: return
+            size, sl, unknown = sz
+            body = pos + il + sl; bend = end if unknown else min(body + size, end)
+            if eid in (0x18538067, 0x1549A966): walk(body, bend)          # Segment, Info: заходим внутрь
+            elif eid == 0x2AD7B1: st["scale"] = int.from_bytes(data[body:bend], "big") or st["scale"]   # TimecodeScale
+            elif eid == 0x4489:                                               # Duration (float)
+                raw = data[body:bend]
+                if len(raw) == 4: st["dur"] = struct.unpack(">f", raw)[0]
+                elif len(raw) == 8: st["dur"] = struct.unpack(">d", raw)[0]
+            elif eid == 0x1F43B675: return                                    # Cluster: дальше только данные
+            if unknown: return
+            pos = bend
+    walk(0, len(data))
+    d = st["dur"]
+    return d * st["scale"] / 1e9 if d is not None and d == d and d >= 0 else None
+
+def _mp4_duration(data):
+    """Длительность MP4 в секундах из moov/mvhd или None."""
+    def boxes(pos, end):
+        n = 0
+        while pos + 8 <= end and n < 5000:
+            n += 1
+            size = int.from_bytes(data[pos:pos + 4], "big"); typ = data[pos + 4:pos + 8]; hdr = 8
+            if size == 1:
+                if pos + 16 > end: return
+                size = int.from_bytes(data[pos + 8:pos + 16], "big"); hdr = 16
+            elif size == 0: size = end - pos
+            if size < hdr: return
+            yield typ, pos + hdr, min(pos + size, end)
+            pos += size
+    for typ, b, e in boxes(0, len(data)):
+        if typ != b"moov": continue
+        for t2, b2, e2 in boxes(b, e):
+            if t2 != b"mvhd" or b2 >= e2: continue
+            if data[b2] == 1 and b2 + 32 <= e2: ts = int.from_bytes(data[b2 + 20:b2 + 24], "big"); d = int.from_bytes(data[b2 + 24:b2 + 32], "big")
+            elif data[b2] == 0 and b2 + 20 <= e2: ts = int.from_bytes(data[b2 + 12:b2 + 16], "big"); d = int.from_bytes(data[b2 + 16:b2 + 20], "big")
+            else: return None
+            return d / ts if ts else None
+    return None
+
+def video_duration(data, kind):
+    try: return _mp4_duration(data) if kind == "mp4" else _webm_duration(data)
+    except Exception: return None
 
 def sniff_video(data):
     """'mp4' / 'webm' по содержимому (заявленный клиентом mime нельзя считать доказательством) или None."""
@@ -1324,9 +1392,12 @@ def api_upload_avatar():
     if mime in VIDEO_AVATAR_MIME:
         if (user.get("role") or "user") not in VIDEO_AVATAR_ROLES: return jsonify({"error": "Видео-аватарка доступна только владельцу и разработчикам"}), 403
         processed = file.read(VIDEO_AVATAR_MAX + 1)
-        if len(processed) > VIDEO_AVATAR_MAX: return jsonify({"error": "Видео больше 3 МБ"}), 400
+        if len(processed) > VIDEO_AVATAR_MAX: return jsonify({"error": "Видео больше 10 МБ"}), 400
         ext = sniff_video(processed)
         if not ext: return jsonify({"error": "Нужен MP4 (H.264) или WebM"}), 400
+        dur = video_duration(processed, ext)
+        if not dur or dur <= 0: return jsonify({"error": "Не удалось определить длительность видео. Сохрани ролик как обычный MP4 или WebM."}), 400
+        if dur > VIDEO_AVATAR_MAX_SEC: return jsonify({"error": "Видео длиннее 1 минуты"}), 400
         content_type = "video/mp4" if ext == "mp4" else "video/webm"
     else:
         if mime not in ALLOWED_MIME: return jsonify({"error": "Только JPG, PNG, WEBP, GIF"}), 400
