@@ -52,7 +52,7 @@
   .list-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #17212b; }
   .list-item:active { background: #17212b; }
   .avatar { width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg, #5b8bff, #7b5bff); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; flex-shrink: 0; color: #fff; overflow: hidden; position: relative; }
-  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .avatar img, .avatar video, .profile-big-avatar video, .gi-ava video, .ch-info-avatar video, #gi-avatar img, #gi-avatar video { width: 100%; height: 100%; object-fit: cover; }
   .avatar.channel { background: linear-gradient(135deg, #ffb800, #ff6b00); border-radius: 14px; }
   .avatar.secret-channel { background: linear-gradient(135deg, #4dd964, #2fa54a); border-radius: 14px; }
   .avatar.group { background: linear-gradient(135deg, #9b5bff, #6b4aff); border-radius: 14px; }
@@ -875,6 +875,13 @@ function escapeHtml(t) { const d = document.createElement("div"); d.textContent 
 // escapeHtml НЕ экранирует кавычки, поэтому для значений внутри атрибутов (src="", data-x="") нужен escapeAttr.
 // Никогда не вставляй пользовательские данные в inline onclick="...('...')" — используй data-атрибуты.
 function escapeAttr(t) { return escapeHtml(t).replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
+// Аватарка: у владельца и разработчиков может быть коротким видео (MP4/WebM) — оно играет без звука по кругу
+const AVATAR_VIDEO_RE = /\.(mp4|webm)(\?|#|$)/i;
+function avatarHtml(url) { const u = escapeAttr(url); return AVATAR_VIDEO_RE.test(url) ? '<video src="' + u + '" autoplay loop muted playsinline disablepictureinpicture></video>' : '<img src="' + u + '">'; }
+function avatarEl(url) {
+  if (!AVATAR_VIDEO_RE.test(url)) { const im = document.createElement("img"); im.src = url; return im; }
+  const v = document.createElement("video"); v.muted = true; v.loop = true; v.autoplay = true; v.playsInline = true; v.disablePictureInPicture = true; v.src = url; return v;
+}
 // Имя пользователя по id для админ-окон (берём из уже загруженных списков, а не из inline-атрибута)
 function adminLookupName(userId) {
   const u = (typeof allAdminUsers !== "undefined" ? allAdminUsers : []).find(x => x.id === userId);
@@ -1067,7 +1074,7 @@ async function loadList() {
       // Если это группа
       if (item.type === "group") {
         const av = document.createElement("div"); av.className = "avatar group";
-        if (item.avatar_url) av.innerHTML = '<img src="' + escapeAttr(item.avatar_url) + '">';
+        if (item.avatar_url) av.innerHTML = avatarHtml(item.avatar_url);
         else av.textContent = "👥";
         el.innerHTML = ''; el.appendChild(av);
         const info = document.createElement("div"); info.className = "list-info";
@@ -1080,7 +1087,7 @@ async function loadList() {
         const u = item.other_user;
         const name = u.first_name || u.username || "Без имени";
         const av = document.createElement("div"); av.className = "avatar";
-        if (u.avatar_url) av.innerHTML = '<img src="' + escapeAttr(u.avatar_url) + '">';
+        if (u.avatar_url) av.innerHTML = avatarHtml(u.avatar_url);
         else av.textContent = initial(name);
         if (u.is_online) { const dot = document.createElement("div"); dot.className = "online-dot"; av.appendChild(dot); }
         const last = item.last_message_type === "photo" ? "📷 Фото" : item.last_message_type === "file" ? "📎 Файл" : (item.last_message || "Нет сообщений");
@@ -1096,7 +1103,7 @@ async function loadList() {
       // Если это канал
       else {
         const av = document.createElement("div"); av.className = "avatar " + (item.channel_type === "secret" ? "secret-channel" : "channel");
-        if (item.avatar_url) av.innerHTML = '<img src="' + escapeAttr(item.avatar_url) + '">';
+        if (item.avatar_url) av.innerHTML = avatarHtml(item.avatar_url);
         else av.textContent = item.channel_type === "secret" ? "🌍" : "📢";
         el.innerHTML = ''; el.appendChild(av);
         const info = document.createElement("div"); info.className = "list-info";
@@ -1348,7 +1355,7 @@ async function openGroupInfo() {
   const chatId = currentChat.id, o = currentChat.other;
   document.getElementById("gi-name").textContent = o.name || "Группа";
   const av = document.getElementById("gi-avatar"); av.textContent = "";
-  if (o.avatar_url) { const im = document.createElement("img"); im.src = o.avatar_url; im.style.cssText = "width:100%;height:100%;object-fit:cover;"; av.appendChild(im); } else av.textContent = "👥";
+  if (o.avatar_url) { av.appendChild(avatarEl(o.avatar_url)); } else av.textContent = "👥";
   document.getElementById("gi-count").textContent = "";
   const box = document.getElementById("gi-members"); box.textContent = "";
   show("screen-group-info");
@@ -1361,7 +1368,7 @@ async function openGroupInfo() {
       const row = document.createElement("div"); row.className = "list-item";
       const a = document.createElement("div"); a.className = "gi-ava";
       const nm = ((m.first_name || "") + " " + (m.last_name || "")).trim() || m.username || "Пользователь";
-      if (m.avatar_url) { const im = document.createElement("img"); im.src = m.avatar_url; a.appendChild(im); } else a.textContent = nm.charAt(0).toUpperCase();
+      if (m.avatar_url) { a.appendChild(avatarEl(m.avatar_url)); } else a.textContent = nm.charAt(0).toUpperCase();
       const t = document.createElement("div"); t.textContent = nm + (m.username ? "  @" + m.username : "");
       row.appendChild(a); row.appendChild(t);
       if (ownerId != null && m.id === ownerId) { const b = document.createElement("div"); b.className = "gi-owner"; b.textContent = "владелец"; row.appendChild(b); }
@@ -1504,7 +1511,7 @@ async function openChannelInfo(channelId) {
     currentChInfo = ch;
     const av = document.getElementById("ch-info-avatar");
     av.className = "ch-info-avatar" + (ch.type === "secret" ? " secret" : "");
-    if (ch.avatar_url) av.innerHTML = '<img src="' + escapeAttr(ch.avatar_url) + '">';
+    if (ch.avatar_url) av.innerHTML = avatarHtml(ch.avatar_url);
     else av.textContent = ch.type === "secret" ? "🌍" : "📢";
     document.getElementById("ch-info-name").textContent = ch.name;
     document.getElementById("ch-info-username").textContent = ch.username ? "@" + ch.username : "🌍 Глобальный канал";
@@ -1540,7 +1547,7 @@ document.getElementById("btn-ch-info-edit").onclick = () => {
   newAvatarFile = null; chEditType = currentChInfo.type;
   const av = document.getElementById("ch-edit-avatar");
   av.className = "ch-info-avatar" + (currentChInfo.type === "secret" ? " secret" : "");
-  if (currentChInfo.avatar_url) av.innerHTML = '<img src="' + escapeAttr(currentChInfo.avatar_url) + '">';
+  if (currentChInfo.avatar_url) av.innerHTML = avatarHtml(currentChInfo.avatar_url);
   else av.textContent = currentChInfo.type === "secret" ? "🌍" : "📢";
   document.getElementById("ch-edit-name").value = currentChInfo.name || "";
   document.getElementById("ch-edit-username").value = currentChInfo.username || "";
@@ -1685,7 +1692,7 @@ document.getElementById("search-input").addEventListener("input", (e) => {
                     const el = document.createElement("div"); el.className = "list-item";
                     const name = u.first_name || u.username || "Без имени";
                     const av = document.createElement("div"); av.className = "avatar";
-                    if (u.avatar_url) av.innerHTML = '<img src="' + escapeAttr(u.avatar_url) + '">'; else av.textContent = initial(name);
+                    if (u.avatar_url) av.innerHTML = avatarHtml(u.avatar_url); else av.textContent = initial(name);
                     el.appendChild(av);
                     const info = document.createElement("div"); info.className = "list-info";
                     info.innerHTML = '<div class="list-name">' + escapeHtml(name) + '</div><div class="list-last">@' + escapeHtml(u.username || "—") + '</div>';
@@ -1701,7 +1708,7 @@ document.getElementById("search-input").addEventListener("input", (e) => {
                 for (const c of data.channels) {
                     const el = document.createElement("div"); el.className = "list-item";
                     const av = document.createElement("div"); av.className = "avatar channel";
-                    if (c.avatar_url) av.innerHTML = '<img src="' + escapeAttr(c.avatar_url) + '">'; else av.textContent = "📢";
+                    if (c.avatar_url) av.innerHTML = avatarHtml(c.avatar_url); else av.textContent = "📢";
                     el.appendChild(av);
                     const info = document.createElement("div"); info.className = "list-info";
                     info.innerHTML = '<div class="list-name">' + escapeHtml(c.name) + '</div><div class="list-last">@' + escapeHtml(c.username || "—") + (c.subscribers_count != null ? ' • ' + (c.subscribers_count || 0) + ' подписчиков' : '') + '</div>' + (c.description ? '<div class="list-last">' + escapeHtml(c.description) + '</div>' : '');
@@ -1867,7 +1874,7 @@ async function openProfile() {
   if (!currentUser) return;
   const name = ((currentUser.first_name || "") + " " + (currentUser.last_name || "")).trim() || "Без имени";
   const av = document.getElementById("profile-avatar");
-  if (currentUser.avatar_url) av.innerHTML = '<img src="' + escapeAttr(currentUser.avatar_url) + '"><div class="avatar-edit-hint">📷</div>';
+  if (currentUser.avatar_url) av.innerHTML = avatarHtml(currentUser.avatar_url) + '<div class="avatar-edit-hint">📷</div>';
   else av.innerHTML = initial(name) + '<div class="avatar-edit-hint">📷</div>';
   document.getElementById("profile-name").textContent = name;
   document.getElementById("profile-username-show").textContent = currentUser.username ? "@" + currentUser.username : "—";
@@ -1913,10 +1920,12 @@ document.getElementById("btn-profile-back").onclick = () => { show("screen-list"
 async function doLogout() { try { await api("/api/logout", { method: "POST" }); } catch (e) {} localStorage.removeItem("diogram_token"); location.reload(); }
 document.getElementById("btn-logout").onclick = () => { if (!confirm("Выйти?")) return; doLogout(); };
 document.getElementById("profile-avatar").onclick = () => {
-  const input = document.createElement("input"); input.type = "file"; input.accept = "image/*";
+  const canVideo = currentUser && (currentUser.role === "owner" || currentUser.role === "developer");
+  const input = document.createElement("input"); input.type = "file"; input.accept = canVideo ? "image/*,video/mp4,video/webm" : "image/*";
   input.onchange = async (e) => {
     const file = e.target.files[0]; if (!file) return;
-    if (file.size > 5 * 1024 * 1024) return alert("Файл больше 5 МБ");
+    if (file.type.startsWith("video/")) { if (file.size > 10 * 1024 * 1024) return alert("Видео больше 10 МБ (и не длиннее 1 минуты)"); }
+    else if (file.size > 5 * 1024 * 1024) return alert("Файл больше 5 МБ");
     const fd = new FormData(); fd.append("file", file);
     try { const data = await api("/api/upload/avatar", { method: "POST", body: fd }); currentUser = data.user; openProfile(); alert("Аватарка обновлена!"); } catch (e) { alert("Ошибка: " + e.message); }
   };
@@ -1958,7 +1967,7 @@ async function openUserProfile(userId) {
     const name = ((u.first_name || "") + " " + (u.last_name || "")).trim() || "Без имени";
     
     const av = document.getElementById("user-avatar"); 
-    if (u.avatar_url) av.innerHTML = '<img src="' + escapeAttr(u.avatar_url) + '">'; 
+    if (u.avatar_url) av.innerHTML = avatarHtml(u.avatar_url); 
     else av.textContent = initial(name);
     
     document.getElementById("user-name").textContent = name; 
@@ -2013,7 +2022,7 @@ async function showUsernameInfo(username) {
     document.getElementById("uinfo-name").textContent = "@" + data.username;
     const av = document.getElementById("uinfo-avatar");
     const name = data.owner.first_name || data.owner.username || "Без имени";
-    if (data.owner.avatar_url) av.innerHTML = '<img src="' + escapeAttr(data.owner.avatar_url) + '">';
+    if (data.owner.avatar_url) av.innerHTML = avatarHtml(data.owner.avatar_url);
     else av.textContent = initial(name);
     document.getElementById("uinfo-owner-name").textContent = name;
     const purchaseBlock = document.getElementById("uinfo-purchase-block");
