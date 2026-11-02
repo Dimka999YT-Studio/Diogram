@@ -89,6 +89,17 @@ MAX_PHOTO_SIZE = 5 * 1024 * 1024
 MAX_DIMENSION = 1600
 COMPRESS_THRESHOLD = 4 * 1024 * 1024
 ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+# Видео-аватарка: только владелец и разработчики, короткий ролик (MP4/WebM) до 3 МБ.
+VIDEO_AVATAR_ROLES = ("owner", "developer")
+VIDEO_AVATAR_MIME = {"video/mp4", "video/webm"}
+VIDEO_AVATAR_MAX = 3 * 1024 * 1024
+_MP4_BRANDS = (b"isom", b"iso2", b"iso4", b"iso5", b"iso6", b"mp41", b"mp42", b"avc1", b"M4V ", b"dash")
+
+def sniff_video(data):
+    """'mp4' / 'webm' по содержимому (заявленный клиентом mime нельзя считать доказательством) или None."""
+    if len(data) > 12 and data[4:8] == b"ftyp" and data[8:12] in _MP4_BRANDS: return "mp4"
+    if data[:4] == b"\x1a\x45\xdf\xa3": return "webm"
+    return None
 
 MAX_FILE_SIZE = 3 * 1024 * 1024
 FILE_QUOTA_BASE = 42 * 1024 * 1024
@@ -1310,13 +1321,22 @@ def api_upload_avatar():
     file = request.files["file"]
     if not file.filename: return jsonify({"error": "Пустой файл"}), 400
     mime = file.mimetype or ""
-    if mime not in ALLOWED_MIME: return jsonify({"error": "Только JPG, PNG, WEBP, GIF"}), 400
-    try:
-        file_bytes = file.read(); processed, ext = _process_image(file_bytes, mime)
-    except ValueError as e: return jsonify({"error": str(e)}), 400
+    if mime in VIDEO_AVATAR_MIME:
+        if (user.get("role") or "user") not in VIDEO_AVATAR_ROLES: return jsonify({"error": "Видео-аватарка доступна только владельцу и разработчикам"}), 403
+        processed = file.read(VIDEO_AVATAR_MAX + 1)
+        if len(processed) > VIDEO_AVATAR_MAX: return jsonify({"error": "Видео больше 3 МБ"}), 400
+        ext = sniff_video(processed)
+        if not ext: return jsonify({"error": "Нужен MP4 (H.264) или WebM"}), 400
+        content_type = "video/mp4" if ext == "mp4" else "video/webm"
+    else:
+        if mime not in ALLOWED_MIME: return jsonify({"error": "Только JPG, PNG, WEBP, GIF"}), 400
+        try:
+            file_bytes = file.read(); processed, ext = _process_image(file_bytes, mime)
+        except ValueError as e: return jsonify({"error": str(e)}), 400
+        content_type = f"image/{ext if ext != 'jpg' else 'jpeg'}"
     filename = f"user_{user['id']}_{int(time.time())}.{ext}"
     try:
-        supabase.storage.from_("avatars").upload(filename, processed, file_options={"content-type": f"image/{ext if ext != 'jpg' else 'jpeg'}"})
+        supabase.storage.from_("avatars").upload(filename, processed, file_options={"content-type": content_type})
         public_url = supabase.storage.from_("avatars").get_public_url(filename)
     except Exception as e:
         print(f"[upload] {e!r}"); return jsonify({"error": "Не удалось загрузить файл. Попробуй ещё раз."}), 500
