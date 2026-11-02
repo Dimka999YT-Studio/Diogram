@@ -76,6 +76,20 @@ else:
     groq_client = None
 DIO_BOT_ID = 1000011
 
+# ==================== СЕЗОННАЯ ИГРА (аккаунт @Play) ====================
+# Любое сообщение аккаунту GAME_BOT_ID получает ответ-анонс с кнопкой «Играть» (не чаще раза в 5 минут на человека).
+# Сезон и текст меняются здесь. Сама игра (сюжет, очки, топ-3) подключается отдельно.
+GAME_BOT_ID = 1000014
+MSK = timezone(timedelta(hours=3))
+GAME_SEASON = {"title": "Осенний сезон", "ends_at": datetime(2026, 12, 1, 0, 0, tzinfo=MSK)}
+GAME_INVITE_TEXT = ("🍂 Осенний сезон\n\n"
+                    "В осенний сезон у меня было 3 праздника. Сейчас ноябрь, скоро зима и новый вайб, поэтому играй в игру и получи шанс выиграть призы! 🎁\n\n"
+                    "⏳ Конец игры: 1 декабря, 00:00 (МСК)")
+GAME_ENDED_TEXT = "🍂 Осенний сезон закончился. Следи за новостями: скоро будет новый сезон!"
+
+def game_active():
+    return datetime.now(timezone.utc) < GAME_SEASON["ends_at"]
+
 ALLOWED_DOMAINS = ["gmail.com", "yandex.com", "yandex.ru", "mail.ru", "outlook.com", "list.ru", "bk.ru", "inbox.ru"]
 BLOCKED_KEYWORDS = ["temp", "10minute", "guerrilla", "throwaway", "yopmail", "mailinator"]
 PHOTO_LIMIT_15_DAYS = 8
@@ -480,7 +494,7 @@ def messaging_blocked(sender, recipient):
     """True, если sender не может писать recipient из-за настройки приватности «Никто».
     Сотрудники (STAFF_ROLES) исключение; себе и ИИ-боту писать можно всегда."""
     if not sender or not recipient or sender["id"] == recipient["id"]: return False
-    if recipient["id"] == DIO_BOT_ID: return False
+    if recipient["id"] in (DIO_BOT_ID, GAME_BOT_ID): return False
     if (sender.get("role") or "user") in STAFF_ROLES: return False
     return recipient.get("who_can_message") == "nobody"
 
@@ -1182,8 +1196,19 @@ def api_send():
             # Каждый ответ Дио — платный вызов Groq и отдельный поток: ограничиваем и по пользователю, и глобально.
             if should_reply and check_rate_limit(f"dio_{user['id']}", 8, 300) and check_rate_limit("dio_global", 120, 60):
                 threading.Thread(target=process_ai_reply, args=(chat_id, text[:1000]), daemon=True).start()
+        elif other_id == GAME_BOT_ID and user["id"] != GAME_BOT_ID and check_rate_limit(f"gamebot_{user['id']}", 1, 300):
+            try:
+                if game_active(): save_message(chat_id, GAME_BOT_ID, GAME_INVITE_TEXT, "game_invite")
+                else: save_message(chat_id, GAME_BOT_ID, GAME_ENDED_TEXT, "text")
+            except Exception as e: print(f"[game] {e!r}")
     sign_attachments([msg])
     return jsonify({"ok": True, "message": msg})
+
+@app.route("/api/game/state")
+def api_game_state():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    return jsonify({"title": GAME_SEASON["title"], "ends_at": GAME_SEASON["ends_at"].isoformat(), "active": game_active()})
 
 @app.route("/api/messages/<int:message_id>", methods=["DELETE"])
 def api_message_delete(message_id):
