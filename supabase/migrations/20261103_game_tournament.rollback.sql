@@ -1,0 +1,11 @@
+drop function if exists public.game_take_username(bigint, text);
+drop function if exists public.game_take_account(bigint);
+drop function if exists public.game_rank(text, bigint);
+drop function if exists public.game_top(text, int);
+drop function if exists public.game_use_attempt(bigint, text, date, int);
+drop function if exists public.game_add(bigint, text, int, int, int);
+drop table if exists public.game_prize_usernames;
+drop table if exists public.game_prize_accounts;
+drop table if exists public.game_case_opens;
+drop table if exists public.game_daily;
+drop table if exists public.game_players;

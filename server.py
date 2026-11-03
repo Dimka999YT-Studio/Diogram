@@ -61,6 +61,7 @@ from db import (
     supabase
 )
 from email_service import generate_code
+import game
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "").strip()
 JWT_ALGO = "HS256"
@@ -875,7 +876,9 @@ def api_username_info(username):
     if not owner_id: return jsonify({"error": "Владелец не найден"}), 404
     owner = get_user_by_id(owner_id)
     purchase = get_username_purchase_info(username)
-    return jsonify({"username": username, "owner": user_public_dict(owner), "purchase": purchase, "reserved": is_username_reserved(username)})
+    try: tournament = game.username_series_info(username)
+    except Exception as e: print(f"[username_info tournament] {e!r}"); tournament = None
+    return jsonify({"username": username, "owner": user_public_dict(owner), "purchase": purchase, "reserved": is_username_reserved(username), "tournament": tournament})
 
 # ==================== FRIGDMANT ====================
 @app.route("/api/usernames/my")
@@ -909,6 +912,7 @@ def api_frig_list():
     listing_type = data.get("listing_type", "buyout")
     if listing_type not in ("buyout", "auction"): return jsonify({"error": "Тип лота: buyout или auction"}), 400
     if not uname: return jsonify({"error": "Укажи юзернейм"}), 400
+    if game.is_prize_username(uname): return jsonify({"error": "Это личный коллекционный юзернейм турнира, его нельзя продать"}), 403
     if is_username_on_frigdmant(uname): return jsonify({"error": "Этот юзернейм уже выставлен на продажу"}), 400
     owned = [u["username"] for u in get_user_usernames(user["id"])]
     is_active_name = (user.get("username") or "").lower() == uname.lower()
@@ -1209,6 +1213,52 @@ def api_game_state():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
     return jsonify({"title": GAME_SEASON["title"], "ends_at": GAME_SEASON["ends_at"].isoformat(), "active": game_active()})
+
+def _game_user_card(u, total=None):
+    return {"id": u["id"], "username": u.get("username"), "first_name": u.get("first_name"), "last_name": u.get("last_name"),
+            "avatar_url": u.get("avatar_url"), "clouds": total}
+
+@app.route("/api/game/me")
+def api_game_me():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    st = game.my_state(user)
+    st.update({"title": GAME_SEASON["title"], "ends_at": GAME_SEASON["ends_at"].isoformat(), "active": game_active(), "balance": user.get("balance", 0)})
+    return jsonify(st)
+
+@app.route("/api/game/top")
+def api_game_top():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    rows = game.top(3)
+    users = get_users_by_ids([r["user_id"] for r in rows])
+    items = [dict(_game_user_card(users[r["user_id"]], r["total"]), place=i + 1) for i, r in enumerate(rows) if r["user_id"] in users]
+    return jsonify({"top": items, "active": game_active(), "ends_at": GAME_SEASON["ends_at"].isoformat()})
+
+@app.route("/api/game/cases")
+def api_game_cases():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    return jsonify({"cases": game.public_cases(), "balance": user.get("balance", 0), "active": game_active()})
+
+@app.route("/api/game/cases/open", methods=["POST"])
+@serialized_per_user
+def api_game_case_open():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    if not game_active(): return jsonify({"error": "Сезон закончился, кейсы закрыты"}), 400
+    if not check_rate_limit(f"gamecase_{user['id']}", 30, 60): return jsonify({"error": "Слишком часто. Подожди минуту."}), 429
+    case_key = str_field(json_body(), "case")
+    result, err = game.open_case(user["id"], case_key)
+    if err: return jsonify({"error": err}), 400
+    fresh = get_user_by_id(user["id"]) or user
+    return jsonify({"ok": True, "result": result, "balance": fresh.get("balance", 0), "state": game.my_state(fresh)})
+
+@app.route("/api/game/prizes")
+def api_game_prizes():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    return jsonify(game.my_prizes(user["id"]))
 
 @app.route("/api/messages/<int:message_id>", methods=["DELETE"])
 def api_message_delete(message_id):
@@ -2076,6 +2126,104 @@ def api_admin_reserved_remove():
     name = str_field(json_body(), "username").lstrip("@")
     if not name or not remove_reserved_username(name): return jsonify({"error": "Это имя не в резерве"}), 404
     return jsonify({"ok": True})
+
+# ==================== ПРИЗЫ ТУРНИРА (только owner) ====================
+@app.route("/api/admin/game")
+def api_admin_game():
+    admin = require_owner()
+    if not admin: return jsonify({"error": "Нет доступа"}), 403
+    ov = game.admin_overview()
+    holders = get_users_by_ids([r["given_to"] for r in ov["accounts"] + ov["usernames"] if r.get("given_to")])
+    def who(r): return (holders.get(r.get("given_to")) or {}).get("username") or (r.get("given_to") and f"id {r['given_to']}") or None
+    return jsonify({
+        "accounts": [{"id": r["id"], "email": r["email"], "given_to": r.get("given_to"), "given_name": who(r)} for r in ov["accounts"]],
+        "usernames": [{"username": r["username"], "pool": r["pool"], "series_no": r.get("series_no"), "given_to": r.get("given_to"), "given_name": who(r)} for r in ov["usernames"]],
+    })
+
+@app.route("/api/admin/game/accounts", methods=["POST"])
+def api_admin_game_accounts():
+    admin = require_owner()
+    if not admin: return jsonify({"error": "Нет доступа"}), 403
+    raw = json_body().get("text")
+    if not isinstance(raw, str) or not raw.strip(): return jsonify({"error": "Список пуст"}), 400
+    lines = [l.strip() for l in raw.splitlines() if l.strip()]
+    if len(lines) > 100: return jsonify({"error": "Не больше 100 строк за раз"}), 400
+    pairs, skipped = [], []
+    for l in lines:
+        email, sep, pw = l.partition(":")
+        email = email.strip().lower()
+        if not sep or not email or not pw or len(email) > 254 or len(pw) > 72:
+            skipped.append({"email": email or l[:30], "reason": "Формат строки: почта:пароль"}); continue
+        # Аккаунт должен существовать, пароль подходить и роль быть обычной: иначе победитель получит нерабочие данные
+        # (или аккаунт сотрудника).
+        acc = get_user_by_email(email)
+        if not acc or not check_password(pw, acc["password_hash"]): skipped.append({"email": email, "reason": "Нет такого аккаунта или пароль не подходит"}); continue
+        if acc.get("role") != "user": skipped.append({"email": email, "reason": "Аккаунт не обычный пользователь"}); continue
+        pairs.append((email, pw))
+    added, dup = game.add_accounts(pairs)
+    return jsonify({"ok": True, "added": added, "skipped": skipped + dup})
+
+@app.route("/api/admin/game/usernames", methods=["POST"])
+def api_admin_game_usernames():
+    admin = require_owner()
+    if not admin: return jsonify({"error": "Нет доступа"}), 403
+    data = json_body()
+    pool = data.get("pool")
+    if pool not in ("case", "top"): return jsonify({"error": "pool: case или top"}), 400
+    raw = data.get("usernames")
+    if isinstance(raw, str): raw = re.split(r"[\s,;]+", raw)
+    if not isinstance(raw, list): return jsonify({"error": "Нужен список юзернеймов"}), 400
+    names = []
+    for n in raw:
+        n = n.strip().lstrip("@") if isinstance(n, str) else ""
+        if n and n.lower() not in [x.lower() for x in names]: names.append(n)
+    if not names: return jsonify({"error": "Список пуст"}), 400
+    if len(names) > 20: return jsonify({"error": "Не больше 20 имён за раз"}), 400
+    added, skipped = [], []
+    for n in names:   # порядок списка = порядок выпадения из кейса
+        # Для призов допустимо имя с цифры (например 2FA): обычная проверка требует первую букву.
+        if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_]{0,31}", n): skipped.append({"username": n, "reason": "Username: только латиница, цифры, _ (до 32 символов)"}); continue
+        if game.is_prize_username(n): skipped.append({"username": n, "reason": "Уже в списке призов"}); continue
+        if not is_username_reserved(n):   # имя, уже лежащее в резерве, берём как есть
+            conflict = username_conflict(n, None)
+            if not conflict and get_channel_by_username(n): conflict = "Этот юзернейм занят каналом"
+            if not conflict and is_username_on_frigdmant(n): conflict = "Этот юзернейм сейчас на продаже на Frigdmant"
+            if conflict: skipped.append({"username": n, "reason": conflict}); continue
+            if not add_reserved_username(admin["id"], n): skipped.append({"username": n, "reason": "Не удалось сохранить"}); continue
+        try: game.register_prize_username(n, pool); added.append(n)
+        except Exception as e: print(f"[game usernames] {e!r}"); skipped.append({"username": n, "reason": "Не удалось сохранить"})
+    return jsonify({"ok": True, "added": added, "skipped": skipped})
+
+@app.route("/api/admin/game/remove", methods=["POST"])
+def api_admin_game_remove():
+    admin = require_owner()
+    if not admin: return jsonify({"error": "Нет доступа"}), 403
+    data = json_body()
+    if data.get("kind") == "account":
+        acc_id = to_int(data.get("id"))
+        if acc_id is None or not game.remove_account(acc_id): return jsonify({"error": "Не найден или уже выдан"}), 404
+        return jsonify({"ok": True})
+    if data.get("kind") == "username":
+        name = str_field(data, "username").lstrip("@")
+        if not name or not game.remove_prize_username(name): return jsonify({"error": "Не найден или уже выдан"}), 404
+        remove_reserved_username(name)   # имя возвращается в свободные
+        return jsonify({"ok": True})
+    return jsonify({"error": "kind: account или username"}), 400
+
+@app.route("/api/admin/game/award", methods=["POST"])
+def api_admin_game_award():
+    """Наградить победителя турнира конкретным призовым юзернеймом (например, @Legend за 2 место)."""
+    admin = require_owner()
+    if not admin: return jsonify({"error": "Нет доступа"}), 403
+    data = json_body(); name = str_field(data, "username").lstrip("@"); uid = to_int(data.get("user_id"))
+    if not name or uid is None: return jsonify({"error": "Нужны username и user_id"}), 400
+    target = get_user_by_id(uid)
+    if not target: return jsonify({"error": "Пользователь с таким ID не найден"}), 404
+    if target.get("role") != "user": return jsonify({"error": "Сотрудникам призы турнира не выдаются"}), 400
+    try: got = game.award_username(uid, name)
+    except Exception as e: print(f"[game award] {e!r}"); return jsonify({"error": "Не удалось выдать"}), 500
+    if not got: return jsonify({"error": "Это имя не в списке призов или уже выдано"}), 404
+    return jsonify({"ok": True, "to": target.get("username"), "series_no": got["series_no"]})
 
 # ==================== WORKER ====================
 @app.route("/api/worker/get_pending")
