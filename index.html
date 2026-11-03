@@ -75,6 +75,8 @@
   .msg.other { background: #1c2a38; align-self: flex-start; border-bottom-left-radius: 4px; }
   @media (hover: none) { #messages .msg, #channel-messages .msg, #list-container .list-item { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } }
   .rx-picker .ctx-btn { font-size: 14px; padding: 8px 14px; white-space: nowrap; color: #e8eef5; }
+  .pre-line { white-space: pre-line; }
+  .game-play-btn { display: block; width: 100%; margin-top: 8px; padding: 10px 14px; border: 0; border-radius: 12px; background: #ff9f43; color: #1a1206; font-size: 15px; font-weight: 700; cursor: pointer; }
   .rx-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
   .rx-row:empty { display: none; }
   .rx-chip { font-size: 13px; padding: 2px 7px; border-radius: 12px; background: rgba(255,255,255,0.14); cursor: pointer; user-select: none; }
@@ -1190,6 +1192,12 @@ function bindRxGestures(box, show) {
   box.addEventListener("scroll", closeRxPicker, { passive: true });
 }
 bindRxGestures(document.getElementById("messages"), showRxPicker);
+// Кнопка «Играть» в сообщении от аккаунта сезонной игры. Сама игра подключается позже: пока сообщаем, открыта ли она.
+document.getElementById("messages").addEventListener("click", async (ev) => {
+  if (!ev.target.closest || !ev.target.closest(".game-play-btn")) return;
+  try { const st = await api("/api/game/state"); alert(st.active ? "🍂 Игра скоро откроется! Следи за сообщениями." : "🍂 Игра закончена. Скоро будет новый сезон!"); }
+  catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
+});
 document.addEventListener("click", closeRxPicker);
 // ---- реакции на посты каналов (реакции приходят вместе с постами в поле reactions) ----
 function showChannelRxPicker(el) {
@@ -1228,7 +1236,8 @@ function appendMessage(m) {
       content = '<div class="file-block"><div class="file-row"><div class="file-icon">' + icon + '</div><div class="file-info"><div class="file-name">' + fname + '</div><div class="file-size">' + fsize + '</div></div><a class="file-dl" href="' + escapeAttr(m.attachment_url) + '" target="_blank" download>Скачать</a></div></div>';
     }
   }
-  content += linkify(m.text || "");
+  content += (m.type === "game_invite" ? '<span class="pre-line">' + linkify(m.text || "") + '</span>' : linkify(m.text || ""));
+  if (m.type === "game_invite") content += '<button class="game-play-btn" type="button">🎮 Играть</button>';
   
   if (currentChat.other && currentChat.other.is_group && !isOwn && m.sender_name) {
       content = '<div style="font-size:11px;color:#5b8bff;margin-bottom:2px;font-weight:600;">' + escapeHtml(m.sender_name) + '</div>' + content;
