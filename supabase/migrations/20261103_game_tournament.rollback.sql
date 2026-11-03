@@ -1,4 +1,4 @@
-drop function if exists public.game_take_username(bigint);
+drop function if exists public.game_take_username(bigint, text);
 drop function if exists public.game_take_account(bigint);
 drop function if exists public.game_rank(text, bigint);
 drop function if exists public.game_top(text, int);

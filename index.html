@@ -77,6 +77,22 @@
   .rx-picker .ctx-btn { font-size: 14px; padding: 8px 14px; white-space: nowrap; color: #e8eef5; }
   .pre-line { white-space: pre-line; }
   .game-play-btn { display: block; width: 100%; margin-top: 8px; padding: 10px 14px; border: 0; border-radius: 12px; background: #ff9f43; color: #1a1206; font-size: 15px; font-weight: 700; cursor: pointer; }
+  .game-stats { display: flex; gap: 8px; margin: 12px 16px; }
+  .game-stat { flex: 1; background: #17212b; border-radius: 12px; padding: 10px; text-align: center; }
+  .game-stat b { display: block; font-size: 20px; color: #ff9f43; }
+  .game-stat span { font-size: 12px; color: #7e8b99; }
+  .game-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 16px 16px; }
+  .game-menu button { padding: 18px 10px; border: 0; border-radius: 14px; background: #17212b; color: #e8eef5; font-size: 16px; font-weight: 700; cursor: pointer; }
+  .game-menu button.primary { background: #ff9f43; color: #1a1206; grid-column: 1 / -1; }
+  .game-card { background: #17212b; border-radius: 14px; margin: 0 16px 12px; padding: 14px; }
+  .game-card h3 { margin: 0 0 4px; font-size: 16px; }
+  .game-drop { display: flex; justify-content: space-between; font-size: 13px; color: #c5cdd6; padding: 2px 0; }
+  .game-drop i { color: #7e8b99; font-style: normal; }
+  .game-top-row { display: flex; align-items: center; gap: 12px; background: #17212b; border-radius: 14px; margin: 0 16px 8px; padding: 10px 12px; }
+  .game-top-row .place { font-size: 24px; width: 32px; text-align: center; }
+  .game-top-row .avatar { width: 40px; height: 40px; font-size: 16px; flex-shrink: 0; }
+  .game-note { margin: 0 16px 12px; font-size: 13px; color: #7e8b99; line-height: 1.5; }
+  .game-h { margin: 16px 16px 8px; font-size: 15px; font-weight: 700; }
   .rx-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
   .rx-row:empty { display: none; }
   .rx-chip { font-size: 13px; padding: 2px 7px; border-radius: 12px; background: rgba(255,255,255,0.14); cursor: pointer; user-select: none; }
@@ -622,6 +638,12 @@
     <div class="list" id="frig-list"><div class="spinner"></div></div>
   </div>
 
+  <!-- GAME (сезонный турнир) -->
+  <div class="screen" id="screen-game">
+    <div class="header"><button class="header-icon" id="btn-game-back">←</button><h1 id="game-title">🍂 Осенний сезон</h1></div>
+    <div id="game-body" style="overflow-y:auto; flex:1;"><div class="spinner"></div></div>
+  </div>
+
   <!-- SHOP (Магазин) -->
   <div class="screen" id="screen-shop">
     <div class="header"><button class="header-icon" id="btn-shop-back">←</button><h1>🛒 Магазин</h1></div>
@@ -660,6 +682,7 @@
       <button class="admin-tab active" data-tab="users">👥 Юзеры</button>
       <button class="admin-tab" data-tab="reports">📩 Жалобы</button>
       <button class="admin-tab" data-tab="reserved" id="admin-tab-reserved" style="display:none;">⭐ Резерв имён</button>
+      <button class="admin-tab" data-tab="game" id="admin-tab-game" style="display:none;">🍂 Призы турнира</button>
     </div>
     <div class="search-bar"><input type="text" id="admin-search" placeholder="Поиск по @username или email"></div>
     <div class="list" id="admin-list"><div class="spinner"></div></div>
@@ -743,6 +766,16 @@
 <div class="modal" id="modal-username"><div class="modal-bg" onclick="closeModal('modal-username')"></div><div class="modal-content"><div class="modal-title">Изменить @username</div><input type="text" id="modal-username-input" placeholder="username" maxlength="32"><div style="font-size:12px;color:#7e8b99;margin-top:8px;" id="username-limit-info"></div><div class="error" id="modal-username-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-username')">Отмена</button><button class="btn" id="btn-save-username">Сохранить</button></div></div></div>
 
 <div class="modal" id="modal-bio"><div class="modal-bg" onclick="closeModal('modal-bio')"></div><div class="modal-content"><div class="modal-title">О себе</div><textarea id="modal-bio-input" placeholder="Расскажи о себе..." maxlength="200" rows="4" style="resize:none;"></textarea><div class="error" id="modal-bio-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-bio')">Отмена</button><button class="btn" id="btn-save-bio">Сохранить</button></div></div></div>
+
+<div class="modal" id="modal-game-prize">
+  <div class="modal-bg" onclick="closeModal('modal-game-prize')"></div>
+  <div class="modal-content" style="text-align:center;">
+    <div style="font-size:44px; margin-bottom:8px;" id="gprize-icon">🎁</div>
+    <div class="modal-title" id="gprize-title">Выпало!</div>
+    <div id="gprize-body" style="font-size:14px; color:#c5cdd6; line-height:1.6; margin:8px 0 18px; word-break:break-word;"></div>
+    <button class="btn" onclick="closeModal('modal-game-prize')">Класс!</button>
+  </div>
+</div>
 
 <div class="modal" id="modal-username-info">
   <div class="modal-bg" onclick="closeModal('modal-username-info')"></div>
@@ -1195,8 +1228,7 @@ bindRxGestures(document.getElementById("messages"), showRxPicker);
 // Кнопка «Играть» в сообщении от аккаунта сезонной игры. Сама игра подключается позже: пока сообщаем, открыта ли она.
 document.getElementById("messages").addEventListener("click", async (ev) => {
   if (!ev.target.closest || !ev.target.closest(".game-play-btn")) return;
-  try { const st = await api("/api/game/state"); alert(st.active ? "🍂 Игра скоро откроется! Следи за сообщениями." : "🍂 Игра закончена. Скоро будет новый сезон!"); }
-  catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
+  openGame();
 });
 document.addEventListener("click", closeRxPicker);
 // ---- реакции на посты каналов (реакции приходят вместе с постами в поле reactions) ----
@@ -2035,7 +2067,11 @@ async function showUsernameInfo(username) {
     else av.textContent = initial(name);
     document.getElementById("uinfo-owner-name").textContent = name;
     const purchaseBlock = document.getElementById("uinfo-purchase-block");
-    if (data.reserved) {
+    if (data.tournament) {
+      const t = data.tournament;
+      const d = new Date(t.given_at).toLocaleString("ru-RU", { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      purchaseBlock.innerHTML = `🍂 Этот юзернейм был получен в осеннем турнире<br>${escapeHtml(d)}<br><b>№${parseInt(t.series_no, 10) || "?"}</b> · Всего выдано таких осенних юзернеймов 2026 года: <b>${parseInt(t.given, 10) || 0}/${parseInt(t.total, 10) || 0}</b><br>Имя личное, продать его нельзя.`;
+    } else if (data.reserved) {
       purchaseBlock.innerHTML = `Этот юзернейм зарезервирован и выдаётся владельцем.`;
     } else if (data.purchase) {
       const d = new Date(data.purchase.date).toLocaleString("ru-RU", { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -2211,13 +2247,14 @@ async function openAdmin() {
     }
   } catch (e) { console.error("Ошибка загрузки статистики", e); }
   document.getElementById("admin-tab-reserved").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
+  document.getElementById("admin-tab-game").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   adminShowTab();
 }
 
 document.querySelectorAll(".admin-tab").forEach(tab => { tab.onclick = () => { document.querySelectorAll(".admin-tab").forEach(t => t.classList.remove("active")); tab.classList.add("active"); currentAdminTab = tab.dataset.tab; adminShowTab(); }; });
 function adminShowTab() {
   document.querySelector("#screen-admin > .search-bar").style.display = currentAdminTab === "users" ? "" : "none";
-  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else loadAdminReports();
+  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else if (currentAdminTab === "game") loadAdminGame(); else loadAdminReports();
 }
 
 async function loadAdminUsers() {
@@ -2309,6 +2346,140 @@ document.getElementById("admin-list").addEventListener("click", async (e) => {
     } else if (act === "remove") {
       if (!confirm("Убрать @" + name + " из резерва? Имя станет свободным.")) return;
       await api("/api/admin/reserved/remove", { method: "POST", body: JSON.stringify({ username: name }) }); loadAdminReserved();
+    }
+  } catch (err) { if (err.message !== "banned") alert("Ошибка: " + err.message); }
+});
+
+
+// ---------- СЕЗОННЫЙ ТУРНИР ----------
+let gameView = "menu";
+const GAME_PRIZES_TEXT = ["🥇 Аккаунт Diogram (можно использовать как твинк)", "🥈 @Legend: коллекционный лимитированный осенний юзернейм навсегда", "🥉 15 дней подписки PDG бесплатно"];
+function gameBody() { return document.getElementById("game-body"); }
+async function openGame() { gameView = "menu"; show("screen-game"); await gameRender(); }
+async function gameRender() {
+  const box = gameBody(); box.innerHTML = '<div class="spinner"></div>';
+  try {
+    if (gameView === "menu") await gameMenu(box);
+    else if (gameView === "top") await gameTop(box);
+    else if (gameView === "general") await gameGeneral(box);
+    else if (gameView === "play") await gamePlay(box);
+  } catch (e) { if (e.message !== "banned") box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+}
+function gameEndsText(iso) { return new Date(iso).toLocaleString("ru-RU", { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }); }
+async function gameMenu(box) {
+  const st = await api("/api/game/me");
+  document.getElementById("game-title").textContent = "🍂 " + st.title;
+  const rank = st.in_top ? (st.rank ? "#" + st.rank : "—") : "вне топа";
+  box.innerHTML = '<div class="game-stats"><div class="game-stat"><b>☁ ' + (parseInt(st.clouds, 10) || 0) + '</b><span>облачка</span></div><div class="game-stat"><b>' + (parseInt(st.games_left, 10) || 0) + '</b><span>игр сегодня</span></div><div class="game-stat"><b>' + escapeHtml(rank) + '</b><span>место</span></div></div>' +
+    '<div class="game-menu"><button class="primary" data-g="play">🎮 Играть</button><button data-g="top">🏆 Топ 3</button><button data-g="general">🎁 Общее</button><button data-g="exit" style="grid-column:1/-1;">🚪 Выход</button></div>' +
+    '<div class="game-note">' + (st.active ? 'Сезон идёт до ' + escapeHtml(gameEndsText(st.ends_at)) + ' (МСК). Призы получают трое лучших по облачкам.' : 'Сезон закончился. Призы скоро будут выданы.') + '</div>';
+}
+async function gameTop(box) {
+  const data = await api("/api/game/top");
+  let h = '<div class="game-h">🏆 Топ 3 по облачкам</div>';
+  if (!data.top.length) h += '<div class="empty-state">Пока никого. Станешь первым?</div>';
+  const medals = ["🥇", "🥈", "🥉"];
+  for (const t of data.top) {
+    const name = t.first_name || t.username || "Без имени";
+    h += '<div class="game-top-row"><div class="place">' + medals[t.place - 1] + '</div><div class="avatar">' + (t.avatar_url ? avatarHtml(t.avatar_url) : escapeHtml(initial(name))) + '</div><div style="flex:1;min-width:0;"><div style="font-weight:600;">' + escapeHtml(name) + '</div><div style="font-size:12px;color:#7e8b99;">' + (t.username ? '@' + escapeHtml(t.username) : '') + '</div></div><b style="color:#ff9f43;">☁ ' + (parseInt(t.clouds, 10) || 0) + '</b></div>';
+  }
+  h += '<div class="game-h">Призы</div><div class="game-note">' + GAME_PRIZES_TEXT.map(escapeHtml).join('<br>') + '</div><div class="game-note">Модераторы, разработчики и владелец в топе не участвуют. Конец игры: ' + escapeHtml(gameEndsText(data.ends_at)) + ' (МСК).</div>';
+  box.innerHTML = h;
+}
+async function gamePlay(box) {
+  const st = await api("/api/game/me");
+  box.innerHTML = '<div class="game-h">🎮 Играть</div><div class="game-card"><h3>Карта скоро откроется</h3><div class="game-note" style="margin:6px 0 0;">Осенняя карта с другими игроками появится в ближайшем обновлении. Сегодня у тебя ' + (parseInt(st.games_left, 10) || 0) + ' из ' + (parseInt(st.daily_limit, 10) || 5) + ' игр (плюс бонусные из кейсов). Пока можно открывать кейсы в разделе «Общее».</div></div>';
+}
+function gameDropsHtml(c) { return c.drops.map(d => '<div class="game-drop"><span>' + escapeHtml(d.label) + '</span><i>' + (parseFloat(d.chance) || 0) + '%</i></div>').join(""); }
+async function gameGeneral(box) {
+  const [cs, pr] = await Promise.all([api("/api/game/cases"), api("/api/game/prizes")]);
+  let h = '<div class="game-h">🎁 Кейсы</div><div class="game-note" style="margin-top:-4px;">Твой баланс: ' + (parseFloat(cs.balance) || 0).toFixed(1) + ' Di. Облачки из кейсов идут в топ.</div>';
+  for (const c of cs.cases) {
+    h += '<div class="game-card"><h3>' + escapeHtml(c.title) + ' · ' + (parseInt(c.price, 10) || 0) + ' Di</h3><div style="margin:6px 0 10px;">' + gameDropsHtml(c) + '</div><button class="btn" data-case="' + escapeAttr(c.key) + '" data-title="' + escapeAttr(c.title) + '"' + (cs.active ? '' : ' disabled') + '>Открыть за ' + (parseInt(c.price, 10) || 0) + ' Di</button></div>';
+  }
+  h += '<div class="game-h">🏷️ Мои призы</div>';
+  if (!pr.usernames.length && !pr.accounts.length) h += '<div class="game-note">Пока пусто.</div>';
+  for (const u of pr.usernames) h += '<div class="game-card"><b>@' + escapeHtml(u.username) + '</b><div class="game-note" style="margin:4px 0 0;">Коллекционный осенний юзернейм №' + (parseInt(u.series_no, 10) || "?") + '. Он лежит в твоей коллекции (Настройки → Юзернеймы).</div></div>';
+  for (const a of pr.accounts) h += '<div class="game-card"><b>Аккаунт-секретка</b><div class="game-note" style="margin:4px 0 0;user-select:text;">Почта: <b>' + escapeHtml(a.email) + '</b><br>Пароль: <b>' + escapeHtml(a.password) + '</b><br>Сохрани данные и смени пароль после входа.</div></div>';
+  box.innerHTML = h;
+}
+function gameShowPrize(res) {
+  const p = res.prize || {};
+  const icons = { games: "🎮", clouds: "☁", di: "💎", username: "🏷️", account: "🗝️" };
+  document.getElementById("gprize-icon").textContent = icons[p.kind] || "🎁";
+  document.getElementById("gprize-title").textContent = res.label || "Приз";
+  let body = p.kind === "account" ? 'Почта: <b>' + escapeHtml(p.email) + '</b><br>Пароль: <b>' + escapeHtml(p.password) + '</b><br>Данные сохранены в «Общее → Мои призы».'
+    : p.kind === "username" ? 'Юзернейм добавлен в твою коллекцию. Он личный, продать его нельзя.'
+    : p.kind === "games" ? 'Тебе добавлена ещё одна игра.' : p.kind === "clouds" ? 'Облачки засчитаны в топ.' : 'Di зачислены на баланс.';
+  document.getElementById("gprize-body").innerHTML = body;
+  openModal("modal-game-prize");
+}
+document.getElementById("game-body").addEventListener("click", async (e) => {
+  const g = e.target.closest("[data-g]"); const cb = e.target.closest("[data-case]");
+  try {
+    if (g) { const v = g.getAttribute("data-g"); if (v === "exit") { show("screen-list"); loadList(); return; } gameView = v; await gameRender(); return; }
+    if (cb && !cb.disabled) {
+      const key = cb.getAttribute("data-case"); const title = cb.getAttribute("data-title") || "кейс";
+      if (!confirm("Открыть «" + title + "»? Di спишутся сразу.")) return;
+      cb.disabled = true;
+      try { const r = await api("/api/game/cases/open", { method: "POST", body: JSON.stringify({ case: key }) }); gameShowPrize(r.result); }
+      finally { await gameRender(); }
+    }
+  } catch (err) { if (err.message !== "banned") alert("Ошибка: " + err.message); }
+});
+document.getElementById("btn-game-back").onclick = () => { if (gameView !== "menu") { gameView = "menu"; gameRender(); } else { show("screen-list"); loadList(); } };
+
+// ---------- админка: призы турнира (только owner) ----------
+async function loadAdminGame() {
+  const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
+  try {
+    const d = await api("/api/admin/game"); box.innerHTML = "";
+    const freeAcc = d.accounts.filter(a => !a.given_to).length, freeCase = d.usernames.filter(u => !u.given_to && u.pool === "case").length;
+    const sum = document.createElement("div"); sum.className = "report-card";
+    sum.innerHTML = '<div class="report-reason">Склад призов</div><div class="report-body">Секреток свободно: <b>' + freeAcc + '</b> из ' + d.accounts.length + '<br>Юзернеймов для кейса свободно: <b>' + freeCase + '</b>. Выпадают строго по порядку списка.</div>';
+    box.appendChild(sum);
+    const f1 = document.createElement("div"); f1.className = "report-card reserved-form";
+    f1.innerHTML = '<div class="report-reason">Добавить аккаунты-секретки</div><textarea id="gadm-accounts" placeholder="Каждая строка: почта:пароль (аккаунты уже должны быть созданы)"></textarea><div style="margin-top:8px;"><button class="admin-btn success" data-gact="add-accounts">Добавить</button></div><div id="gadm-accounts-out" style="font-size:13px;margin-top:8px;color:#7e8b99;"></div>';
+    box.appendChild(f1);
+    const f2 = document.createElement("div"); f2.className = "report-card reserved-form";
+    f2.innerHTML = '<div class="report-reason">Добавить юзернеймы</div><select id="gadm-pool"><option value="case">Для кейса (по порядку)</option><option value="top">Награда за топ</option></select><textarea id="gadm-names" placeholder="Юзернеймы с новой строки или через запятую. Для кейса: от самого частого к самому редкому"></textarea><div style="margin-top:8px;"><button class="admin-btn success" data-gact="add-names">Добавить</button></div><div id="gadm-names-out" style="font-size:13px;margin-top:8px;color:#7e8b99;"></div>';
+    box.appendChild(f2);
+    const f3 = document.createElement("div"); f3.className = "report-card";
+    f3.innerHTML = '<div class="report-reason">Выдать призовой юзернейм победителю</div><div class="report-body">Например @Legend за второе место.</div><div style="margin-top:8px;"><button class="admin-btn success" data-gact="award">Выдать по ID</button></div>';
+    box.appendChild(f3);
+    for (const u of d.usernames) {
+      const el = document.createElement("div"); el.className = "report-card"; el.setAttribute("data-uname", u.username);
+      el.innerHTML = '<div class="report-reason">@' + escapeHtml(u.username) + ' · ' + (u.pool === "top" ? "за топ" : "кейс") + '</div><div class="report-body">' + (u.given_to ? 'Выдан: ' + escapeHtml(u.given_name || "?") + ' (№' + (parseInt(u.series_no, 10) || "?") + ')' : 'Свободен') + '</div>' + (u.given_to ? '' : '<div style="margin-top:8px;"><button class="admin-btn danger" data-gact="rm-name">Убрать</button></div>');
+      box.appendChild(el);
+    }
+    for (const a of d.accounts) {
+      const el = document.createElement("div"); el.className = "report-card"; el.setAttribute("data-accid", parseInt(a.id, 10) || 0);
+      el.innerHTML = '<div class="report-reason">🗝️ ' + escapeHtml(a.email) + '</div><div class="report-body">' + (a.given_to ? 'Выдана: ' + escapeHtml(a.given_name || "?") : 'Свободна') + '</div>' + (a.given_to ? '' : '<div style="margin-top:8px;"><button class="admin-btn danger" data-gact="rm-acc">Убрать</button></div>');
+      box.appendChild(el);
+    }
+  } catch (e) { box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+}
+document.getElementById("admin-list").addEventListener("click", async (e) => {
+  if (currentAdminTab !== "game") return;
+  const act = e.target.getAttribute && e.target.getAttribute("data-gact"); if (!act) return;
+  try {
+    if (act === "add-accounts") {
+      const r = await api("/api/admin/game/accounts", { method: "POST", body: JSON.stringify({ text: document.getElementById("gadm-accounts").value }) });
+      await loadAdminGame(); document.getElementById("gadm-accounts-out").textContent = "Добавлено: " + r.added.length + (r.skipped.length ? ". Не добавлено: " + r.skipped.map(x => x.email + " (" + x.reason + ")").join("; ") : "");
+    } else if (act === "add-names") {
+      const r = await api("/api/admin/game/usernames", { method: "POST", body: JSON.stringify({ usernames: document.getElementById("gadm-names").value, pool: document.getElementById("gadm-pool").value }) });
+      await loadAdminGame(); document.getElementById("gadm-names-out").textContent = "Добавлено: " + (r.added.length ? r.added.map(n => "@" + n).join(", ") : "ничего") + (r.skipped.length ? ". Не добавлено: " + r.skipped.map(x => "@" + x.username + " (" + x.reason + ")").join("; ") : "");
+    } else if (act === "award") {
+      const name = prompt("Какой призовой юзернейм выдать? (без @)"); if (!name) return;
+      const id = parseInt(prompt("ID пользователя-победителя"), 10); if (!id) return;
+      const r = await api("/api/admin/game/award", { method: "POST", body: JSON.stringify({ username: name, user_id: id }) });
+      alert("Выдано пользователю @" + (r.to || id) + ", номер " + r.series_no); loadAdminGame();
+    } else if (act === "rm-name") {
+      const n = e.target.closest("[data-uname]").getAttribute("data-uname"); if (!confirm("Убрать @" + n + " из призов? Имя станет свободным.")) return;
+      await api("/api/admin/game/remove", { method: "POST", body: JSON.stringify({ kind: "username", username: n }) }); loadAdminGame();
+    } else if (act === "rm-acc") {
+      const id = parseInt(e.target.closest("[data-accid]").getAttribute("data-accid"), 10); if (!confirm("Убрать эту секретку из призов?")) return;
+      await api("/api/admin/game/remove", { method: "POST", body: JSON.stringify({ kind: "account", id }) }); loadAdminGame();
     }
   } catch (err) { if (err.message !== "banned") alert("Ошибка: " + err.message); }
 });

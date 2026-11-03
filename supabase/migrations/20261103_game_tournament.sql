@@ -51,6 +51,8 @@ create table if not exists public.game_prize_accounts (
 create table if not exists public.game_prize_usernames (
   username text primary key,
   series text not null default 'autumn_2026',
+  pool text not null default 'case' check (pool in ('case', 'top')),  -- case: выпадает из кейса по порядку sort_no; top: только награда за топ
+  sort_no bigserial,
   series_no int,
   given_to bigint,
   given_at timestamptz,
@@ -64,9 +66,9 @@ alter table public.game_case_opens enable row level security;
 alter table public.game_prize_accounts enable row level security;
 alter table public.game_prize_usernames enable row level security;
 revoke all on public.game_players, public.game_daily, public.game_case_opens, public.game_prize_accounts, public.game_prize_usernames from anon, authenticated;
-revoke all on sequence public.game_case_opens_id_seq, public.game_prize_accounts_id_seq from anon, authenticated;
+revoke all on sequence public.game_case_opens_id_seq, public.game_prize_accounts_id_seq, public.game_prize_usernames_sort_no_seq from anon, authenticated;
 grant all on public.game_players, public.game_daily, public.game_case_opens, public.game_prize_accounts, public.game_prize_usernames to service_role;
-grant all on sequence public.game_case_opens_id_seq, public.game_prize_accounts_id_seq to service_role;
+grant all on sequence public.game_case_opens_id_seq, public.game_prize_accounts_id_seq, public.game_prize_usernames_sort_no_seq to service_role;
 
 -- Атомарно прибавляет облачки / бонусные игры (создаёт строку игрока, если её нет).
 create or replace function public.game_add(p_user bigint, p_season text, p_map int, p_case int, p_games int)
@@ -127,15 +129,20 @@ language sql set search_path = public as $$
   returning a.id, a.email, a.password
 $$;
 
--- Выдать случайный свободный юзернейм-коллекционку: передаёт имя из резерва владельца победителю, ставит номер в серии.
+-- Выдать юзернейм-коллекционку: передаёт имя из резерва владельца победителю и ставит номер выдачи в серии.
+-- Без p_name берётся следующее по порядку (sort_no) имя из пула кейсов, с p_name - конкретное (награда за топ).
 -- Любая ошибка откатывает всё целиком (имя не пропадёт и не окажется выданным без передачи).
-create or replace function public.game_take_username(p_user bigint)
+create or replace function public.game_take_username(p_user bigint, p_name text default null)
 returns table(username text, series_no int)
 language plpgsql set search_path = public as $$
 declare v_name text; v_no int;
 begin
   perform pg_advisory_xact_lock(20261103);
-  select x.username into v_name from game_prize_usernames x where x.given_to is null order by random() limit 1 for update skip locked;
+  if p_name is null then
+    select x.username into v_name from game_prize_usernames x where x.given_to is null and x.pool = 'case' order by x.sort_no limit 1;
+  else
+    select x.username into v_name from game_prize_usernames x where x.given_to is null and lower(x.username) = lower(p_name);
+  end if;
   if v_name is null then return; end if;
   update owned_usernames set user_id = p_user, reserved = false
     where lower(owned_usernames.username) = lower(v_name) and reserved = true;
@@ -146,8 +153,8 @@ begin
 end $$;
 
 revoke all on function public.game_add(bigint, text, int, int, int), public.game_use_attempt(bigint, text, date, int),
-  public.game_top(text, int), public.game_rank(text, bigint), public.game_take_account(bigint), public.game_take_username(bigint)
+  public.game_top(text, int), public.game_rank(text, bigint), public.game_take_account(bigint), public.game_take_username(bigint, text)
   from public, anon, authenticated;
 grant execute on function public.game_add(bigint, text, int, int, int), public.game_use_attempt(bigint, text, date, int),
-  public.game_top(text, int), public.game_rank(text, bigint), public.game_take_account(bigint), public.game_take_username(bigint)
+  public.game_top(text, int), public.game_rank(text, bigint), public.game_take_account(bigint), public.game_take_username(bigint, text)
   to service_role;
