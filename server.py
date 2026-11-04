@@ -62,6 +62,7 @@ from db import (
 )
 from email_service import generate_code
 import game
+import game_world
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "").strip()
 JWT_ALGO = "HS256"
@@ -364,7 +365,7 @@ def get_current_user():
     return user
 
 # Частые безопасные запросы не должны сбрасывать кэш, всё остальное, что что-то меняет (профиль, бан, группы, покупки), — сбрасывает.
-CACHE_KEEP_PATHS = ("/api/send", "/api/typing", "/api/poll")
+CACHE_KEEP_PATHS = ("/api/send", "/api/typing", "/api/poll", "/api/game/tick")
 @app.after_request
 def invalidate_caches_on_write(resp):
     if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.path.startswith("/api/") \
@@ -1253,6 +1254,62 @@ def api_game_case_open():
     if err: return jsonify({"error": err}), 400
     fresh = get_user_by_id(user["id"]) or user
     return jsonify({"ok": True, "result": result, "balance": fresh.get("balance", 0), "state": game.my_state(fresh)})
+
+# ---------- карта и лобби (состояние в памяти процесса, как «печатает…») ----------
+GAME_HUB = game_world.Hub(consume=game.use_attempt, credit=game.credit_map_clouds)
+
+def _game_float(v):
+    try: f = float(v)
+    except (TypeError, ValueError): return 0.0
+    return f if f == f and abs(f) < 1e6 else 0.0   # NaN и бесконечности превращаем в 0
+
+@app.route("/api/game/map")
+def api_game_map():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    return jsonify(game_world.public_map())
+
+@app.route("/api/game/lobbies")
+def api_game_lobbies():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    staff = user.get("role") in STAFF_ROLES
+    return jsonify({"slots": GAME_HUB.slots(), "staff": staff, "active": game_active(),
+                    "games_left": None if staff else game.games_left(user["id"]),
+                    "in_lobby": GAME_HUB.lobby_of(user["id"]) is not None})
+
+@app.route("/api/game/join", methods=["POST"])
+def api_game_join():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    if not game_active(): return jsonify({"error": "Сезон закончился"}), 400
+    staff = user.get("role") in STAFF_ROLES
+    if not check_rate_limit(f"gamejoin_{user['id']}", 20, 60): return jsonify({"error": "Слишком часто. Подожди минуту."}), 429
+    wanted = to_int(json_body().get("lobby"))
+    if not staff and GAME_HUB.lobby_of(user["id"]) is None and game.games_left(user["id"]) <= 0:
+        return jsonify({"error": "На сегодня игры закончились. Приходи завтра или открой кейс «Обычный»."}), 400
+    name = (user.get("first_name") or user.get("username") or "Игрок")[:20]
+    lb, err = GAME_HUB.join(user["id"], name, staff, wanted)
+    if err: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "lobby": lb.num})
+
+@app.route("/api/game/tick", methods=["POST"])
+def api_game_tick():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    d = json_body()
+    brk = to_int(d.get("brk"))
+    st = GAME_HUB.tick(user["id"], _game_float(d.get("dx")), _game_float(d.get("dy")), brk if brk and 1 <= brk <= 4 else None)
+    if st is None: return jsonify({"in_lobby": False})
+    st["in_lobby"] = True
+    return jsonify(st)
+
+@app.route("/api/game/leave", methods=["POST"])
+def api_game_leave():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    GAME_HUB.leave(user["id"])
+    return jsonify({"ok": True})
 
 @app.route("/api/game/prizes")
 def api_game_prizes():
