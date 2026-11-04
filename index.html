@@ -93,6 +93,22 @@
   .game-top-row .avatar { width: 40px; height: 40px; font-size: 16px; flex-shrink: 0; }
   .game-note { margin: 0 16px 12px; font-size: 13px; color: #7e8b99; line-height: 1.5; }
   .game-h { margin: 16px 16px 8px; font-size: 15px; font-weight: 700; }
+  .lobby-row { display: flex; align-items: center; gap: 10px; background: #17212b; border-radius: 14px; margin: 0 16px 8px; padding: 12px; }
+  .lobby-row .lb-info { flex: 1; min-width: 0; }
+  .lobby-row .lb-sub { font-size: 12px; color: #7e8b99; margin-top: 2px; }
+  .lobby-row button { padding: 8px 14px; border: 0; border-radius: 10px; background: #ff9f43; color: #1a1206; font-weight: 700; cursor: pointer; }
+  .lobby-row button:disabled { background: #2a3644; color: #6b7886; cursor: default; }
+  #screen-gameplay { position: relative; background: #0e1621; overflow: hidden; }
+  #game-canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  .gp-hud { position: absolute; left: 0; right: 0; top: 0; padding: 8px 10px; display: flex; gap: 8px; align-items: center; pointer-events: none; font-size: 13px; color: #fff; text-shadow: 0 1px 2px #000; }
+  .gp-hud .gp-chip { background: rgba(14,22,33,0.72); border-radius: 10px; padding: 5px 9px; font-weight: 700; }
+  .gp-hud .gp-spacer { flex: 1; }
+  .gp-btn { pointer-events: auto; border: 0; border-radius: 10px; padding: 6px 10px; background: rgba(14,22,33,0.8); color: #fff; font-weight: 700; cursor: pointer; }
+  .gp-log { position: absolute; left: 10px; top: 80px; font-size: 12px; color: #fff; text-shadow: 0 1px 2px #000; pointer-events: none; max-width: 70%; line-height: 1.4; }
+  .gp-act { position: absolute; right: 16px; bottom: 24px; padding: 16px 18px; border: 0; border-radius: 50%; background: #ff9f43; color: #1a1206; font-weight: 800; font-size: 14px; display: none; cursor: pointer; }
+  .gp-center { position: absolute; left: 16px; right: 16px; top: 25%; background: rgba(14,22,33,0.9); border-radius: 16px; padding: 16px; text-align: center; color: #fff; display: none; }
+  .gp-center h3 { margin: 0 0 8px; }
+  .gp-center .gp-pl { font-size: 14px; line-height: 1.7; }
   .rx-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
   .rx-row:empty { display: none; }
   .rx-chip { font-size: 13px; padding: 2px 7px; border-radius: 12px; background: rgba(255,255,255,0.14); cursor: pointer; user-select: none; }
@@ -642,6 +658,22 @@
   <div class="screen" id="screen-game">
     <div class="header"><button class="header-icon" id="btn-game-back">←</button><h1 id="game-title">🍂 Осенний сезон</h1></div>
     <div id="game-body" style="overflow-y:auto; flex:1;"><div class="spinner"></div></div>
+  </div>
+
+  <!-- GAMEPLAY (карта) -->
+  <div class="screen" id="screen-gameplay">
+    <canvas id="game-canvas"></canvas>
+    <div class="gp-hud">
+      <button class="gp-btn" id="gp-exit">✕ Выйти</button>
+      <span class="gp-chip" id="gp-lobby">Лобби</span>
+      <span class="gp-chip" id="gp-time"></span>
+      <span class="gp-spacer"></span>
+      <span class="gp-chip" id="gp-clouds"></span>
+    </div>
+    <div class="gp-hud" style="top:36px;"><span class="gp-chip" id="gp-role"></span><span class="gp-chip" id="gp-hp" style="display:none;"></span><span class="gp-chip" id="gp-boxes" style="display:none;"></span></div>
+    <div class="gp-log" id="gp-log"></div>
+    <button class="gp-act" id="gp-act">🔨<br>Ломать</button>
+    <div class="gp-center" id="gp-center"></div>
   </div>
 
   <!-- SHOP (Магазин) -->
@@ -2386,9 +2418,27 @@ async function gameTop(box) {
   h += '<div class="game-h">Призы</div><div class="game-note">' + GAME_PRIZES_TEXT.map(escapeHtml).join('<br>') + '</div><div class="game-note">Модераторы, разработчики и владелец в топе не участвуют. Конец игры: ' + escapeHtml(gameEndsText(data.ends_at)) + ' (МСК).</div>';
   box.innerHTML = h;
 }
+let gameLobbyTimer = null;
+function gameStopLobbyPoll() { if (gameLobbyTimer) { clearInterval(gameLobbyTimer); gameLobbyTimer = null; } }
+function gameLobbyRow(sl, canJoin) {
+  const names = { empty: "Свободно", waiting: sl.seeker ? "Ждём игроков" : "Ждём искателя", playing: "Идёт раунд", ended: "Раунд закончен" };
+  const full = sl.players >= sl.max, can = canJoin && (sl.state === "empty" || sl.state === "waiting") && !full;
+  return '<div class="lobby-row"><div class="lb-info"><b>Лобби №' + (parseInt(sl.num, 10) || 0) + '</b><div class="lb-sub">' + escapeHtml(names[sl.state] || "") + ' · ' + (parseInt(sl.players, 10) || 0) + '/' + (parseInt(sl.max, 10) || 5) + '</div></div><button data-lobby="' + (parseInt(sl.num, 10) || 0) + '"' + (can ? '' : ' disabled') + '>Войти</button></div>';
+}
 async function gamePlay(box) {
-  const st = await api("/api/game/me");
-  box.innerHTML = '<div class="game-h">🎮 Играть</div><div class="game-card"><h3>Карта скоро откроется</h3><div class="game-note" style="margin:6px 0 0;">Осенняя карта с другими игроками появится в ближайшем обновлении. Сегодня у тебя ' + (parseInt(st.games_left, 10) || 0) + ' из ' + (parseInt(st.daily_limit, 10) || 5) + ' игр (плюс бонусные из кейсов). Пока можно открывать кейсы в разделе «Общее».</div></div>';
+  const render = async () => {
+    const d = await api("/api/game/lobbies");
+    if (d.in_lobby) { box.innerHTML = '<div class="game-card"><h3>Ты уже в лобби</h3><button class="btn" data-lobby="resume" style="margin-top:8px;">Вернуться в игру</button></div>'; return; }
+    const left = d.staff ? "∞" : (parseInt(d.games_left, 10) || 0);
+    let h = '<div class="game-h">🎮 Играть</div><div class="game-note" style="margin-top:-4px;">' + (d.staff ? 'Ты сотрудник: всегда искатель, игры не тратятся, в топе не участвуешь.' : 'Ты прячешься, пока тебя не поймал искатель. Игр осталось: <b>' + left + '</b>.') + '</div>';
+    h += '<div style="margin:0 16px 12px;"><button class="btn" data-lobby="auto"' + (d.active && (d.staff || d.games_left > 0) ? '' : ' disabled') + '>⚡ Быстрый вход</button></div>';
+    for (const sl of d.slots) h += gameLobbyRow(sl, d.active && (d.staff || d.games_left > 0));
+    h += '<div class="game-note">Правила: на карте 9 облачков и 4 коробки. Прячущиеся собирают облачка и ломают коробки (клик по коробке, ждать 10 секунд): каждая сломанная коробка снимает у искателя 25 из 100 HP. Искатель ловит касанием. Раунд 5 минут. Если победили прячущиеся, всем им +1 облачко. Пойманный теряет облачка раунда.</div>';
+    box.innerHTML = h;
+  };
+  await render();
+  gameStopLobbyPoll();
+  gameLobbyTimer = setInterval(() => { if (gameView !== "play" || !document.getElementById("screen-game").classList.contains("active")) { gameStopLobbyPoll(); return; } render().catch(() => {}); }, 3000);
 }
 function gameDropsHtml(c) { return c.drops.map(d => '<div class="game-drop"><span>' + escapeHtml(d.label) + '</span><i>' + (parseFloat(d.chance) || 0) + '%</i></div>').join(""); }
 async function gameGeneral(box) {
@@ -2415,9 +2465,14 @@ function gameShowPrize(res) {
   openModal("modal-game-prize");
 }
 document.getElementById("game-body").addEventListener("click", async (e) => {
-  const g = e.target.closest("[data-g]"); const cb = e.target.closest("[data-case]");
+  const g = e.target.closest("[data-g]"); const cb = e.target.closest("[data-case]"); const lbtn = e.target.closest("[data-lobby]");
   try {
-    if (g) { const v = g.getAttribute("data-g"); if (v === "exit") { show("screen-list"); loadList(); return; } gameView = v; await gameRender(); return; }
+    if (lbtn && !lbtn.disabled) {
+      const v = lbtn.getAttribute("data-lobby");
+      if (v !== "resume") await api("/api/game/join", { method: "POST", body: JSON.stringify(v === "auto" ? {} : { lobby: parseInt(v, 10) }) });
+      gameStopLobbyPoll(); await gameRunStart(); return;
+    }
+    if (g) { gameStopLobbyPoll(); const v = g.getAttribute("data-g"); if (v === "exit") { show("screen-list"); loadList(); return; } gameView = v; await gameRender(); return; }
     if (cb && !cb.disabled) {
       const key = cb.getAttribute("data-case"); const title = cb.getAttribute("data-title") || "кейс";
       if (!confirm("Открыть «" + title + "»? Di спишутся сразу.")) return;
@@ -2427,7 +2482,173 @@ document.getElementById("game-body").addEventListener("click", async (e) => {
     }
   } catch (err) { if (err.message !== "banned") alert("Ошибка: " + err.message); }
 });
-document.getElementById("btn-game-back").onclick = () => { if (gameView !== "menu") { gameView = "menu"; gameRender(); } else { show("screen-list"); loadList(); } };
+document.getElementById("btn-game-back").onclick = () => { gameStopLobbyPoll(); if (gameView !== "menu") { gameView = "menu"; gameRender(); } else { show("screen-list"); loadList(); } };
+
+
+// ---------- КАРТА: клиент (рисует и отправляет ввод; всё решает сервер) ----------
+const GR = { on: false, map: null, st: null, me: { x: 0, y: 0 }, srv: { x: 0, y: 0 }, others: new Map(), keys: {}, joy: null, brk: 0, lastResp: 0, loopId: 0, cam: { x: 0, y: 0 }, raf: 0 };
+function grCanvas() { return document.getElementById("game-canvas"); }
+function grResize() { const c = grCanvas(), r = c.parentElement.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1); c.width = Math.max(1, Math.floor(r.width * dpr)); c.height = Math.max(1, Math.floor(r.height * dpr)); c._dpr = dpr; }
+window.addEventListener("resize", () => { if (GR.on) grResize(); });
+async function gameRunStart() {
+  show("screen-gameplay"); grResize();
+  GR.map = GR.map || await api("/api/game/map");
+  GR.on = true; GR.st = null; GR.others.clear(); GR.keys = {}; GR.joy = null; GR.brk = 0; GR.me = null; const id = ++GR.loopId;
+  document.getElementById("gp-center").style.display = "none"; document.getElementById("gp-log").textContent = "";
+  grLoop(id); cancelAnimationFrame(GR.raf); GR.raf = requestAnimationFrame(grDraw);
+}
+async function grLoop(id) {
+  while (GR.on && GR.loopId === id) {
+    const t0 = Date.now(); let dx = 0, dy = 0;
+    const v = grInput(); dx = v.x; dy = v.y;
+    const body = { dx: Math.round(dx * 100) / 100, dy: Math.round(dy * 100) / 100 }; if (GR.brk) { body.brk = GR.brk; GR.brk = 0; }
+    try {
+      const st = await api("/api/game/tick", { method: "POST", body: JSON.stringify(body) });
+      if (!GR.on || GR.loopId !== id) return;
+      if (!st.in_lobby) { grBackToLobbies("Лобби закрылось"); return; }
+      grApply(st);
+      if (st.lobby.state === "ended" && GR.endedShown) { await new Promise(r => setTimeout(r, 1500)); continue; }
+    } catch (e) {
+      if (e.message === "banned" || e.message === "session_revoked") { GR.on = false; return; }
+      if (/Слишком много/.test(e.message)) await new Promise(r => setTimeout(r, 1500));
+    }
+    await new Promise(r => setTimeout(r, Math.max(30, 280 - (Date.now() - t0))));
+  }
+}
+function grInput() {
+  let x = 0, y = 0; const k = GR.keys;
+  if (k.ArrowLeft || k.KeyA) x -= 1; if (k.ArrowRight || k.KeyD) x += 1; if (k.ArrowUp || k.KeyW) y -= 1; if (k.ArrowDown || k.KeyS) y += 1;
+  if (GR.joy) { x += GR.joy.vx; y += GR.joy.vy; }
+  const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; } return { x, y };
+}
+function grApply(st) {
+  GR.st = st; GR.lastResp = performance.now(); GR.srv = { x: st.me.x, y: st.me.y };
+  if (!GR.me || Math.hypot(GR.me.x - st.me.x, GR.me.y - st.me.y) > 80 || st.me.caught) GR.me = { x: st.me.x, y: st.me.y };
+  const seen = new Set();
+  for (const o of st.others) {
+    seen.add(o.id); if (o.x === undefined) continue;
+    const prev = GR.others.get(o.id);
+    GR.others.set(o.id, { id: o.id, name: o.name, role: o.role, caught: o.caught, vx: o.vx || 0, vy: o.vy || 0, tx: o.x, ty: o.y, x: prev ? prev.x : o.x, y: prev ? prev.y : o.y, t: performance.now() });
+  }
+  for (const id of [...GR.others.keys()]) if (!seen.has(id)) GR.others.delete(id);
+  grHud(st);
+}
+function grHud(st) {
+  const L = st.lobby, me = st.me; document.getElementById("gp-lobby").textContent = "Лобби №" + L.num;
+  const roleTxt = me.role === "seeker" ? "🔦 Искатель" : (me.caught ? "👻 Пойман" : "🫥 Прячешься");
+  document.getElementById("gp-role").textContent = roleTxt;
+  const tm = document.getElementById("gp-time"), hp = document.getElementById("gp-hp"), bx = document.getElementById("gp-boxes");
+  document.getElementById("gp-clouds").textContent = me.role === "hider" ? "☁ " + me.clouds : "";
+  const log = document.getElementById("gp-log"); log.innerHTML = ""; log.style.display = L.state === "ended" ? "none" : ""; for (const e of st.events.slice(-3)) { const d = document.createElement("div"); d.textContent = e.text; log.appendChild(d); }
+  const center = document.getElementById("gp-center"), act = document.getElementById("gp-act");
+  if (L.state === "waiting") {
+    tm.textContent = L.start_in !== null && L.start_in !== undefined ? "Старт через " + Math.ceil(L.start_in) + " с" : "Ожидание";
+    hp.style.display = "none"; bx.style.display = "none"; act.style.display = "none";
+    center.style.display = "block"; center.innerHTML = "";
+    const h = document.createElement("h3"); h.textContent = L.has_seeker ? "Ждём игроков" : "Ждём искателя"; center.appendChild(h);
+    const pl = document.createElement("div"); pl.className = "gp-pl"; pl.textContent = L.players.map(p => (p.role === "seeker" ? "🔦 " : "🫥 ") + p.name + (p.me ? " (ты)" : "")).join("\n"); pl.style.whiteSpace = "pre-line"; center.appendChild(pl);
+    const n = document.createElement("div"); n.className = "game-note"; n.style.margin = "8px 0 0"; n.textContent = "Игроков " + L.players.length + "/" + L.max + ". Раунд стартует, когда есть искатель и хотя бы один прячущийся."; center.appendChild(n);
+    GR.endedShown = false;
+  } else if (L.state === "playing") {
+    const left = Math.max(0, Math.ceil(st.time_left)); tm.textContent = "⏱ " + Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0");
+    hp.style.display = ""; hp.textContent = "❤ Искатель " + st.seeker_hp + "/100"; bx.style.display = ""; bx.textContent = "📦 " + st.boxes.filter(b => b.broken).length + "/4";
+    center.style.display = st.freeze_left > 0 ? "block" : "none";
+    if (st.freeze_left > 0) { center.style.top = "12%"; center.innerHTML = ""; const h = document.createElement("h3"); h.textContent = me.role === "seeker" ? "Ждём " + Math.ceil(st.freeze_left) + " с: прячущиеся разбегаются" : "Беги и прячься! Искатель стартует через " + Math.ceil(st.freeze_left) + " с"; center.appendChild(h); }
+    GR.endedShown = false;
+  } else if (L.state === "ended") {
+    tm.textContent = "Раунд закончен"; hp.style.display = "none"; bx.style.display = "none"; act.style.display = "none";
+    const r = st.result; center.style.display = "block"; center.style.top = "15%"; center.innerHTML = "";
+    const h = document.createElement("h3"); const mineWin = (me.role === "seeker" && r.winner === "seekers") || (me.role === "hider" && r.winner === "hiders");
+    h.textContent = r.winner === "abandoned" ? "Раунд отменён" : (mineWin ? "🎉 Победа!" : "Поражение"); center.appendChild(h);
+    const why = document.createElement("div"); why.className = "game-note"; why.style.margin = "0 0 8px"; why.textContent = r.reason; center.appendChild(why);
+    const pl = document.createElement("div"); pl.className = "gp-pl"; pl.style.whiteSpace = "pre-line";
+    pl.textContent = r.players.map(p => (p.role === "seeker" ? "🔦 " : "🫥 ") + p.name + (p.role === "hider" ? ": ☁ +" + p.clouds + (p.caught ? " (был пойман)" : "") : "")).join("\n"); center.appendChild(pl);
+    const b = document.createElement("button"); b.className = "btn"; b.style.marginTop = "12px"; b.textContent = "Вернуться в меню"; b.onclick = () => grBackToLobbies(); center.appendChild(b);
+    GR.endedShown = true;
+  }
+}
+async function grBackToLobbies(msg) {
+  GR.on = false; GR.loopId++; cancelAnimationFrame(GR.raf);
+  try { await api("/api/game/leave", { method: "POST", body: "{}" }); } catch (e) {}
+  if (msg) alert(msg);
+  gameView = "menu"; show("screen-game"); gameRender();
+}
+document.getElementById("gp-exit").onclick = () => { if (GR.st && GR.st.lobby.state === "playing" && !confirm("Выйти из раунда? Облачки раунда пропадут.")) return; grBackToLobbies(); };
+window.addEventListener("keydown", (e) => { if (!GR.on) return; if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space"].includes(e.code)) e.preventDefault(); GR.keys[e.code] = true; if (e.code === "KeyE" || e.code === "Space") grTryBreak(); });
+window.addEventListener("keyup", (e) => { GR.keys[e.code] = false; });
+function grNearBox() {
+  if (!GR.st || !GR.me || GR.st.lobby.state !== "playing" || GR.st.me.role !== "hider" || GR.st.me.caught) return null;
+  for (const b of GR.st.boxes) { if (b.broken) continue; const mb = GR.map.boxes.find(x => x.id === b.id); if (mb && Math.hypot(GR.me.x - mb.x, GR.me.y - mb.y) <= GR.map.box_range - 5) return b; }
+  return null;
+}
+function grTryBreak() { const b = grNearBox(); if (b && !b.by_me) GR.brk = b.id; }
+document.getElementById("gp-act").addEventListener("click", grTryBreak);
+// сенсорный джойстик: палец на левой половине экрана
+(function () {
+  const c = grCanvas(); let id = null, ox = 0, oy = 0;
+  c.addEventListener("touchstart", (e) => { if (id !== null) return; const t = e.changedTouches[0], r = c.getBoundingClientRect(); id = t.identifier; ox = t.clientX - r.left; oy = t.clientY - r.top; GR.joy = { vx: 0, vy: 0, ox, oy, px: ox, py: oy }; e.preventDefault(); }, { passive: false });
+  c.addEventListener("touchmove", (e) => { for (const t of e.changedTouches) if (t.identifier === id && GR.joy) { const r = c.getBoundingClientRect(), x = t.clientX - r.left - ox, y = t.clientY - r.top - oy, l = Math.hypot(x, y), k = Math.min(1, l / 50); GR.joy.vx = l > 6 ? x / l * k : 0; GR.joy.vy = l > 6 ? y / l * k : 0; GR.joy.px = ox + GR.joy.vx * 50; GR.joy.py = oy + GR.joy.vy * 50; } e.preventDefault(); }, { passive: false });
+  const end = (e) => { for (const t of e.changedTouches) if (t.identifier === id) { id = null; GR.joy = null; } };
+  c.addEventListener("touchend", end); c.addEventListener("touchcancel", end);
+})();
+let grLast = 0;
+function grDraw(ts) {
+  if (!GR.on) return; GR.raf = requestAnimationFrame(grDraw);
+  const dt = Math.min(0.1, grLast ? (ts - grLast) / 1000 : 0.016); grLast = ts;
+  const c = grCanvas(), ctx = c.getContext("2d"), M = GR.map, st = GR.st; if (!M) return;
+  const W = c.width, H = c.height, dpr = c._dpr || 1; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = "#0e1621"; ctx.fillRect(0, 0, W, H);
+  if (!st || !GR.me) return;
+  const playing = st.lobby.state === "playing", me = st.me;
+  // своё движение предсказываем локально (та же скорость, те же деревья), сервер мягко поправляет
+  if (playing && !me.caught && !(me.role === "seeker" && st.freeze_left - (performance.now() - GR.lastResp) / 1000 > 0)) {
+    const v = grInput(), sp = me.role === "seeker" ? M.seeker_speed : M.hider_speed;
+    let nx = GR.me.x + v.x * sp * dt, ny = GR.me.y + v.y * sp * dt; const p = grPush(nx, ny, st); GR.me.x = p.x; GR.me.y = p.y;
+  }
+  const ex = GR.srv.x - GR.me.x, ey = GR.srv.y - GR.me.y, ed = Math.hypot(ex, ey);
+  if (ed > 70 || me.caught || !playing) { GR.me.x = GR.srv.x; GR.me.y = GR.srv.y; } else if (ed > 1) { const k = Math.min(1, dt * 4); GR.me.x += ex * k; GR.me.y += ey * k; }
+  const scale = Math.min(W, H) * 0.5 / M.vis_r;
+  GR.cam.x += (GR.me.x - GR.cam.x) * Math.min(1, dt * 10); GR.cam.y += (GR.me.y - GR.cam.y) * Math.min(1, dt * 10);
+  ctx.setTransform(scale, 0, 0, scale, W / 2 - GR.cam.x * scale, H / 2 - GR.cam.y * scale);
+  // земля: осенняя трава, снег пятнами
+  ctx.fillStyle = "#6e5430"; ctx.fillRect(0, 0, M.w, M.h);
+  ctx.fillStyle = "rgba(168,112,46,0.35)"; for (let i = 0; i < M.snow.length; i++) { const s = M.snow[i]; ctx.beginPath(); ctx.arc((s[0] * 7) % M.w, (s[1] * 5) % M.h, s[2] * 1.4, 0, 6.3); ctx.fill(); }
+  ctx.fillStyle = "rgba(240,246,252,0.88)"; for (const s of M.snow) { ctx.beginPath(); ctx.arc(s[0], s[1], s[2] * 0.75, 0, 6.3); ctx.fill(); }
+  ctx.strokeStyle = "#3b2a14"; ctx.lineWidth = 6; ctx.strokeRect(0, 0, M.w, M.h);
+  // коробки
+  for (const mb of M.boxes) {
+    const b = st.boxes ? st.boxes.find(x => x.id === mb.id) : null, broken = b && b.broken;
+    ctx.fillStyle = broken ? "#4a3a28" : "#b98446"; ctx.fillRect(mb.x - 16, mb.y - 16, 32, 32); ctx.strokeStyle = "#5a3a14"; ctx.lineWidth = 3; ctx.strokeRect(mb.x - 16, mb.y - 16, 32, 32);
+    if (broken) { ctx.strokeStyle = "#2a1f12"; ctx.beginPath(); ctx.moveTo(mb.x - 16, mb.y - 16); ctx.lineTo(mb.x + 16, mb.y + 16); ctx.moveTo(mb.x + 16, mb.y - 16); ctx.lineTo(mb.x - 16, mb.y + 16); ctx.stroke(); }
+    else if (b && b.progress > 0) { ctx.fillStyle = "#222"; ctx.fillRect(mb.x - 20, mb.y - 28, 40, 7); ctx.fillStyle = "#ffb347"; ctx.fillRect(mb.x - 20, mb.y - 28, 40 * b.progress, 7); }
+  }
+  // облачка
+  if (st.clouds) for (const cl of st.clouds) { const bob = Math.sin(ts / 300 + cl.id) * 2; ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(cl.x - 7, cl.y + bob, 7, 0, 6.3); ctx.arc(cl.x + 1, cl.y - 4 + bob, 9, 0, 6.3); ctx.arc(cl.x + 9, cl.y + bob, 7, 0, 6.3); ctx.fill(); }
+  // игроки
+  const people = [];
+  for (const o of GR.others.values()) { const k = Math.min(1, dt * 8), age = Math.min(0.35, (performance.now() - o.t) / 1000); const px = o.tx + o.vx * age, py = o.ty + o.vy * age; o.x += (px - o.x) * k; o.y += (py - o.y) * k; people.push(o); }
+  people.push({ id: me.id, name: "ты", role: me.role, caught: me.caught, x: GR.me.x, y: GR.me.y, me: true });
+  for (const p of people) {
+    ctx.globalAlpha = p.caught ? 0.4 : 1; ctx.fillStyle = p.role === "seeker" ? "#e8503a" : (p.me ? "#ffd166" : "#7fc4ff"); ctx.beginPath(); ctx.arc(p.x, p.y, M.player_r, 0, 6.3); ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = p.me ? "#fff" : "rgba(0,0,0,0.5)"; ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.fillStyle = "#fff"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center"; ctx.shadowColor = "#000"; ctx.shadowBlur = 3; ctx.fillText((p.role === "seeker" ? "🔦 " : "") + (p.name || ""), p.x, p.y - M.player_r - 6); ctx.shadowBlur = 0;
+  }
+  // кусты поверх игроков (полупрозрачно: внутри куста себя видно)
+  for (const b of M.bushes) { ctx.fillStyle = "rgba(110,86,30,0.78)"; ctx.beginPath(); ctx.arc(b[0], b[1], b[2], 0, 6.3); ctx.fill(); ctx.fillStyle = "rgba(196,120,40,0.65)"; ctx.beginPath(); ctx.arc(b[0] - b[2] * 0.25, b[1] - b[2] * 0.2, b[2] * 0.55, 0, 6.3); ctx.fill(); }
+  // деревья: ствол и оранжево-красная крона
+  for (const t of M.trees) { ctx.fillStyle = "#4a3018"; ctx.beginPath(); ctx.arc(t[0], t[1], t[2] * 0.45, 0, 6.3); ctx.fill(); ctx.fillStyle = "rgba(214,110,30,0.92)"; ctx.beginPath(); ctx.arc(t[0], t[1] - 6, t[2] * 1.15, 0, 6.3); ctx.fill(); ctx.fillStyle = "rgba(180,60,30,0.7)"; ctx.beginPath(); ctx.arc(t[0] + 5, t[1] - 10, t[2] * 0.7, 0, 6.3); ctx.fill(); }
+  // туман: видно только вокруг себя (пойманные наблюдают без тумана)
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (!me.caught && playing) { const cx = W / 2 + (GR.me.x - GR.cam.x) * scale, cy = H / 2 + (GR.me.y - GR.cam.y) * scale, R = M.vis_r * scale; const g = ctx.createRadialGradient(cx, cy, R * 0.55, cx, cy, R); g.addColorStop(0, "rgba(14,22,33,0)"); g.addColorStop(1, "rgba(14,22,33,0.94)"); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "rgba(14,22,33,0.94)"; ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.arc(cx, cy, R, 0, 6.3, true); ctx.fill("evenodd"); }
+  // джойстик
+  if (GR.joy) { const j = GR.joy; ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 3 * dpr; ctx.beginPath(); ctx.arc(j.ox * dpr, j.oy * dpr, 50 * dpr, 0, 6.3); ctx.stroke(); ctx.fillStyle = "rgba(255,255,255,0.55)"; ctx.beginPath(); ctx.arc(j.px * dpr, j.py * dpr, 20 * dpr, 0, 6.3); ctx.fill(); }
+  const near = grNearBox(), act = document.getElementById("gp-act"); act.style.display = near && !near.by_me ? "block" : "none";
+}
+function grPush(x, y, st) {
+  const M = GR.map, R = M.player_r;
+  const circles = M.trees.slice(); for (const b of M.boxes) { const sb = st.boxes && st.boxes.find(q => q.id === b.id); if (!sb || !sb.broken) circles.push([b.x, b.y, 18]); }
+  for (const c of circles) { const d = Math.hypot(x - c[0], y - c[1]), need = R + c[2]; if (d < need && d > 1e-6) { x = c[0] + (x - c[0]) / d * need; y = c[1] + (y - c[1]) / d * need; } }
+  return { x: Math.min(Math.max(x, R), M.w - R), y: Math.min(Math.max(y, R), M.h - R) };
+}
 
 // ---------- админка: призы турнира (только owner) ----------
 async function loadAdminGame() {

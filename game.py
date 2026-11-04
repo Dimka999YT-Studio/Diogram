@@ -238,3 +238,18 @@ def remove_account(acc_id):
 
 def award_username(user_id, name):
     return _take_username(user_id, name)
+
+
+# ---------- попытки и облачки с карты (вызываются из game_world) ----------
+def use_attempt(user_id):
+    """Списать одну игру: сначала дневные, потом бонусные. True, если списалась."""
+    r = supabase.rpc("game_use_attempt", {"p_user": user_id, "p_season": SEASON, "p_day": today_msk(), "p_limit": DAILY_GAMES}).execute()
+    return r.data in ("daily", "bonus")
+
+
+def games_left(user_id):
+    return max(0, DAILY_GAMES - played_today(user_id)) + int(player_row(user_id)["bonus_games"])
+
+
+def credit_map_clouds(user_id, n):
+    supabase.rpc("game_add", {"p_user": user_id, "p_season": SEASON, "p_map": int(n), "p_case": 0, "p_games": 0}).execute()
