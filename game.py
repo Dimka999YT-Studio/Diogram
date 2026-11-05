@@ -165,16 +165,54 @@ def _log_open(user_id, case_key, price, prize, label):
         print(f"[game_case_opens] {e!r}")
 
 
-def open_case(user_id, case_key, rnd=None):
-    """Открыть кейс. Возвращает (результат, ошибка). Di не списываются, если приз выдать нечем,
-    а если выдача сорвалась уже после списания, стоимость возвращается."""
+def stock_of(user_id):
+    """Сколько неоткрытых кейсов каждого вида у игрока: {ключ: число}. Без таблицы (миграция не применена) пусто."""
+    out = {k: 0 for k in CASES}
+    try:
+        res = supabase.table("game_case_stock").select("case_key,qty").eq("user_id", user_id).execute()
+        for r in (res.data or []):
+            if r["case_key"] in out: out[r["case_key"]] = int(r["qty"])
+    except Exception as e:
+        print(f"[game_case_stock] {e!r}")
+    return out
+
+
+def grant_cases(admin_id, user_id, case_key, qty):
+    """Выдать кейсы игроку (команда /Case). Возвращает (сколько теперь, ошибка)."""
+    if case_key not in CASES: return None, "Такого кейса нет"
+    if not isinstance(qty, int) or isinstance(qty, bool) or not 1 <= qty <= 100: return None, "Количество от 1 до 100"
+    try:
+        r = supabase.rpc("game_case_add", {"p_user": user_id, "p_case": case_key, "p_qty": qty}).execute()
+        now = int(r.data) if isinstance(r.data, (int, float)) else qty
+    except Exception as e:
+        print(f"[grant_cases] {e!r}")
+        return None, "Не удалось выдать кейсы"
+    try:
+        supabase.table("game_case_grants").insert({"admin_id": admin_id, "user_id": user_id, "case_key": case_key, "qty": qty}).execute()
+    except Exception as e:
+        print(f"[game_case_grants] {e!r}")
+    return now, None
+
+
+def open_case(user_id, case_key, rnd=None, source="di"):
+    """Открыть кейс: за Di (source="di") или из запаса выданных (source="inventory").
+    Возвращает (результат, ошибка). Если приз выдать нечем, ничего не списывается; если выдача сорвалась
+    уже после списания, возвращается цена (или кейс на склад)."""
     case = CASES.get(case_key)
     if not case: return None, "Такого кейса нет"
     prize = roll(case_key, rnd)
     if prize["kind"] in ("username", "account") and stock(prize["kind"]) <= 0:
-        return None, "Этот приз сейчас закончился. Di не списаны, попробуй ещё раз."
-    ok, err = spend_balance(user_id, case["price"], f"Кейс «{case['title']}»")
-    if not ok: return None, err
+        return None, "Этот приз сейчас закончился. Ничего не списано, попробуй ещё раз."
+    from_stock = source == "inventory"
+    if from_stock:
+        try:
+            ok = bool(supabase.rpc("game_case_take", {"p_user": user_id, "p_case": case_key}).execute().data)
+        except Exception as e:
+            print(f"[game_case_take] {e!r}"); return None, "Не удалось открыть кейс. Попробуй ещё раз."
+        if not ok: return None, "У тебя нет такого кейса"
+    else:
+        ok, err = spend_balance(user_id, case["price"], f"Кейс «{case['title']}»")
+        if not ok: return None, err
     label = prize["label"]
     try:
         kind = prize["kind"]
@@ -194,12 +232,16 @@ def open_case(user_id, case_key, rnd=None):
             if not got: raise LookupError("нет секреток")
             prize = dict(prize, email=got["email"], password=got["password"])
     except Exception as e:
-        print(f"[open_case] выдача не удалась ({e!r}), возвращаю {case['price']} Di пользователю {user_id}")
+        print(f"[open_case] выдача не удалась ({e!r}), возвращаю пользователю {user_id}")
+        if from_stock:
+            try: supabase.rpc("game_case_add", {"p_user": user_id, "p_case": case_key, "p_qty": 1}).execute()
+            except Exception as e2: print(f"[open_case] !!! кейс не вернулся: user={user_id} case={case_key} {e2!r}")
+            return None, "Не удалось выдать приз. Кейс возвращён, попробуй ещё раз."
         if not add_balance(user_id, case["price"], f"Возврат: не удалось выдать приз кейса «{case['title']}»"):
             print(f"[open_case] !!! возврат не прошёл: user={user_id} case={case_key} price={case['price']}")
         return None, "Не удалось выдать приз. Di возвращены, попробуй ещё раз."
-    _log_open(user_id, case_key, case["price"], prize, label)
-    return {"case": case_key, "prize": prize, "label": label}, None
+    _log_open(user_id, case_key, 0 if from_stock else case["price"], prize, label)
+    return {"case": case_key, "prize": prize, "label": label, "source": source}, None
 
 
 # ---------- админка (только owner) ----------

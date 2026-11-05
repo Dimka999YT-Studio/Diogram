@@ -100,6 +100,28 @@
   .lobby-row button:disabled { background: #2a3644; color: #6b7886; cursor: default; }
   #screen-gameplay { position: relative; background: #0e1621; overflow: hidden; }
   #game-canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  .cg-form { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .cg-form select, .cg-form input { flex: 1; min-width: 90px; padding: 8px; border-radius: 10px; border: 1px solid #2a3644; background: #0e1621; color: #e8eef5; font-size: 14px; }
+  .cg-form input { max-width: 80px; flex: 0 0 80px; }
+  .cg-form .cg-go { margin-top: 0; flex: 1 1 100%; }
+  .cg-out { flex: 1 1 100%; font-size: 12px; opacity: .9; }
+  .gi { position: relative; flex: 0 0 92px; height: 108px; border-radius: 12px; background: #17212b; border-bottom: 4px solid var(--rc, #8a97a5); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 6px 4px; box-sizing: border-box; text-align: center; overflow: hidden; }
+  .gi::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--rc, #8a97a5) 38%, transparent), transparent 70%); }
+  .gi .gi-ic { position: relative; font-size: 34px; line-height: 1; height: 40px; display: flex; align-items: center; justify-content: center; }
+  .gi .gi-ic img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
+  .gi .gi-ic svg { width: 44px; height: 34px; }
+  .gi .gi-t { position: relative; font-size: 11px; font-weight: 700; color: #e8eef5; line-height: 1.15; }
+  .gi.win { outline: 3px solid #fff; box-shadow: 0 0 18px var(--rc, #fff); }
+  .gi-mini { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+  .gi-mini .gi { flex: 0 0 calc(25% - 5px); height: 84px; }
+  .gi-mini .gi .gi-ic { font-size: 26px; height: 30px; } .gi-mini .gi .gi-ic img { width: 28px; height: 28px; } .gi-mini .gi .gi-ic svg { width: 34px; height: 26px; }
+  .gi-mini .gi .gi-t { font-size: 10px; }
+  .gi-chance { position: absolute; top: 3px; right: 5px; font-size: 10px; color: #c5cdd6; z-index: 1; }
+  .roll-view { position: relative; overflow: hidden; border-radius: 14px; background: #0e1621; padding: 14px 0; margin: 12px 0; }
+  .roll-view::before, .roll-view::after { content: ""; position: absolute; top: 0; bottom: 0; width: 56px; z-index: 2; pointer-events: none; }
+  .roll-view::before { left: 0; background: linear-gradient(90deg, #0e1621, transparent); } .roll-view::after { right: 0; background: linear-gradient(270deg, #0e1621, transparent); }
+  .roll-mark { position: absolute; left: 50%; top: 0; bottom: 0; width: 3px; margin-left: -1.5px; background: #ff9f43; z-index: 3; box-shadow: 0 0 8px #ff9f43; }
+  .roll-track { display: flex; gap: 8px; will-change: transform; }
   .gp-hud { position: absolute; left: 0; right: 0; top: 0; padding: 8px 10px; display: flex; gap: 8px; align-items: center; pointer-events: none; font-size: 13px; color: #fff; text-shadow: 0 1px 2px #000; }
   .gp-hud .gp-chip { background: rgba(14,22,33,0.72); border-radius: 10px; padding: 5px 9px; font-weight: 700; }
   .gp-hud .gp-spacer { flex: 1; }
@@ -799,6 +821,15 @@
 
 <div class="modal" id="modal-bio"><div class="modal-bg" onclick="closeModal('modal-bio')"></div><div class="modal-content"><div class="modal-title">О себе</div><textarea id="modal-bio-input" placeholder="Расскажи о себе..." maxlength="200" rows="4" style="resize:none;"></textarea><div class="error" id="modal-bio-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-bio')">Отмена</button><button class="btn" id="btn-save-bio">Сохранить</button></div></div></div>
 
+<div class="modal" id="modal-game-roll">
+  <div class="modal-bg"></div>
+  <div class="modal-content" style="text-align:center; max-width:560px; width:94%;">
+    <div class="modal-title" id="roll-title">Кейс</div>
+    <div class="roll-view" id="roll-view"><div class="roll-mark"></div><div class="roll-track" id="roll-track"></div></div>
+    <button class="btn btn-secondary" id="roll-skip">Пропустить</button>
+  </div>
+</div>
+
 <div class="modal" id="modal-game-prize">
   <div class="modal-bg" onclick="closeModal('modal-game-prize')"></div>
   <div class="modal-content" style="text-align:center;">
@@ -888,6 +919,7 @@
 const API = location.origin;
 const RATE = 1.59;
 const COIN_URL = "/assets/coin.jpg";
+const GAME_CASES = [{ key: "common", title: "Обычный кейс", price: 1 }, { key: "rare", title: "Редкий кейс", price: 10 }, { key: "legendary", title: "Легендарный кейс", price: 25 }, { key: "autumn", title: "Осенька кейс", price: 50 }];
 let token = localStorage.getItem("diogram_token") || null;
 let currentUser = null;
 let currentChat = null;
@@ -1259,6 +1291,17 @@ function bindRxGestures(box, show) {
 bindRxGestures(document.getElementById("messages"), showRxPicker);
 // Кнопка «Играть» в сообщении от аккаунта сезонной игры. Сама игра подключается позже: пока сообщаем, открыта ли она.
 document.getElementById("messages").addEventListener("click", async (ev) => {
+  const go = ev.target.closest && ev.target.closest(".cg-go");
+  if (go) {   // выдача кейсов командой /Case (только владелец и разработчики; сервер проверяет роль сам)
+    const f = go.closest(".cg-form"), out = f.querySelector(".cg-out");
+    const qty = parseInt(f.querySelector(".cg-qty").value, 10), key = f.querySelector(".cg-case").value, title = (GAME_CASES.find(c => c.key === key) || {}).title || key;
+    if (!(qty >= 1 && qty <= 100)) { out.textContent = "Количество от 1 до 100"; return; }
+    if (!confirm("Выдать " + qty + " × " + title + " пользователю ID " + f.getAttribute("data-uid") + "?")) return;
+    go.disabled = true;
+    try { const r = await api("/api/game/give_case", { method: "POST", body: JSON.stringify({ user_id: parseInt(f.getAttribute("data-uid"), 10), case: key, count: qty }) }); out.textContent = "✅ Выдано: " + qty + " × " + title + " → " + (r.to || "игрок") + ". Теперь у него: " + r.now; }
+    catch (e) { out.textContent = "Ошибка: " + e.message; }
+    go.disabled = false; return;
+  }
   if (!ev.target.closest || !ev.target.closest(".game-play-btn")) return;
   openGame();
 });
@@ -1300,8 +1343,9 @@ function appendMessage(m) {
       content = '<div class="file-block"><div class="file-row"><div class="file-icon">' + icon + '</div><div class="file-info"><div class="file-name">' + fname + '</div><div class="file-size">' + fsize + '</div></div><a class="file-dl" href="' + escapeAttr(m.attachment_url) + '" target="_blank" download>Скачать</a></div></div>';
     }
   }
-  content += (m.type === "game_invite" ? '<span class="pre-line">' + linkify(m.text || "") + '</span>' : linkify(m.text || ""));
+  content += (m.type === "game_invite" || m.type === "game_case_give" ? '<span class="pre-line">' + linkify(m.text || "") + '</span>' : linkify(m.text || ""));
   if (m.type === "game_invite") content += '<button class="game-play-btn" type="button">🎮 Играть</button>';
+  if (m.type === "game_case_give") { const idm = /ID (\d{1,12})/.exec(m.text || ""); if (idm) content += '<div class="cg-form" data-uid="' + parseInt(idm[1], 10) + '"><select class="cg-case">' + GAME_CASES.map(c => '<option value="' + c.key + '">' + escapeHtml(c.title) + ' (' + c.price + ' Di)</option>').join("") + '</select><input class="cg-qty" type="number" min="1" max="100" value="1"><button class="game-play-btn cg-go" type="button">Выдать</button><div class="cg-out"></div></div>'; }
   
   if (currentChat.other && currentChat.other.is_group && !isOwn && m.sender_name) {
       content = '<div style="font-size:11px;color:#5b8bff;margin-bottom:2px;font-weight:600;">' + escapeHtml(m.sender_name) + '</div>' + content;
@@ -2440,12 +2484,56 @@ async function gamePlay(box) {
   gameStopLobbyPoll();
   gameLobbyTimer = setInterval(() => { if (gameView !== "play" || !document.getElementById("screen-game").classList.contains("active")) { gameStopLobbyPoll(); return; } render().catch(() => {}); }, 3000);
 }
-function gameDropsHtml(c) { return c.drops.map(d => '<div class="game-drop"><span>' + escapeHtml(d.label) + '</span><i>' + (parseFloat(d.chance) || 0) + '%</i></div>').join(""); }
+// ---- предметы кейсов: плитки с картинкой и цветом редкости ----
+function gameRarity(ch) { return ch <= 2 ? "#ffcc33" : ch <= 5 ? "#b36bff" : ch <= 10 ? "#4da3ff" : ch <= 30 ? "#4cd964" : "#8a97a5"; }
+const CLOUD_SVG = '<svg viewBox="0 0 44 34" aria-hidden="true"><path d="M11 29a8 8 0 0 1-1-16 11 11 0 0 1 21-2 9 9 0 0 1 3 18z" fill="#fff"/><path d="M11 29a8 8 0 0 1-1-16 11 11 0 0 1 21-2" fill="none" stroke="#cfe3f5" stroke-width="2"/></svg>';
+function gameItemTile(d, withChance) {
+  const el = document.createElement("div"); el.className = "gi"; el.style.setProperty("--rc", gameRarity(parseFloat(d.chance) || 100));
+  const ic = document.createElement("div"); ic.className = "gi-ic";
+  if (d.kind === "di") { const im = document.createElement("img"); im.src = COIN_URL; im.alt = ""; ic.appendChild(im); }
+  else if (d.kind === "clouds") ic.innerHTML = CLOUD_SVG;
+  else ic.textContent = d.kind === "games" ? "🎮" : d.kind === "username" ? "🏷️" : d.kind === "account" ? "🗝️" : "🎁";
+  const t = document.createElement("div"); t.className = "gi-t"; t.textContent = d.label || "";
+  el.appendChild(ic); el.appendChild(t);
+  if (withChance) { const c = document.createElement("div"); c.className = "gi-chance"; c.textContent = (parseFloat(d.chance) || 0) + "%"; el.appendChild(c); }
+  return el;
+}
+function gameMiniHtml(c) { const w = document.createElement("div"); w.className = "gi-mini"; for (const d of c.drops) w.appendChild(gameItemTile(d, true)); return w.outerHTML; }
+let gameCasesData = [];
+// ---- анимация открытия: лента предметов, которая замедляется и останавливается на призе ----
+function gameRoll(caseObj, res) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("modal-game-roll"), view = document.getElementById("roll-view"), track = document.getElementById("roll-track"), skip = document.getElementById("roll-skip");
+    const drops = caseObj.drops, total = drops.reduce((a, d) => a + (parseFloat(d.chance) || 0), 0) || 100;
+    const pick = () => { let r = Math.random() * total; for (const d of drops) { r -= parseFloat(d.chance) || 0; if (r <= 0) return d; } return drops[0]; };
+    const WIN = 38, N = 46, p = res.prize || {};
+    const win = drops.find(d => d.kind === p.kind && (d.kind === "username" || d.kind === "account" || d.label === res.label || (parseInt(d.label, 10) === p.amount && d.kind === p.kind))) || { kind: p.kind, label: res.label, chance: 100 };
+    const winTile = Object.assign({}, win, { label: (p.kind === "username" || p.kind === "account") ? win.label : win.label });
+    track.innerHTML = ""; track.style.transition = "none"; track.style.transform = "translateX(0)";
+    const tiles = [];
+    for (let i = 0; i < N; i++) { const t = gameItemTile(i === WIN ? winTile : pick(), false); track.appendChild(t); tiles.push(t); }
+    document.getElementById("roll-title").textContent = caseObj.title;
+    modal.classList.add("active");
+    const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let done = false;
+    const finish = () => { if (done) return; done = true; tiles[WIN].classList.add("win"); setTimeout(() => { modal.classList.remove("active"); resolve(); }, reduce ? 200 : 900); };
+    skip.onclick = () => { if (done) return; track.style.transition = "none"; place(); finish(); };
+    const place = () => { const w = view.clientWidth, t = tiles[WIN], off = (Math.random() - 0.5) * 50; track.style.transform = "translateX(" + (-(t.offsetLeft + t.offsetWidth / 2 - w / 2 + off)) + "px)"; };
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const dur = reduce ? 0.3 : 4.6; track.style.transition = "transform " + dur + "s cubic-bezier(0.08, 0.62, 0.12, 1)"; place();
+      track.addEventListener("transitionend", finish, { once: true }); setTimeout(finish, dur * 1000 + 400);
+    }));
+  });
+}
 async function gameGeneral(box) {
   const [cs, pr] = await Promise.all([api("/api/game/cases"), api("/api/game/prizes")]);
+  gameCasesData = cs.cases; const stock = cs.stock || {};
   let h = '<div class="game-h">🎁 Кейсы</div><div class="game-note" style="margin-top:-4px;">Твой баланс: ' + (parseFloat(cs.balance) || 0).toFixed(1) + ' Di. Облачки из кейсов идут в топ.</div>';
   for (const c of cs.cases) {
-    h += '<div class="game-card"><h3>' + escapeHtml(c.title) + ' · ' + (parseInt(c.price, 10) || 0) + ' Di</h3><div style="margin:6px 0 10px;">' + gameDropsHtml(c) + '</div><button class="btn" data-case="' + escapeAttr(c.key) + '" data-title="' + escapeAttr(c.title) + '"' + (cs.active ? '' : ' disabled') + '>Открыть за ' + (parseInt(c.price, 10) || 0) + ' Di</button></div>';
+    const n = parseInt(stock[c.key], 10) || 0, ek = escapeAttr(c.key), et = escapeAttr(c.title), act = cs.active ? '' : ' disabled';
+    h += '<div class="game-card"><h3>' + escapeHtml(c.title) + ' · ' + (parseInt(c.price, 10) || 0) + ' Di</h3>' + (n > 0 ? '<div class="game-note" style="margin:2px 0 0;color:#ff9f43;font-weight:700;">У вас есть: ' + n + '</div>' : '') + gameMiniHtml(c) +
+      (n > 0 ? '<button class="btn" data-case="' + ek + '" data-title="' + et + '" data-src="inventory"' + act + '>Открыть (есть ' + n + ')</button><button class="btn btn-secondary" style="margin-top:6px;" data-case="' + ek + '" data-title="' + et + '" data-src="di"' + act + '>Купить и открыть за ' + (parseInt(c.price, 10) || 0) + ' Di</button>'
+             : '<button class="btn" data-case="' + ek + '" data-title="' + et + '" data-src="di"' + act + '>Открыть за ' + (parseInt(c.price, 10) || 0) + ' Di</button>') + '</div>';
   }
   h += '<div class="game-h">🏷️ Мои призы</div>';
   if (!pr.usernames.length && !pr.accounts.length) h += '<div class="game-note">Пока пусто.</div>';
@@ -2475,10 +2563,14 @@ document.getElementById("game-body").addEventListener("click", async (e) => {
     if (g) { gameStopLobbyPoll(); const v = g.getAttribute("data-g"); if (v === "exit") { show("screen-list"); loadList(); return; } gameView = v; await gameRender(); return; }
     if (cb && !cb.disabled) {
       const key = cb.getAttribute("data-case"); const title = cb.getAttribute("data-title") || "кейс";
-      if (!confirm("Открыть «" + title + "»? Di спишутся сразу.")) return;
+      const src = cb.getAttribute("data-src") === "inventory" ? "inventory" : "di";
+      if (!confirm(src === "inventory" ? "Открыть «" + title + "» из твоих кейсов?" : "Открыть «" + title + "»? Di спишутся сразу.")) return;
       cb.disabled = true;
-      try { const r = await api("/api/game/cases/open", { method: "POST", body: JSON.stringify({ case: key }) }); gameShowPrize(r.result); }
-      finally { await gameRender(); }
+      try {
+        const r = await api("/api/game/cases/open", { method: "POST", body: JSON.stringify({ case: key, source: src }) });
+        const co = gameCasesData.find(x => x.key === key); if (co) await gameRoll(co, r.result);
+        gameShowPrize(r.result);
+      } finally { await gameRender(); }
     }
   } catch (err) { if (err.message !== "banned") alert("Ошибка: " + err.message); }
 });

@@ -1201,10 +1201,17 @@ def api_send():
             # Каждый ответ Дио — платный вызов Groq и отдельный поток: ограничиваем и по пользователю, и глобально.
             if should_reply and check_rate_limit(f"dio_{user['id']}", 8, 300) and check_rate_limit("dio_global", 120, 60):
                 threading.Thread(target=process_ai_reply, args=(chat_id, text[:1000]), daemon=True).start()
-        elif other_id == GAME_BOT_ID and user["id"] != GAME_BOT_ID and check_rate_limit(f"gamebot_{user['id']}", 1, 300):
+        elif other_id == GAME_BOT_ID and user["id"] != GAME_BOT_ID:
             try:
-                if game_active(): save_message(chat_id, GAME_BOT_ID, GAME_INVITE_TEXT, "game_invite")
-                else: save_message(chat_id, GAME_BOT_ID, GAME_ENDED_TEXT, "text")
+                cmd = re.fullmatch(r"/case(?:\s+(\d{1,12}))?", text.strip(), re.I)
+                if cmd and user.get("role") in ("owner", "developer"):   # команда выдачи кейсов: только владелец и разработчики
+                    target = get_user_by_id(int(cmd.group(1))) if cmd.group(1) else None
+                    if not cmd.group(1): save_message(chat_id, GAME_BOT_ID, "Команда: /Case ID_пользователя\nНапример: /Case 1000016", "text")
+                    elif not target: save_message(chat_id, GAME_BOT_ID, f"Пользователь с ID {int(cmd.group(1))} не найден.", "text")
+                    else: save_message(chat_id, GAME_BOT_ID, f"🎁 Выдача кейсов\nПолучатель: {target.get('first_name') or target.get('username') or 'без имени'}" + (f" (@{target['username']})" if target.get("username") else "") + f"\nID {target['id']}", "game_case_give")
+                elif check_rate_limit(f"gamebot_{user['id']}", 1, 300):
+                    if game_active(): save_message(chat_id, GAME_BOT_ID, GAME_INVITE_TEXT, "game_invite")
+                    else: save_message(chat_id, GAME_BOT_ID, GAME_ENDED_TEXT, "text")
             except Exception as e: print(f"[game] {e!r}")
     sign_attachments([msg])
     return jsonify({"ok": True, "message": msg})
@@ -1240,7 +1247,7 @@ def api_game_top():
 def api_game_cases():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    return jsonify({"cases": game.public_cases(), "balance": user.get("balance", 0), "active": game_active()})
+    return jsonify({"cases": game.public_cases(), "balance": user.get("balance", 0), "active": game_active(), "stock": game.stock_of(user["id"])})
 
 @app.route("/api/game/cases/open", methods=["POST"])
 @serialized_per_user
@@ -1249,11 +1256,32 @@ def api_game_case_open():
     if not user: return jsonify({"error": "Не авторизован"}), 401
     if not game_active(): return jsonify({"error": "Сезон закончился, кейсы закрыты"}), 400
     if not check_rate_limit(f"gamecase_{user['id']}", 30, 60): return jsonify({"error": "Слишком часто. Подожди минуту."}), 429
-    case_key = str_field(json_body(), "case")
-    result, err = game.open_case(user["id"], case_key)
+    d = json_body(); case_key = str_field(d, "case")
+    source = "inventory" if d.get("source") == "inventory" else "di"
+    result, err = game.open_case(user["id"], case_key, source=source)
     if err: return jsonify({"error": err}), 400
     fresh = get_user_by_id(user["id"]) or user
-    return jsonify({"ok": True, "result": result, "balance": fresh.get("balance", 0), "state": game.my_state(fresh)})
+    return jsonify({"ok": True, "result": result, "balance": fresh.get("balance", 0), "state": game.my_state(fresh), "stock": game.stock_of(user["id"])})
+
+@app.route("/api/game/give_case", methods=["POST"])
+def api_game_give_case():
+    """Выдать кейсы игроку (команда /Case для @Play). Только владелец и разработчики."""
+    admin = get_current_user()
+    if not admin: return jsonify({"error": "Не авторизован"}), 401
+    if admin.get("role") not in ("owner", "developer"): return jsonify({"error": "Нет доступа"}), 403
+    if not check_rate_limit(f"givecase_{admin['id']}", 30, 60): return jsonify({"error": "Слишком часто. Подожди минуту."}), 429
+    d = json_body(); uid = to_int(d.get("user_id")); qty = to_int(d.get("count")); case_key = str_field(d, "case")
+    if uid is None or qty is None: return jsonify({"error": "Нужны user_id и count"}), 400
+    target = get_user_by_id(uid)
+    if not target: return jsonify({"error": "Пользователь с таким ID не найден"}), 404
+    now, err = game.grant_cases(admin["id"], uid, case_key, qty)
+    if err: return jsonify({"error": err}), 400
+    title = game.CASES[case_key]["title"]
+    try:   # игрок видит уведомление от @Play
+        chat = get_or_create_chat(GAME_BOT_ID, uid)
+        if chat: save_message(chat["id"], GAME_BOT_ID, f"🎁 Тебе выдали кейсы: {title} × {qty}\nУ тебя есть: {now}. Открой их в игре: Общее → Кейсы.", "text")
+    except Exception as e: print(f"[give_case notify] {e!r}")
+    return jsonify({"ok": True, "now": now, "to": target.get("username") or target.get("first_name")})
 
 # ---------- карта и лобби (состояние в памяти процесса, как «печатает…») ----------
 GAME_HUB = game_world.Hub(consume=game.use_attempt, credit=game.credit_map_clouds)
