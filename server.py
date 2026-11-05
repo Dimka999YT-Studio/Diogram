@@ -1557,6 +1557,8 @@ def api_upload_avatar():
         if len(processed) > VIDEO_AVATAR_MAX: return jsonify({"error": "Видео больше 10 МБ"}), 400
         ext = sniff_video(processed)
         if not ext:
+            if len(processed) > 376 and processed[0] == 0x47 and processed[188] == 0x47 and processed[376] == 0x47:
+                return jsonify({"error": "Это не настоящий MP4: внутри формат MPEG-TS (так бывает у роликов из некоторых приложений). Пересохрани видео как MP4 (например, через экспорт или конвертер) и загрузи снова."}), 400
             head = processed[:12]
             brand = head[8:12].decode("ascii", "replace") if head[4:8] == b"ftyp" else "".join(chr(b) if 32 <= b < 127 else "." for b in head[:8])
             return jsonify({"error": "Нужен MP4 (H.264) или WebM. Тип файла: " + brand.strip()}), 400
