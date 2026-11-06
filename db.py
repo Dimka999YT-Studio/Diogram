@@ -1,5 +1,6 @@
 import os
 import threading
+import time
 import bcrypt
 from datetime import datetime, timedelta, timezone
 from supabase import create_client, Client
@@ -7,7 +8,69 @@ from supabase import create_client, Client
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "").strip()
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+_raw_supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+# ============ ПОВТОР ЧТЕНИЙ ПРИ ОБРЫВЕ СВЯЗИ ============
+# Соединение с Supabase иногда рвётся (ReadError, ConnectionTerminated, LocalProtocolError): тогда пользователь видел
+# «ошибка сервера», хотя сам запрос был в порядке. Запросы на ЧТЕНИЕ (select и чтение-RPC) повторяем до 2 раз с короткой
+# паузой. Записи (insert/update/upsert/delete и остальные RPC) НЕ повторяем: после обрыва неизвестно, дошла ли запись,
+# и повтор мог бы выполнить покупку или начисление дважды.
+READ_RPCS = {"chat_summaries", "channel_summaries", "game_rank", "game_top"}
+RETRY_DELAYS = (0.15, 0.4)
+try:
+    import httpx as _httpx
+    _RETRY_ERRORS = (_httpx.TransportError,) if isinstance(_httpx.TransportError, type) and issubclass(_httpx.TransportError, BaseException) else ()
+except Exception:  # httpx нет: повторов не будет, остальное работает как раньше
+    _RETRY_ERRORS = ()
+
+
+class _RetryBuilder:
+    """Обёртка над построителем запроса supabase-py: цепочка .select().eq()... работает как раньше,
+    а .execute() у чтения повторяется при обрыве связи."""
+    __slots__ = ("_b", "_read")
+
+    def __init__(self, builder, read):
+        self._b = builder; self._read = read
+
+    def __getattr__(self, name):
+        attr = getattr(self._b, name)
+        read = self._read
+        if name in ("insert", "update", "upsert", "delete"): read = False
+        if name == "execute":
+            def execute(*a, **k):
+                if not (read and _RETRY_ERRORS): return attr(*a, **k)
+                last = None
+                for delay in (0,) + RETRY_DELAYS:
+                    if delay: time.sleep(delay)
+                    try: return attr(*a, **k)
+                    except _RETRY_ERRORS as e:
+                        last = e; print(f"[db retry] {e!r}")
+                raise last
+            return execute
+        if callable(attr):
+            def call(*a, **k):
+                res = attr(*a, **k)
+                return _RetryBuilder(res, read) if hasattr(res, "execute") else res
+            return call
+        return _RetryBuilder(attr, read) if hasattr(attr, "execute") else attr
+
+
+class _RetryClient:
+    """Клиент Supabase: table() и rpc() идут через повтор чтений, всё остальное (storage и т.д.) без изменений."""
+    def __init__(self, client): self._c = client
+
+    def table(self, name):
+        # режим (чтение/запись) определяет первый вызов в цепочке: select -> чтение, insert/update/upsert/delete -> запись
+        return _RetryBuilder(self._c.table(name), True)
+
+    def rpc(self, fn, *a, **k):
+        return _RetryBuilder(self._c.rpc(fn, *a, **k), fn in READ_RPCS)
+
+    def __getattr__(self, name): return getattr(self._c, name)
+
+
+supabase = _RetryClient(_raw_supabase)
 
 
 # ============ ПОЛЬЗОВАТЕЛИ ============
