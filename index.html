@@ -138,6 +138,11 @@
   .rx-picker { position: fixed; z-index: 90; display: flex; gap: 2px; padding: 6px 8px; background: #1c2a38; border: 1px solid #2a3b4d; border-radius: 22px; box-shadow: 0 6px 20px rgba(0,0,0,0.45); }
   .rx-picker span { font-size: 22px; padding: 2px 4px; cursor: pointer; border-radius: 10px; }
   .rx-picker span.sel { background: rgba(91,139,255,0.4); }
+  .rx-picker { flex-wrap: wrap; max-width: 320px; }
+  .rx-actions { flex-basis: 100%; display: flex; justify-content: center; gap: 4px; margin-top: 4px; padding-top: 4px; border-top: 1px solid #2a3b4d; }
+  .rx-actions .ctx-btn:hover { background: rgba(91,139,255,0.25); }
+  .fwd { font-size: 12px; font-weight: 600; opacity: 0.85; margin-bottom: 3px; padding-left: 6px; border-left: 2px solid rgba(255,255,255,0.5); }
+  .toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); z-index: 120; background: rgba(28,42,56,0.96); color: #e8eef5; padding: 9px 16px; border-radius: 18px; font-size: 14px; box-shadow: 0 6px 20px rgba(0,0,0,0.45); pointer-events: none; }
   .msg .time { display: inline-block; font-size: 10px; opacity: 0.65; margin-left: 6px; }
   .msg .checks { font-size: 12px; margin-left: 4px; opacity: 0.85; }
   .msg .checks.read { color: #b3d4ff; }
@@ -813,6 +818,7 @@
   <div class="menu-item" id="menu-logout"><span class="icon">🚪</span> Выйти</div>
 </div>
 
+<div class="modal" id="modal-forward"><div class="modal-bg" onclick="closeModal('modal-forward')"></div><div class="modal-content"><div class="modal-title">↪ Переслать</div><div id="forward-list" style="max-height:55vh;overflow-y:auto;"></div><button class="btn btn-secondary" onclick="closeModal('modal-forward')">Отмена</button></div></div>
 <div class="modal" id="modal-poll"><div class="modal-bg" onclick="closeModal('modal-poll')"></div><div class="modal-content"><div class="modal-title">📊 Новый опрос</div><input type="text" id="poll-question" placeholder="Вопрос" maxlength="255" style="margin-bottom:10px;"><textarea id="poll-options" placeholder="Варианты — каждый с новой строки (от 2 до 10)" rows="5" style="resize:none;"></textarea><label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px;"><input type="checkbox" id="poll-multiple" style="width:auto;"> Можно выбрать несколько</label><div class="error" id="modal-poll-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-poll')">Отмена</button><button class="btn" id="btn-poll-send">Отправить</button></div></div></div>
 <div class="modal" id="modal-link-group"><div class="modal-bg" onclick="closeModal('modal-link-group')"></div><div class="modal-content"><div class="modal-title">Группа для комментариев</div><div style="font-size:13px;color:#7e8b99;margin-bottom:12px;">Посты канала будут дублироваться в группу, а под ними появится кнопка «Комментарии». Подписчики, которые комментируют, добавляются в группу.</div><div id="link-group-list"></div><div class="error" id="modal-link-group-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-link-group')">Закрыть</button></div></div></div>
 <div class="modal" id="modal-name"><div class="modal-bg" onclick="closeModal('modal-name')"></div><div class="modal-content"><div class="modal-title">Изменить имя</div><input type="text" id="modal-name-first" placeholder="Имя" maxlength="32" style="margin-bottom:10px;"><input type="text" id="modal-name-last" placeholder="Фамилия (необязательно)" maxlength="32"><div class="error" id="modal-name-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-name')">Отмена</button><button class="btn" id="btn-save-name">Сохранить</button></div></div></div>
@@ -1189,7 +1195,9 @@ async function loadList() {
         if (u.avatar_url) av.innerHTML = avatarHtml(u.avatar_url);
         else av.textContent = initial(name);
         if (u.is_online) { const dot = document.createElement("div"); dot.className = "online-dot"; av.appendChild(dot); }
-        const last = item.last_message_type === "photo" ? "📷 Фото" : item.last_message_type === "file" ? "📎 Файл" : (item.last_message || "Нет сообщений");
+        let lastText = item.last_message || "";
+        if (lastText.startsWith("\u2063")) { const nl = lastText.indexOf("\n"); lastText = "↪ " + ((nl < 0 ? "" : lastText.slice(nl + 1)).trim() || "Пересланное сообщение"); }   // у пересланного без метки и заголовка
+        const last = item.last_message_type === "photo" ? "📷 Фото" : item.last_message_type === "file" ? "📎 Файл" : (lastText || "Нет сообщений");
         el.innerHTML = ''; el.appendChild(av);
         const info = document.createElement("div"); info.className = "list-info";
         info.innerHTML = '<div class="list-name">' + escapeHtml(name) + roleIcon(u.role) + verifiedMark(u.verified) + '</div><div class="list-last">' + escapeHtml(last) + '</div>';
@@ -1266,14 +1274,60 @@ async function reactTo(mid, emoji) {
   catch (e) { rxByMsg[mid] = old; refreshAllRx(); if (e.message !== "banned") alert("Ошибка: " + e.message); }
 }
 function closeRxPicker() { const p = document.getElementById("rx-picker"); if (p) p.remove(); }
+// ---- копирование и пересылка сообщений ----
+let toastTimer = null;
+function showToast(text) {
+  let t = document.getElementById("toast"); if (!t) { t = document.createElement("div"); t.id = "toast"; t.className = "toast"; document.body.appendChild(t); }
+  t.textContent = text; t.style.display = "block"; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.style.display = "none"; }, 1800);
+}
+async function copyText(text) {
+  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); showToast("Скопировано"); return; } } catch (e) {}
+  try {   // запасной путь для старых браузеров и веб-вью
+    const ta = document.createElement("textarea"); ta.value = text; ta.setAttribute("readonly", ""); ta.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;";
+    document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length); const ok = document.execCommand("copy"); ta.remove();
+    showToast(ok ? "Скопировано" : "Не удалось скопировать");
+  } catch (e) { showToast("Не удалось скопировать"); }
+}
+let forwardMid = null;
+async function openForward(mid) {
+  forwardMid = mid; const box = document.getElementById("forward-list"); box.textContent = "Загрузка..."; openModal("modal-forward");
+  try {
+    const data = await api("/api/all_list"); box.textContent = "";
+    const items = (data.items || []).filter(i => i.type === "chat" || i.type === "group");
+    if (!items.length) { box.textContent = "Нет чатов, куда можно переслать."; return; }
+    for (const it of items) {
+      const isGroup = it.type === "group", u = it.other_user || {};
+      const name = isGroup ? (it.name || "Группа") : (u.first_name || u.username || "Без имени");
+      box.appendChild(listRow(isGroup ? "👥" : initial(name), name, isGroup ? "группа" : (u.username ? "@" + u.username : ""), 0, () => doForward(it.chat_id, name)));
+    }
+  } catch (e) { box.textContent = "Ошибка: " + e.message; }
+}
+async function doForward(chatId, name) {
+  const mid = forwardMid; if (!mid) return; forwardMid = null; closeModal("modal-forward");
+  try { await api("/api/messages/" + mid + "/forward", { method: "POST", body: JSON.stringify({ chat_id: chatId }) }); showToast("Переслано: " + name); }
+  catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
+}
+function msgActions(el, canForward) {
+  const acts = [], raw = (el._raw || "").trim();
+  if (raw) acts.push({ label: "📋 Копировать", fn: () => copyText(raw) });
+  const mid = parseInt(el.getAttribute("data-mid"), 10);
+  if (canForward && mid) acts.push({ label: "↪ Переслать", fn: () => openForward(mid) });
+  return acts;
+}
+const FWD_TYPES = ["text", "photo", "file"];
 function showRxPicker(el) {
   const mid = parseInt(el.getAttribute("data-mid"), 10); if (!mid) return;
-  openRxPicker(el, myReaction(mid), (emoji) => reactTo(mid, emoji));
+  openRxPicker(el, myReaction(mid), (emoji) => reactTo(mid, emoji), msgActions(el, FWD_TYPES.includes(el.getAttribute("data-mtype") || "text")));
 }
-function openRxPicker(el, mine, onPick) {
+function openRxPicker(el, mine, onPick, actions) {
   closeRxPicker();
   const p = document.createElement("div"); p.id = "rx-picker"; p.className = "rx-picker";
   for (const e of RX_EMOJIS) { const b = document.createElement("span"); b.textContent = e; if (e === mine) b.className = "sel"; b.onclick = (ev) => { ev.stopPropagation(); closeRxPicker(); onPick(e === mine ? null : e); }; p.appendChild(b); }
+  if (actions && actions.length) {
+    const row = document.createElement("div"); row.className = "rx-actions";
+    for (const a of actions) { const b = document.createElement("span"); b.className = "ctx-btn"; b.textContent = a.label; b.onclick = (ev) => { ev.stopPropagation(); closeRxPicker(); a.fn(); }; row.appendChild(b); }
+    p.appendChild(row);
+  }
   document.body.appendChild(p);
   const rc = el.getBoundingClientRect(), pw = p.offsetWidth, ph = p.offsetHeight;
   p.style.left = Math.max(8, Math.min(window.innerWidth - pw - 8, rc.left + rc.width / 2 - pw / 2)) + "px";
@@ -1310,7 +1364,7 @@ document.addEventListener("click", closeRxPicker);
 function showChannelRxPicker(el) {
   const mid = parseInt(el.getAttribute("data-mid"), 10); if (!mid || !currentChannel) return;
   if (!el.isConnected) { el = document.querySelector('#channel-messages .msg[data-mid="' + mid + '"]'); if (!el) return; }   // пост перерисовался опросом
-  openRxPicker(el, el.getAttribute("data-myrx") || null, (emoji) => reactChannel(mid, emoji));
+  openRxPicker(el, el.getAttribute("data-myrx") || null, (emoji) => reactChannel(mid, emoji), msgActions(el, false));
 }
 async function reactChannel(mid, emoji) {
   if (!currentChannel) return; const chId = currentChannel.id;
@@ -1343,7 +1397,12 @@ function appendMessage(m) {
       content = '<div class="file-block"><div class="file-row"><div class="file-icon">' + icon + '</div><div class="file-info"><div class="file-name">' + fname + '</div><div class="file-size">' + fsize + '</div></div><a class="file-dl" href="' + escapeAttr(m.attachment_url) + '" target="_blank" download>Скачать</a></div></div>';
     }
   }
-  content += (m.type === "game_invite" || m.type === "game_case_give" ? '<span class="pre-line">' + linkify(m.text || "") + '</span>' : linkify(m.text || ""));
+  let body = m.text || "", fwdHead = "";
+  if (body.startsWith("\u2063")) {   // пересланное сообщение: метку ставит только сервер, первая строка это заголовок
+    const nl = body.indexOf("\n"); fwdHead = (nl < 0 ? body : body.slice(0, nl)).replace(/\u2063/g, ""); body = nl < 0 ? "" : body.slice(nl + 1);
+  }
+  content += (m.type === "game_invite" || m.type === "game_case_give" ? '<span class="pre-line">' + linkify(body) + '</span>' : linkify(body));
+  if (fwdHead) content = '<div class="fwd">' + escapeHtml(fwdHead) + '</div>' + content;
   if (m.type === "game_invite") content += '<button class="game-play-btn" type="button">🎮 Играть</button>';
   if (m.type === "game_case_give") { const idm = /ID (\d{1,12})/.exec(m.text || ""); if (idm) content += '<div class="cg-form" data-uid="' + parseInt(idm[1], 10) + '"><select class="cg-case">' + GAME_CASES.map(c => '<option value="' + c.key + '">' + escapeHtml(c.title) + ' (' + c.price + ' Di)</option>').join("") + '</select><input class="cg-qty" type="number" min="1" max="100" value="1"><button class="game-play-btn cg-go" type="button">Выдать</button><div class="cg-out"></div></div>'; }
   
@@ -1354,6 +1413,7 @@ function appendMessage(m) {
   let checks = "";
   if (isOwn) checks = m.read_at ? '<span class="checks read">✓✓</span>' : '<span class="checks">✓</span>';
   d.innerHTML = content + '<span class="time">' + time + checks + '</span>';
+  d._raw = body; d.setAttribute("data-mtype", m.type || "text");
   if (m.id != null) { d.setAttribute("data-mid", String(m.id)); renderRx(d); }
   box.appendChild(d); box.scrollTop = box.scrollHeight;
   return d;
@@ -1539,6 +1599,7 @@ function appendChannelMessage(m) {
   const d = document.createElement("div"); d.className = "msg other"; d.setAttribute("data-mid", String(parseInt(m.id, 10) || 0));
   d.innerHTML = (m.poll ? pollHtml(m) : linkify(m.text)) + '<span class="time">' + fmtTime(m.created_at) + '</span>'
     + (m.discussion_message_id ? '<button class="comments-btn" data-comments="1">💬 Комментарии' + (m.comments_count ? " (" + (parseInt(m.comments_count, 10) || 0) + ")" : "") + '</button>' : "");
+  d._raw = m.poll ? "" : (m.text || "");
   const mineRx = (m.reactions || []).find(r => r.mine); if (mineRx) d.setAttribute("data-myrx", mineRx.emoji);
   fillRxRow(d, m.reactions, (emoji) => reactChannel(parseInt(m.id, 10), emoji));
   box.appendChild(d);
