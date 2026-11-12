@@ -1179,7 +1179,7 @@ def api_send():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
     data = json_body()
-    chat_id = to_int(data.get("chat_id")); text = str_field(data, "text")
+    chat_id = to_int(data.get("chat_id")); text = strip_fwd_mark(str_field(data, "text")).strip()
     if not chat_id or not text: return jsonify({"error": "chat_id и text обязательны"}), 400
     if len(text) > 4000: return jsonify({"error": "Сообщение слишком длинное"}), 400
     # Антиспам: не больше 20 сообщений за 10 секунд с одного аккаунта (раньше лимита не было вообще).
@@ -1213,6 +1213,44 @@ def api_send():
                     if game_active(): save_message(chat_id, GAME_BOT_ID, GAME_INVITE_TEXT, "game_invite")
                     else: save_message(chat_id, GAME_BOT_ID, GAME_ENDED_TEXT, "text")
             except Exception as e: print(f"[game] {e!r}")
+    sign_attachments([msg])
+    return jsonify({"ok": True, "message": msg})
+
+FORWARD_TYPES = ("text", "photo", "file")
+
+@app.route("/api/messages/<int:message_id>/forward", methods=["POST"])
+def api_forward_message(message_id):
+    """Переслать сообщение (текст, фото или файл) в другой свой чат или группу. Копируем только то, что пользователь
+    сам видит: доступ к исходному чату и к целевому проверяем так же, как при обычной отправке."""
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    target_id = to_int(json_body().get("chat_id"))
+    if not target_id: return jsonify({"error": "chat_id обязателен"}), 400
+    if not check_rate_limit(f"fwd_{user['id']}", 20, 10) or not check_rate_limit(f"fwd_min_{user['id']}", 60, 60):
+        return jsonify({"error": "Слишком часто. Подожди пару секунд."}), 429
+    src = get_message_by_id(message_id)
+    src_chat = get_chat_cached(src["chat_id"]) if src else None
+    if not src or not src_chat or not has_chat_access(src_chat, user["id"]): return jsonify({"error": "Сообщение не найдено"}), 404
+    mtype = src.get("type") or "text"
+    if mtype not in FORWARD_TYPES: return jsonify({"error": "Это сообщение нельзя переслать"}), 400
+    chat = get_chat_cached(target_id)
+    if not chat: return jsonify({"error": "Чат не найден"}), 404
+    if not has_chat_access(chat, user["id"]): return jsonify({"error": "Нет доступа"}), 403
+    blocked = private_chat_blocked(chat, user)
+    if blocked: return blocked
+    body = src.get("text") or ""
+    if body.startswith(FWD_MARK):   # пересылка пересланного: автор остаётся первоначальным
+        text = body
+    else:
+        author = get_user_by_id(src.get("sender_id")) or {}
+        name = (author.get("first_name") or ("@" + author["username"] if author.get("username") else "") or "пользователя")[:40].replace("\n", " ")
+        text = f"{FWD_MARK}↪ Переслано от {name}\n{body}"
+    if len(text) > 4000: text = text[:4000]
+    if mtype == "text" and not body.strip(): return jsonify({"error": "Пустое сообщение"}), 400
+    if mtype != "text" and not src.get("attachment_url"): return jsonify({"error": "Вложение недоступно"}), 400
+    msg = save_message(target_id, user["id"], text, mtype, src.get("attachment_url"), src.get("attachment_size"), src.get("attachment_name"),
+                       file_type=src.get("file_type"), file_mime=src.get("file_mime"))
+    update_last_seen(user["id"])
     sign_attachments([msg])
     return jsonify({"ok": True, "message": msg})
 
@@ -1471,6 +1509,11 @@ def file_link(mid):
     exp = (int(time.time()) // FILE_LINK_BUCKET_SEC + 2) * FILE_LINK_BUCKET_SEC   # одна ссылка на час: браузер может кэшировать
     return f"/api/f/{mid}/{exp}/{_file_sig(mid, exp)}"
 
+# Пересланные сообщения начинаются с невидимого знака-метки и строки «↪ Переслано от ...». Знак ставит только сервер:
+# из пользовательского текста и подписей к фото он вырезается, иначе можно было бы подделать «переслано от @owner».
+FWD_MARK = "\u2063"
+def strip_fwd_mark(t): return t.replace(FWD_MARK, "") if isinstance(t, str) else t
+
 def sign_attachments(messages):
     """Подменяет attachment_url на временную ссылку. Вызывать для каждого ответа, где сообщения уходят участнику чата."""
     for m in messages or []:
@@ -1600,7 +1643,7 @@ def api_upload_photo():
     file = request.files["file"]
     mime = file.mimetype or ""
     if mime not in ALLOWED_MIME: return jsonify({"error": "Только JPG, PNG, WEBP, GIF"}), 400
-    caption = (request.form.get("caption") or "").strip()
+    caption = strip_fwd_mark(request.form.get("caption") or "").strip()
     if len(caption) > 500: return jsonify({"error": "Подпись максимум 500 символов"}), 400
     try:
         file_bytes = file.read(); processed, ext = _process_image(file_bytes, mime)
