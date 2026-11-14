@@ -334,6 +334,7 @@
   .modal-bg { position: absolute; inset: 0; background: rgba(0,0,0,0.7); }
   .modal-content { position: relative; background: #17212b; border-radius: 18px; padding: 22px; width: 100%; max-width: 420px; max-height: 85vh; overflow-y: auto; }
   .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; text-align: center; }
+  .captcha-canvas { width: 280px; max-width: 100%; aspect-ratio: 1; background: #0e1621; border: 1.5px dashed #2b5278; border-radius: 16px; touch-action: none; cursor: crosshair; display: block; margin: 0 auto; }
   .promo-modal { text-align: center; }
   .promo-ico { font-size: 40px; line-height: 1; margin-bottom: 6px; }
   .promo-hint { font-size: 13px; opacity: 0.65; margin: 4px 0 14px; line-height: 1.4; }
@@ -757,6 +758,7 @@
       <button class="admin-tab" data-tab="reports">📩 Жалобы</button>
       <button class="admin-tab" data-tab="reserved" id="admin-tab-reserved" style="display:none;">⭐ Резерв имён</button>
       <button class="admin-tab" data-tab="promo" id="admin-tab-promo">🎟 Промокоды</button>
+      <button class="admin-tab" data-tab="captcha" id="admin-tab-captcha" style="display:none;">✍️ Капча</button>
       <button class="admin-tab" data-tab="game" id="admin-tab-game" style="display:none;">🍂 Призы турнира</button>
     </div>
     <div class="search-bar"><input type="text" id="admin-search" placeholder="Поиск по @username или email"></div>
@@ -785,7 +787,7 @@
     <div class="header"><button class="header-icon" id="btn-privacy-back">←</button><h1>📄 Политика</h1></div>
     <div class="doc-screen">
       <div class="doc-title">Политика конфиденциальности</div>
-      <div class="doc-date">Дата последнего обновления: 11.10.2026</div>
+      <div class="doc-date">Дата последнего обновления: 15.11.2026</div>
       <div class="doc-section"><h3>1. О чём это</h3><p>Эта политика объясняет, какие данные Diogram собирает, зачем, где хранит и как защищает.</p></div>
       <div class="doc-section"><h3>2. Какие данные собираем</h3><p><b>При регистрации:</b> email, пароль (зашифрован).</p><p><b>В профиле:</b> имя, фамилия, @username, bio, аватарка.</p><p><b>В процессе:</b> сообщения, фото, дата входа.</p><p><b>НЕ собираем:</b> IP, устройство, геолокацию, контакты.</p></div>
       <div class="doc-section"><h3>3. Зачем</h3><ul><li>Email — для входа</li><li>Профиль — чтобы тебя нашли</li><li>Сообщения — чтобы работал мессенджер</li><li>Дата входа — "был(а) недавно"</li></ul></div>
@@ -796,7 +798,8 @@
       <div class="doc-section"><h3>8. Твои права</h3><ul><li>Посмотреть свои данные</li><li>Изменить имя, @username, bio</li><li>Запросить удаление</li></ul></div>
       <div class="doc-section"><h3>9. Контакты</h3><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a></div></div>
       <div class="doc-section"><h3>10. Возраст</h3><p>Diogram с 12 лет. Младше — нужно согласие родителей.</p></div>
-      <div class="doc-section"><h3>11. Изменения</h3><p>Можем обновлять политику. О серьёзных изменениях сообщим в мессенджере.</p></div>
+      <div class="doc-section"><h3>11. Проверка «ты человек» (капча)</h3><p>При подозрительной активности (много неудачных входов, всплеск регистраций с одного адреса, спам-отправки) мы просим нарисовать круг. Мы сохраняем сам рисунок: точки линии, время и тип устройства (сенсорный экран или мышь). <b>Мы не связываем рисунок с аккаунтом, email или IP-адресом.</b> Рисунки могут храниться бессрочно и передаваться третьим лицам, в том числе для обучения нейросетей. Камера и микрофон не используются. Если не согласен, не проходи проверку; удалить рисунок по запросу мы не сможем, так как не знаем, чей он.</p></div>
+      <div class="doc-section"><h3>12. Изменения</h3><p>Можем обновлять политику. О серьёзных изменениях сообщим в мессенджере.</p></div>
     </div>
   </div>
 
@@ -835,6 +838,8 @@
   <div class="menu-item" id="menu-logout"><span class="icon">🚪</span> Выйти</div>
 </div>
 
+<div class="modal" id="modal-captcha"><div class="modal-bg"></div><div class="modal-content promo-modal"><div class="promo-ico">✍️</div><div class="modal-title">Подтверди, что ты человек</div><div class="promo-hint">Нарисуй круг пальцем или мышкой</div><canvas id="captcha-canvas" width="280" height="280" class="captcha-canvas"></canvas><div id="captcha-msg" class="promo-result"></div><div class="promo-hint" style="font-size:11px;margin:8px 0 0;">Рисунок сохраняется анонимно, без привязки к аккаунту, и может использоваться для обучения ИИ. Подробнее в Политике конфиденциальности (раздел 11).</div><div class="modal-actions"><button class="btn btn-secondary" id="captcha-clear">Очистить</button><button class="btn" id="captcha-send">Отправить</button></div></div></div>
+<div class="modal" id="modal-captcha-view"><div class="modal-bg" onclick="closeModal('modal-captcha-view')"></div><div class="modal-content promo-modal"><div class="modal-title" id="cv-title">Рисунок</div><canvas id="cv-canvas" width="280" height="280" class="captcha-canvas"></canvas><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-captcha-view')">Закрыть</button><button class="btn" id="cv-replay">▶ Повторить</button></div></div></div>
 <div class="modal" id="modal-promo"><div class="modal-bg" onclick="closeModal('modal-promo')"></div><div class="modal-content promo-modal"><div class="promo-ico">🎟</div><div class="modal-title">Промокод</div><div class="promo-hint">Введи код и получи награду: Di, PDG, кейсы, облачка или юзернейм</div><input type="text" id="promo-input" class="promo-field" placeholder="КОД" maxlength="32" autocomplete="off" autocapitalize="off" spellcheck="false"><div id="promo-result" class="promo-result"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-promo')">Закрыть</button><button class="btn" id="promo-go">Активировать</button></div></div></div>
 <div class="modal" id="modal-forward"><div class="modal-bg" onclick="closeModal('modal-forward')"></div><div class="modal-content"><div class="modal-title">↪ Переслать</div><div id="forward-list" style="max-height:55vh;overflow-y:auto;"></div><button class="btn btn-secondary" onclick="closeModal('modal-forward')">Отмена</button></div></div>
 <div class="modal" id="modal-poll"><div class="modal-bg" onclick="closeModal('modal-poll')"></div><div class="modal-content"><div class="modal-title">📊 Новый опрос</div><input type="text" id="poll-question" placeholder="Вопрос" maxlength="255" style="margin-bottom:10px;"><textarea id="poll-options" placeholder="Варианты — каждый с новой строки (от 2 до 10)" rows="5" style="resize:none;"></textarea><label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px;"><input type="checkbox" id="poll-multiple" style="width:auto;"> Можно выбрать несколько</label><div class="error" id="modal-poll-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-poll')">Отмена</button><button class="btn" id="btn-poll-send">Отправить</button></div></div></div>
@@ -986,6 +991,11 @@ async function api(path, opts = {}) {
   if (token) headers["Authorization"] = "Bearer " + token;
   const res = await fetch(API + path, { ...opts, headers });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 428 && data.captcha_required && !opts._retried) {   // сервер просит капчу: рисуем круг и повторяем запрос один раз
+    const pass = await captchaSolve(data.trigger);
+    if (!pass) throw new Error("Подтверждение отменено");
+    return api(path, { ...opts, headers: { ...(opts.headers || {}), "X-Captcha": pass }, _retried: true });
+  }
   if (res.status === 403 && data.banned) { showBanScreen(data); throw new Error("banned"); }
   if (res.status === 401 && data.session_revoked) { localStorage.removeItem("diogram_token"); location.reload(); throw new Error("session_revoked"); }
   if (!res.ok) throw new Error(data.error || "Ошибка сервера");
@@ -2420,13 +2430,14 @@ async function openAdmin() {
   } catch (e) { console.error("Ошибка загрузки статистики", e); }
   document.getElementById("admin-tab-reserved").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-game").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
+  document.getElementById("admin-tab-captcha").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   adminShowTab();
 }
 
 document.querySelectorAll(".admin-tab").forEach(tab => { tab.onclick = () => { document.querySelectorAll(".admin-tab").forEach(t => t.classList.remove("active")); tab.classList.add("active"); currentAdminTab = tab.dataset.tab; adminShowTab(); }; });
 function adminShowTab() {
   document.querySelector("#screen-admin > .search-bar").style.display = currentAdminTab === "users" ? "" : "none";
-  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else if (currentAdminTab === "game") loadAdminGame(); else if (currentAdminTab === "promo") loadAdminPromo(); else loadAdminReports();
+  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else if (currentAdminTab === "game") loadAdminGame(); else if (currentAdminTab === "promo") loadAdminPromo(); else if (currentAdminTab === "captcha") loadAdminCaptcha(); else loadAdminReports();
 }
 
 async function loadAdminUsers() {
@@ -3022,6 +3033,96 @@ async function loadAdminPromo() {
       const a = document.createElement("button"); a.className = "admin-btn"; a.style.marginLeft = "6px"; a.textContent = "Кто активировал";
       a.onclick = async () => { try { const r = await api("/api/admin/promo/" + parseInt(c.id, 10) + "/activations"); alert(r.activations.length ? r.activations.map(x => "@" + (x.username || "?") + " (ID " + x.user_id + ")").join("\n") : "Пока никто"); } catch (e) { alert(e.message); } };
       row.appendChild(t); row.appendChild(a); el.appendChild(row); box.appendChild(el);
+    }
+  } catch (e) { box.innerHTML = ""; const er = document.createElement("div"); er.className = "empty-state"; er.textContent = e.message; box.appendChild(er); }
+}
+
+// КАПЧА «нарисуй круг»
+let captchaResolve = null, captchaStrokes = [], captchaCur = null, captchaT0 = 0, captchaToken = null, captchaTrigger = "", captchaTouch = false;
+function captchaDraw() {
+  const cv = document.getElementById("captcha-canvas"), c = cv.getContext("2d"); c.clearRect(0, 0, cv.width, cv.height);
+  c.lineWidth = 4; c.lineCap = "round"; c.lineJoin = "round"; c.strokeStyle = "#5eb5f7";
+  for (const st of captchaStrokes) { c.beginPath(); st.forEach((p, i) => { const x = p[0] * cv.width / 1000, y = p[1] * cv.height / 1000; i ? c.lineTo(x, y) : c.moveTo(x, y); }); c.stroke(); }
+}
+async function captchaNewToken() {
+  try { const d = await fetch(API + "/api/captcha/challenge?trigger=" + encodeURIComponent(captchaTrigger)).then(r => r.json()); captchaToken = d.token || null; } catch (e) { captchaToken = null; }
+}
+function captchaSolve(trigger) {
+  return new Promise(async (resolve) => {
+    if (captchaResolve) return resolve(null);
+    captchaResolve = resolve; captchaTrigger = trigger || ""; captchaStrokes = []; captchaCur = null;
+    document.getElementById("captcha-msg").textContent = ""; document.getElementById("captcha-msg").className = "promo-result"; captchaDraw();
+    openModal("modal-captcha"); await captchaNewToken();
+  });
+}
+function captchaFinish(pass) { closeModal("modal-captcha"); const r = captchaResolve; captchaResolve = null; if (r) r(pass); }
+(function initCaptcha() {
+  const cv = document.getElementById("captcha-canvas");
+  const pt = (e) => { const r = cv.getBoundingClientRect(); return [Math.max(0, Math.min(1000, Math.round((e.clientX - r.left) / r.width * 1000))), Math.max(0, Math.min(1000, Math.round((e.clientY - r.top) / r.height * 1000))), Math.round(performance.now() - captchaT0)]; };
+  cv.addEventListener("pointerdown", (e) => { e.preventDefault(); captchaTouch = e.pointerType !== "mouse"; try { cv.setPointerCapture(e.pointerId); } catch (x) {} if (!captchaStrokes.length && !captchaCur) captchaT0 = performance.now(); if (captchaStrokes.length >= 3) return; captchaCur = [pt(e)]; captchaStrokes.push(captchaCur); });
+  cv.addEventListener("pointermove", (e) => { if (!captchaCur) return; e.preventDefault(); if (captchaCur.length < 1900) captchaCur.push(pt(e)); captchaDraw(); });
+  const end = () => { captchaCur = null; };
+  cv.addEventListener("pointerup", end); cv.addEventListener("pointercancel", end);
+  document.getElementById("captcha-clear").onclick = () => { captchaStrokes = []; captchaCur = null; captchaDraw(); document.getElementById("captcha-msg").textContent = ""; };
+  document.getElementById("captcha-send").onclick = async () => {
+    const msg = document.getElementById("captcha-msg"), btn = document.getElementById("captcha-send");
+    const strokes = captchaStrokes.filter(st => st.length > 1);
+    if (!strokes.length) { msg.className = "promo-result err"; msg.textContent = "Сначала нарисуй круг"; return; }
+    btn.disabled = true; msg.className = "promo-result"; msg.textContent = "Проверяю...";
+    try {
+      if (!captchaToken) await captchaNewToken();
+      const res = await fetch(API + "/api/captcha/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: captchaToken, strokes: strokes, device: captchaTouch ? "touch" : "mouse" }) });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.ok) { captchaFinish(d.pass); }
+      else { msg.className = "promo-result err"; msg.textContent = d.error || "Не получилось, попробуй ещё раз"; captchaStrokes = []; captchaDraw(); await captchaNewToken(); }
+    } catch (e) { msg.className = "promo-result err"; msg.textContent = "Нет связи с сервером"; }
+    btn.disabled = false;
+  };
+  // закрыть капчу можно только кнопкой «Очистить» + отмена через Escape
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && captchaResolve) captchaFinish(null); });
+})();
+// Просмотр рисунка и отбор (owner)
+let cvAnim = 0;
+function cvDraw(strokes, upto) {
+  const cv = document.getElementById("cv-canvas"), c = cv.getContext("2d"); c.clearRect(0, 0, cv.width, cv.height);
+  c.lineWidth = 4; c.lineCap = "round"; c.lineJoin = "round"; c.strokeStyle = "#5eb5f7";
+  for (const st of strokes) { c.beginPath(); let started = false; for (const p of st) { if (p[2] > upto) break; const x = p[0] * cv.width / 1000, y = p[1] * cv.height / 1000; started ? c.lineTo(x, y) : c.moveTo(x, y); started = true; } c.stroke(); }
+}
+function cvPlay(strokes) {
+  cancelAnimationFrame(cvAnim); const last = Math.max(...strokes.map(st => st.length ? st[st.length - 1][2] : 0), 1); const t0 = performance.now();
+  const tick = () => { const t = performance.now() - t0; cvDraw(strokes, t); if (t < last + 200) cvAnim = requestAnimationFrame(tick); else cvDraw(strokes, Infinity); };
+  tick();
+}
+async function openCaptchaSample(id) {
+  try {
+    const d = await api("/api/admin/captcha/" + parseInt(id, 10)); const sm = d.sample;
+    document.getElementById("cv-title").textContent = "Рисунок #" + parseInt(sm.id, 10) + " · " + (sm.passed ? "прошёл" : "не прошёл") + " · " + (sm.device || "?");
+    openModal("modal-captcha-view"); document.getElementById("cv-replay").onclick = () => cvPlay(sm.strokes); cvPlay(sm.strokes);
+  } catch (e) { alert(e.message); }
+}
+let captchaFilter = "none";
+async function loadAdminCaptcha() {
+  const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
+  try {
+    const d = await api("/api/admin/captcha?quality=" + encodeURIComponent(captchaFilter)); box.innerHTML = "";
+    const head = document.createElement("div"); head.className = "report-card";
+    head.innerHTML = '<div class="report-reason">Рисунки капчи</div><div class="report-body">Всего: ' + parseInt(d.stats.total, 10) + ' · прошли: ' + parseInt(d.stats.passed, 10) + ' · хорошие: ' + parseInt(d.stats.good, 10) + ' · плохие: ' + parseInt(d.stats.bad, 10) + '</div>';
+    const row = document.createElement("div"); row.style.marginTop = "8px";
+    for (const [k, label] of [["none", "Не оценены"], ["good", "Хорошие"], ["bad", "Плохие"], ["all", "Все"]]) {
+      const b = document.createElement("button"); b.className = "admin-btn"; b.style.marginRight = "6px"; b.textContent = (captchaFilter === k ? "• " : "") + label; b.onclick = () => { captchaFilter = k; loadAdminCaptcha(); }; row.appendChild(b);
+    }
+    const ex = document.createElement("button"); ex.className = "admin-btn"; ex.textContent = "⬇ Экспорт хороших (JSON)";
+    ex.onclick = async () => { try { const r = await api("/api/admin/captcha/export"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(r)], { type: "application/json" })); a.download = "captcha_good.json"; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { alert(e.message); } };
+    row.appendChild(ex); head.appendChild(row); box.appendChild(head);
+    if (!d.samples.length) { const e = document.createElement("div"); e.className = "empty-state"; e.textContent = "Рисунков пока нет"; box.appendChild(e); }
+    for (const sm of d.samples) {
+      const el = document.createElement("div"); el.className = "report-card";
+      el.innerHTML = '<div class="report-reason">#' + parseInt(sm.id, 10) + ' · ' + (sm.passed ? "✅ прошёл" : "❌ не прошёл") + (sm.quality === "good" ? " · 👍" : sm.quality === "bad" ? " · 👎" : "") + '</div><div class="report-body">' + escapeHtml((sm.device || "?") + " · " + sm.points + " точек · " + (sm.duration_ms / 1000).toFixed(1) + " с · оценка " + (sm.score == null ? "—" : sm.score) + " · " + (sm.trigger || "—") + " · " + new Date(sm.created_at).toLocaleString("ru-RU")) + '</div>';
+      const r2 = document.createElement("div"); r2.style.marginTop = "8px";
+      const mk = (label, fn) => { const b = document.createElement("button"); b.className = "admin-btn"; b.style.marginRight = "6px"; b.textContent = label; b.onclick = fn; r2.appendChild(b); };
+      mk("▶ Смотреть", () => openCaptchaSample(sm.id));
+      for (const [q, label] of [["good", "👍 Хороший"], ["bad", "👎 Плохой"]]) mk(label, async () => { try { await api("/api/admin/captcha/" + parseInt(sm.id, 10) + "/rate", { method: "POST", body: JSON.stringify({ quality: q }) }); loadAdminCaptcha(); } catch (e) { alert(e.message); } });
+      el.appendChild(r2); box.appendChild(el);
     }
   } catch (e) { box.innerHTML = ""; const er = document.createElement("div"); er.className = "empty-state"; er.textContent = e.message; box.appendChild(er); }
 }
