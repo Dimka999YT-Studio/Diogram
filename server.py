@@ -63,6 +63,7 @@ from db import (
 from email_service import generate_code
 import game
 import promo
+import captcha
 import game_world
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "").strip()
@@ -636,10 +637,36 @@ def process_ai_reply(chat_id, user_text):
 def index(): return send_from_directory(".", "index.html")
 
 # ==================== AUTH ====================
+# ==================== КАПЧА (при подозрительной активности) ====================
+def captcha_gate(kind, key):
+    """None, если капча не нужна или пропуск (заголовок X-Captcha) верный; иначе ответ 428 «нужна капча»."""
+    if not captcha.is_flagged(kind, key): return None
+    if captcha.consume_pass(request.headers.get("X-Captcha")): return None
+    return jsonify({"error": "Подтверди, что ты человек", "captcha_required": True, "trigger": kind}), 428
+
+@app.route("/api/captcha/challenge")
+def api_captcha_challenge():
+    ip = request.remote_addr or "unknown"
+    if not check_rate_limit(f"capch_{ip}", 60, 300): return jsonify({"error": "Слишком часто. Подожди немного."}), 429
+    return jsonify({"token": captcha.make_challenge(request.args.get("trigger", ""))})
+
+@app.route("/api/captcha/verify", methods=["POST"])
+def api_captcha_verify():
+    ip = request.remote_addr or "unknown"
+    if not check_rate_limit(f"capver_{ip}", 40, 300): return jsonify({"error": "Слишком много попыток. Подожди пару минут."}), 429
+    data = json_body()
+    token, err = captcha.verify(data.get("token"), data.get("strokes"), str_field(data, "device"))
+    if err: return jsonify({"ok": False, "error": err}), 400
+    return jsonify({"ok": True, "pass": token})
+
 @app.route("/api/register", methods=["POST"])
 def api_register():
     ip = request.remote_addr or "unknown"
     if not check_rate_limit(f"reg_{ip}", 10, 3600): return jsonify({"error": "Слишком много попыток. Подожди час."}), 429
+    # Всплеск регистраций с одного адреса: с 4-й попытки в час просим капчу.
+    if not check_rate_limit(f"regburst_{ip}", 3, 3600): captcha.flag("register", ip)
+    gate = captcha_gate("register", ip)
+    if gate: return gate
     data = json_body()
     email = str_field(data, "email").lower()
     password = str_field(data, "password", strip=False)
@@ -678,13 +705,17 @@ def api_verify():
 def api_login():
     ip = request.remote_addr or "unknown"
     if not check_rate_limit(f"login_{ip}", 10, 300): return jsonify({"error": "Слишком много попыток. Подожди 5 минут."}), 429
+    gate = captcha_gate("login", ip)
+    if gate: return gate
     data = json_body()
     email = str_field(data, "email").lower()
     password = str_field(data, "password", strip=False)
     # Лимит по аккаунту (в дополнение к лимиту по IP): подбор пароля с множества адресов упирается в него.
     if email and not check_rate_limit(f"login_email_{email}", 20, 900): return jsonify({"error": "Слишком много попыток входа в этот аккаунт. Подожди 15 минут."}), 429
     user = get_user_by_email(email)
-    if not user or not check_password(password, user["password_hash"]): return jsonify({"error": "Неверный email или пароль"}), 401
+    if not user or not check_password(password, user["password_hash"]):
+        if not check_rate_limit(f"loginfail_{ip}", 3, 600): captcha.flag("login", ip)   # после 3 неудачных входов с адреса (4-я попытка и далее) нужна капча
+        return jsonify({"error": "Неверный email или пароль"}), 401
     is_banned, ban_reason = check_banned(user)
     if is_banned: return banned_response(user, ban_reason)
     update_last_seen(user["id"])
@@ -966,6 +997,37 @@ def api_admin_promo_activations(code_id):
     rows = promo.code_activations(code_id)
     users = get_users_by_ids([r["user_id"] for r in rows])
     return jsonify({"activations": [{"user_id": r["user_id"], "username": (users.get(r["user_id"]) or {}).get("username"), "created_at": r["created_at"]} for r in rows]})
+
+# ---- капча: данные для владельца ----
+@app.route("/api/admin/captcha")
+def api_admin_captcha():
+    owner = require_owner()
+    if not owner: return jsonify({"error": "Нет доступа"}), 403
+    quality = request.args.get("quality", "none")
+    passed = {"1": True, "0": False}.get(request.args.get("passed", ""))
+    return jsonify({"samples": captcha.list_samples(quality if quality in ("none", "good", "bad", "all") else "none", passed), "stats": captcha.stats()})
+
+@app.route("/api/admin/captcha/export")
+def api_admin_captcha_export():
+    owner = require_owner()
+    if not owner: return jsonify({"error": "Нет доступа"}), 403
+    return jsonify({"policy_version": captcha.POLICY_VERSION, "samples": captcha.export_good()})
+
+@app.route("/api/admin/captcha/<int:sample_id>")
+def api_admin_captcha_one(sample_id):
+    owner = require_owner()
+    if not owner: return jsonify({"error": "Нет доступа"}), 403
+    row = captcha.get_sample(sample_id)
+    if not row: return jsonify({"error": "Не найдено"}), 404
+    return jsonify({"sample": row})
+
+@app.route("/api/admin/captcha/<int:sample_id>/rate", methods=["POST"])
+def api_admin_captcha_rate(sample_id):
+    owner = require_owner()
+    if not owner: return jsonify({"error": "Нет доступа"}), 403
+    q = json_body().get("quality")
+    if not captcha.rate_sample(sample_id, q if q in ("good", "bad") else None): return jsonify({"error": "Неверная оценка"}), 400
+    return jsonify({"ok": True})
 
 # ==================== FRIGDMANT ====================
 @app.route("/api/usernames/my")
@@ -1277,7 +1339,11 @@ def api_send():
     if not chat_id or not text: return jsonify({"error": "chat_id и text обязательны"}), 400
     if len(text) > 4000: return jsonify({"error": "Сообщение слишком длинное"}), 400
     # Антиспам: не больше 20 сообщений за 10 секунд с одного аккаунта (раньше лимита не было вообще).
-    if not check_rate_limit(f"send_{user['id']}", 20, 10): return jsonify({"error": "Слишком часто. Подожди пару секунд."}), 429
+    gate = captcha_gate("send", user["id"])
+    if gate: return gate
+    if not check_rate_limit(f"send_{user['id']}", 20, 10):
+        captcha.flag("send", user["id"])   # упёрся в антиспам: следующие отправки только после капчи
+        return jsonify({"error": "Слишком часто. Подожди пару секунд."}), 429
     chat = get_chat_cached(chat_id)
     if not chat: return jsonify({"error": "Чат не найден"}), 404
     if not has_chat_access(chat, user["id"]): return jsonify({"error": "Нет доступа"}), 403
