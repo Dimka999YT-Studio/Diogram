@@ -42,6 +42,11 @@
   .header-info .status.online { color: #4dd964; }
   .header-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: transparent; border: none; color: #7e8b99; cursor: pointer; font-size: 20px; flex-shrink: 0; position: relative; }
   .header-icon:active { background: #242f3d; }
+  /* В шапке списка 5 иконок: чтобы слово Diogram не сжималось до «D.», делаем их компактнее */
+  #screen-list .header { gap: 2px; padding-left: 12px; padding-right: 8px; }
+  #screen-list .header h1 { min-width: 76px; flex: 1 0 auto; margin-left: 6px; text-overflow: clip; }
+  #screen-list .header .header-icon { width: 36px; height: 36px; font-size: 19px; }
+  @media (max-width: 340px) { #screen-list .header .header-icon { width: 32px; height: 32px; font-size: 17px; } #screen-list .header h1 { font-size: 16px; min-width: 66px; } }
   .notif-badge { position: absolute; top: 2px; right: 2px; background: #ff5b5b; color: #fff; font-size: 10px; font-weight: 700; min-width: 16px; height: 16px; border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
 
   .search-bar { padding: 8px 12px; background: #17212b; }
@@ -1239,6 +1244,7 @@ function startListPolling() { if (listPollInterval) clearInterval(listPollInterv
 
 async function openChat(chatId, otherUser) {
   currentChat = { id: chatId, other: otherUser };
+  document.getElementById("typing").style.display = "none";   // «печатает…» от прошлого чата не должно переезжать в новый
   lastMessageTime = "1970-01-01T00:00:00+00:00";
   const name = otherUser.name || otherUser.first_name || otherUser.username || "Чат";
   document.getElementById("chat-title").innerHTML = escapeHtml(name) + (otherUser.is_group ? "" : roleIcon(otherUser.role) + verifiedMark(otherUser.verified));
@@ -1535,7 +1541,7 @@ function startChatPolling() {
   chatPollInterval = setTimeout(tick, 1500);
 }
 
-document.getElementById("btn-back-chat").onclick = () => { chatPollToken++; if (chatPollInterval) clearTimeout(chatPollInterval); currentChat = null; show("screen-list"); loadList(); };
+document.getElementById("btn-back-chat").onclick = () => { document.getElementById("typing").style.display = "none"; chatPollToken++; if (chatPollInterval) clearTimeout(chatPollInterval); currentChat = null; show("screen-list"); loadList(); };
 document.getElementById("chat-header-info").onclick = () => { if (!currentChat || !currentChat.other) return; if (currentChat.other.is_group) openGroupInfo(); else openUserProfile(currentChat.other.id); };
 
 // ---- информация о группе: участники и выход ----
@@ -1571,7 +1577,7 @@ document.getElementById("btn-group-leave").onclick = async () => {
   if (!currentChat || !confirm("Выйти из группы? Вернуться можно будет только по новому приглашению.")) return;
   try {
     await api("/api/chats/" + currentChat.id + "/leave", { method: "POST" });
-    chatPollToken++; if (chatPollInterval) clearTimeout(chatPollInterval); currentChat = null; show("screen-list"); loadList();
+    document.getElementById("typing").style.display = "none"; chatPollToken++; if (chatPollInterval) clearTimeout(chatPollInterval); currentChat = null; show("screen-list"); loadList();
   } catch (e) { if (e.message !== "banned") alert(e.message); }
 };
 document.getElementById("btn-chat-report").onclick = () => { if (!currentChat) return; reportTarget = { type: "user", user_id: currentChat.other.id, name: currentChat.other.first_name || currentChat.other.username }; openReportModal(); };
