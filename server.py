@@ -62,6 +62,7 @@ from db import (
 )
 from email_service import generate_code
 import game
+import promo
 import game_world
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "").strip()
@@ -879,7 +880,77 @@ def api_username_info(username):
     purchase = get_username_purchase_info(username)
     try: tournament = game.username_series_info(username)
     except Exception as e: print(f"[username_info tournament] {e!r}"); tournament = None
-    return jsonify({"username": username, "owner": user_public_dict(owner), "purchase": purchase, "reserved": is_username_reserved(username), "tournament": tournament})
+    try: promo_info = promo.username_info(username)
+    except Exception as e: print(f"[username_info promo] {e!r}"); promo_info = None
+    return jsonify({"username": username, "owner": user_public_dict(owner), "purchase": purchase, "reserved": is_username_reserved(username), "tournament": tournament, "promo": promo_info})
+
+# ==================== ПРОМОКОДЫ ====================
+@app.route("/api/promo/activate", methods=["POST"])
+def api_promo_activate():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    if not check_rate_limit(f"promo_{user['id']}", 10, 60): return jsonify({"error": "Слишком часто. Подожди минуту."}), 429
+    got, err = promo.claim(user["id"], str_field(json_body(), "code"))
+    if err: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "rewards": got})
+
+@app.route("/api/admin/promo")
+def api_admin_promo():
+    admin = require_admin()
+    if not admin: return jsonify({"error": "Нет доступа"}), 403
+    return jsonify({"codes": promo.list_codes(), "cases": {k: v["title"] for k, v in game.CASES.items()}})
+
+@app.route("/api/admin/promo/create", methods=["POST"])
+def api_admin_promo_create():
+    admin = require_admin()
+    if not admin: return jsonify({"error": "Нет доступа"}), 403
+    if not check_rate_limit(f"promo_create_{admin['id']}", 20, 60): return jsonify({"error": "Слишком часто. Подожди минуту."}), 429
+    d = json_body()
+    rewards, err = promo.clean_rewards(d.get("rewards"))
+    if err: return jsonify({"error": err}), 400
+    names = []
+    if rewards.get("username"):
+        raw = d.get("usernames")
+        if isinstance(raw, str): raw = re.split(r"[\s,;]+", raw)
+        if not isinstance(raw, list): return jsonify({"error": "Для награды-юзернейма нужен список имён"}), 400
+        for n in raw:
+            n = n.strip().lstrip("@") if isinstance(n, str) else ""
+            if n and n.lower() not in [x.lower() for x in names]: names.append(n)
+        if not names: return jsonify({"error": "Для награды-юзернейма нужен список имён"}), 400
+        if len(names) > 100: return jsonify({"error": "Не больше 100 имён"}), 400
+        for n in names:
+            if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_]{0,31}", n): return jsonify({"error": f"Юзернейм {n}: только латиница, цифры, _"}), 400
+            if game.is_prize_username(n) or promo.username_info(n) is not None or supabase.table("promo_usernames").select("username").ilike("username", n).limit(1).execute().data:
+                return jsonify({"error": f"Имя {n} уже в призах или в другом промокоде"}), 400
+            if not is_username_reserved(n):
+                conflict = username_conflict(n, None)
+                if not conflict and get_channel_by_username(n): conflict = "Этот юзернейм занят каналом"
+                if not conflict and is_username_on_frigdmant(n): conflict = "Этот юзернейм сейчас на продаже на Frigdmant"
+                if conflict: return jsonify({"error": f"{n}: {conflict}"}), 400
+    kind = str_field(d, "kind")
+    row, err = promo.create_code(admin["id"], d.get("code"), kind, rewards, d.get("expires_at"), d.get("max_activations"), str_field(d, "note"))
+    if err: return jsonify({"error": err}), 400
+    for n in names:   # резерв владельца ставим только после успешного создания кода
+        if not is_username_reserved(n) and not add_reserved_username(admin["id"], n):
+            return jsonify({"error": f"Код создан, но имя {n} не удалось зарезервировать"}), 500
+    try: promo.add_usernames(row["id"], names)
+    except Exception as e: print(f"[promo names] {e!r}"); return jsonify({"error": "Код создан, но имена привязать не удалось"}), 500
+    return jsonify({"ok": True, "id": row["id"]})
+
+@app.route("/api/admin/promo/<int:code_id>/toggle", methods=["POST"])
+def api_admin_promo_toggle(code_id):
+    admin = require_admin()
+    if not admin: return jsonify({"error": "Нет доступа"}), 403
+    promo.set_active(code_id, bool(json_body().get("active")))
+    return jsonify({"ok": True})
+
+@app.route("/api/admin/promo/<int:code_id>/activations")
+def api_admin_promo_activations(code_id):
+    admin = require_admin()
+    if not admin: return jsonify({"error": "Нет доступа"}), 403
+    rows = promo.code_activations(code_id)
+    users = get_users_by_ids([r["user_id"] for r in rows])
+    return jsonify({"activations": [{"user_id": r["user_id"], "username": (users.get(r["user_id"]) or {}).get("username"), "created_at": r["created_at"]} for r in rows]})
 
 # ==================== FRIGDMANT ====================
 @app.route("/api/usernames/my")
