@@ -631,6 +631,7 @@
       <button class="profile-btn secondary" id="btn-ch-info-link" style="display:none;">💬 Комментарии: группа</button>
       <button class="profile-btn secondary" id="btn-ch-info-subscribe" style="display:none;">➕ Подписаться</button>
       <button class="profile-btn secondary" id="btn-ch-info-unsubscribe" style="display:none;">🔕 Отписаться</button>
+      <button class="profile-btn" id="btn-ch-info-sell" style="display:none;">🏷️ Продать юзернейм канала</button>
       <button class="profile-btn danger" id="btn-ch-info-delete" style="display:none;">🗑️ Удалить канал</button>
     </div>
   </div>
@@ -1711,13 +1712,14 @@ async function openChannelInfo(channelId) {
     if (ch.avatar_url) av.innerHTML = avatarHtml(ch.avatar_url);
     else av.textContent = ch.type === "secret" ? "🌍" : "📢";
     document.getElementById("ch-info-name").textContent = ch.name;
-    document.getElementById("ch-info-username").textContent = ch.username ? "@" + ch.username : "🌍 Глобальный канал";
+    document.getElementById("ch-info-username").textContent = ch.username ? "@" + ch.username : (ch.type === "secret" ? "🌍 Глобальный канал" : "Без юзернейма");
     document.getElementById("ch-info-type").textContent = ch.type === "secret" ? "🌍 Глобальный" : "📢 Публичный";
     document.getElementById("ch-info-subs").textContent = (ch.subscribers_count || 0) + " подписчиков";
     { const d = document.getElementById("ch-info-desc"); d.textContent = ch.description || ""; d.style.display = ch.description ? "block" : "none"; }
     const isOwner = ch.is_owner; const isSub = ch.is_subscribed;
     document.getElementById("btn-ch-info-edit").style.display = isOwner ? "block" : "none";
     document.getElementById("btn-ch-info-delete").style.display = isOwner ? "block" : "none";
+    document.getElementById("btn-ch-info-sell").style.display = (isOwner && ch.type === "public" && ch.username) ? "block" : "none";
     { const lb = document.getElementById("btn-ch-info-link"); lb.style.display = isOwner ? "block" : "none"; lb.textContent = ch.linked_group ? "💬 Комментарии: " + (ch.linked_group.name || "группа") : "💬 Привязать группу для комментариев"; }
     if (isOwner) { document.getElementById("btn-ch-info-subscribe").style.display = "none"; document.getElementById("btn-ch-info-unsubscribe").style.display = "none"; }
     else if (isSub) { document.getElementById("btn-ch-info-subscribe").style.display = "none"; document.getElementById("btn-ch-info-unsubscribe").style.display = ch.type === "public" ? "block" : "none"; }
@@ -2006,12 +2008,19 @@ function renderFrig() {
       if (isAuction) actions = '<button class="admin-btn primary" onclick="openFrigAction('+l.id+', \'bid\')">Сделать ставку</button>';
       else actions = '<button class="admin-btn primary" onclick="openFrigAction('+l.id+', \'buy\')">Купить</button>';
     } else { actions = '<button class="admin-btn danger" onclick="cancelFrigListing('+l.id+')">Отменить</button>'; }
-    el.innerHTML = '<div class="frig-title"><img src="'+COIN_URL+'" class="di-icon" style="width:16px;height:16px;"> @' + escapeHtml(l.username) + '</div><div class="frig-price">' + priceLabel + '</div><div class="frig-meta">' + typeLabel + '<br>Продавец: ' + escapeHtml(seller) + '<br>' + timeLeft + '</div><div class="frig-actions">' + actions + '</div>';
+    el.innerHTML = '<div class="frig-title"><img src="'+COIN_URL+'" class="di-icon" style="width:16px;height:16px;"> @' + escapeHtml(l.username) + (l.target_type === "channel" ? ' 📢' : '') + '</div><div class="frig-price">' + priceLabel + '</div><div class="frig-meta">' + typeLabel + '<br>Продавец: ' + escapeHtml(seller) + '<br>' + timeLeft + '</div><div class="frig-actions">' + actions + '</div>';
     box.appendChild(el);
   }
 }
 
-document.getElementById("btn-frig-new").onclick = () => { document.getElementById("frig-price").value = ""; setError("modal-frig-error", ""); openModal("modal-frig-new"); };
+function frigResetTargets() { const sel = document.getElementById("frig-target"); sel.innerHTML = ""; const o = document.createElement("option"); o.value = "user"; o.textContent = "Мой личный @username"; sel.appendChild(o); }
+document.getElementById("btn-ch-info-sell").onclick = () => {
+  if (!currentChInfo || !currentChInfo.username) return;
+  frigResetTargets(); const sel = document.getElementById("frig-target"); const o = document.createElement("option");
+  o.value = "channel:" + parseInt(currentChInfo.id, 10); o.textContent = "Юзернейм канала @" + currentChInfo.username; sel.appendChild(o); sel.value = o.value;
+  document.getElementById("frig-price").value = ""; setError("modal-frig-error", ""); openModal("modal-frig-new");
+};
+document.getElementById("btn-frig-new").onclick = () => { frigResetTargets(); document.getElementById("frig-price").value = ""; setError("modal-frig-error", ""); openModal("modal-frig-new"); };
 
 document.querySelectorAll("#modal-frig-new .reason-option").forEach(btn => {
   btn.onclick = () => { document.querySelectorAll("#modal-frig-new .reason-option").forEach(b => b.classList.remove("selected")); btn.classList.add("selected"); frigListingType = btn.dataset.ltype; };
@@ -2021,8 +2030,11 @@ document.getElementById("btn-frig-create").onclick = async () => {
   const price = parseInt(document.getElementById("frig-price").value);
   if (isNaN(price) || price < 42) return setError("modal-frig-error", "Мин. цена 42 Di");
   try {
-    await api("/api/frigdmant/list", { method: "POST", body: JSON.stringify({ target_type: "user", username: currentUser.username, price: price, listing_type: frigListingType }) });
-    closeModal("modal-frig-new"); alert("Выставлено на Frigdmant!"); openFrigdmant();
+    const tgt = document.getElementById("frig-target").value || "user";
+    const body = tgt.startsWith("channel:") ? { target_type: "channel", channel_id: parseInt(tgt.slice(8), 10), username: currentChInfo.username, price: price, listing_type: frigListingType }
+      : { target_type: "user", username: currentUser.username, price: price, listing_type: frigListingType };
+    await api("/api/frigdmant/list", { method: "POST", body: JSON.stringify(body) });
+    closeModal("modal-frig-new"); alert("Выставлено на Frigdmant!"); if (tgt.startsWith("channel:")) openChannelInfo(parseInt(tgt.slice(8), 10)); else openFrigdmant();
   } catch(e) { setError("modal-frig-error", e.message); }
 };
 

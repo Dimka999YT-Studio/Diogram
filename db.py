@@ -1387,7 +1387,9 @@ def cancel_listing(listing_id: int, user_id: int) -> bool:
            .eq("id", listing_id).eq("seller_id", user_id).eq("status", "active")
            .is_("highest_bidder_id", "null").eq("current_bid", 0).execute())
     if res.data:
-        supabase.table("owned_usernames").insert({"user_id": user_id, "username": res.data[0]["username"]}).execute()
+        # У лота-канала имя всё это время оставалось на канале: в коллекцию его возвращать не нужно
+        if res.data[0].get("target_type") != "channel":
+            supabase.table("owned_usernames").insert({"user_id": user_id, "username": res.data[0]["username"]}).execute()
         return True
     return False
 

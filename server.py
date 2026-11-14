@@ -1001,6 +1001,14 @@ def api_frig_list():
     if not uname: return jsonify({"error": "Укажи юзернейм"}), 400
     if game.is_prize_username(uname): return jsonify({"error": "Это личный коллекционный юзернейм турнира, его нельзя продать"}), 403
     if is_username_on_frigdmant(uname): return jsonify({"error": "Этот юзернейм уже выставлен на продажу"}), 400
+    if data.get("target_type") == "channel":
+        # Продажа юзернейма публичного канала: имя остаётся на канале до продажи, после неё канал остаётся без ссылки.
+        ch = get_channel_by_id(to_int(data.get("channel_id"), 0))
+        if not ch or ch["owner_id"] != user["id"]: return jsonify({"error": "Это не твой канал"}), 403
+        if ch.get("type") != "public" or (ch.get("username") or "").lower() != uname.lower(): return jsonify({"error": "У канала нет такого публичного юзернейма"}), 400
+        listing = create_frigdmant_listing(user["id"], "channel", ch["id"], ch["username"], price, listing_type)
+        if not listing: return jsonify({"error": "Не удалось создать лот"}), 500
+        return jsonify({"ok": True})
     owned = [u["username"] for u in get_user_usernames(user["id"])]
     is_active_name = (user.get("username") or "").lower() == uname.lower()
     if uname not in owned and not is_active_name: return jsonify({"error": "Вы не владеете этим юзернеймом"}), 403
@@ -1874,18 +1882,24 @@ def api_channel_update(channel_id):
     if ch_type is not None and ch_type != ch["type"]:
         if user.get("role") not in ("owner", "developer"): return jsonify({"error": "Только разработчики могут менять тип"}), 403
     final_type = ch_type if ch_type is not None else ch["type"]
+    if ch.get("username") and is_username_on_frigdmant(ch["username"]) and (ch_type is not None and ch_type != ch["type"] or (username is not None and username.strip().lstrip("@").lower() != ch["username"].lower())):
+        return jsonify({"error": "Юзернейм канала сейчас на продаже на Frigdmant. Сними лот, чтобы изменить его"}), 400
     if final_type == "public":
         if username is None: username = ch.get("username")
-        if not username or not username.strip(): return jsonify({"error": "Для публичного канала нужен @username"}), 400
-        username = username.strip().lstrip("@")
-        ok, err = validate_username(username, "user")
-        if not ok: return jsonify({"error": err}), 400
-        if username.lower() != (ch.get("username") or "").lower():
-            existing = get_channel_by_username(username)
-            if existing and existing["id"] != channel_id: return jsonify({"error": "Этот @username канала занят"}), 400
-            conflict = username_conflict(username, user["id"], as_channel=True)
-            if conflict: return jsonify({"error": conflict}), 400
-            if is_username_on_frigdmant(username): return jsonify({"error": "Этот юзернейм сейчас на продаже на Frigdmant"}), 400
+        if username is not None: username = username.strip().lstrip("@")
+        if not username:
+            # Канал без юзернейма (имя продано): название менять можно, нового @username не требуем.
+            if ch.get("username") or ch_type is not None: return jsonify({"error": "Для публичного канала нужен @username"}), 400
+            username = None
+        else:
+            ok, err = validate_username(username, "user")
+            if not ok: return jsonify({"error": err}), 400
+            if username.lower() != (ch.get("username") or "").lower():
+                existing = get_channel_by_username(username)
+                if existing and existing["id"] != channel_id: return jsonify({"error": "Этот @username канала занят"}), 400
+                conflict = username_conflict(username, user["id"], as_channel=True)
+                if conflict: return jsonify({"error": conflict}), 400
+                if is_username_on_frigdmant(username): return jsonify({"error": "Этот юзернейм сейчас на продаже на Frigdmant"}), 400
     else: username = None
     updated = update_channel_full(channel_id, name=name if name is not None else ch["name"], username=username, ch_type=final_type)
     if final_type == "public": subscribe_to_channel(channel_id, user["id"])
@@ -2103,6 +2117,7 @@ def api_channel_delete(channel_id):
     if not user: return jsonify({"error": "Не авторизован"}), 401
     ch = get_channel_by_id(channel_id)
     if not ch or ch["owner_id"] != user["id"]: return jsonify({"error": "Нет доступа"}), 403
+    if ch.get("username") and is_username_on_frigdmant(ch["username"]): return jsonify({"error": "Юзернейм канала на продаже на Frigdmant. Сначала сними лот"}), 400
     delete_channel(channel_id)
     return jsonify({"ok": True})
 
