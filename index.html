@@ -329,6 +329,15 @@
   .modal-bg { position: absolute; inset: 0; background: rgba(0,0,0,0.7); }
   .modal-content { position: relative; background: #17212b; border-radius: 18px; padding: 22px; width: 100%; max-width: 420px; max-height: 85vh; overflow-y: auto; }
   .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; text-align: center; }
+  .promo-modal { text-align: center; }
+  .promo-ico { font-size: 40px; line-height: 1; margin-bottom: 6px; }
+  .promo-hint { font-size: 13px; opacity: 0.65; margin: 4px 0 14px; line-height: 1.4; }
+  .promo-field { text-align: center; font-size: 20px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; }
+  .promo-field::placeholder { letter-spacing: 3px; font-weight: 600; opacity: 0.35; }
+  .promo-result { min-height: 0; margin-top: 12px; font-size: 14px; line-height: 1.45; border-radius: 12px; padding: 0; }
+  .promo-result:not(:empty) { padding: 10px 12px; background: rgba(255,255,255,0.06); }
+  .promo-result.ok { background: rgba(76,175,80,0.15); color: #6fdc74; }
+  .promo-result.err { background: rgba(255,91,91,0.14); color: #ff7a7a; }
   .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
   .modal-actions .btn { flex: 1; }
   .reason-option { display: block; width: 100%; background: #242f3d; color: #fff; border: 2px solid transparent; padding: 12px 16px; border-radius: 10px; font-size: 14px; text-align: left; cursor: pointer; font-family: inherit; margin-bottom: 8px; }
@@ -820,7 +829,7 @@
   <div class="menu-item" id="menu-logout"><span class="icon">🚪</span> Выйти</div>
 </div>
 
-<div class="modal" id="modal-promo"><div class="modal-bg" onclick="closeModal('modal-promo')"></div><div class="modal-content"><div class="modal-title">🎟 Промокод</div><input type="text" id="promo-input" placeholder="Введите промокод" maxlength="32" autocomplete="off" autocapitalize="off"><div id="promo-result" style="margin:10px 0;font-size:14px;line-height:1.4;"></div><div class="modal-actions"><button class="btn-secondary" onclick="closeModal('modal-promo')">Закрыть</button><button class="btn-primary" id="promo-go">Активировать</button></div></div></div>
+<div class="modal" id="modal-promo"><div class="modal-bg" onclick="closeModal('modal-promo')"></div><div class="modal-content promo-modal"><div class="promo-ico">🎟</div><div class="modal-title">Промокод</div><div class="promo-hint">Введи код и получи награду: Di, PDG, кейсы, облачка или юзернейм</div><input type="text" id="promo-input" class="promo-field" placeholder="КОД" maxlength="32" autocomplete="off" autocapitalize="off" spellcheck="false"><div id="promo-result" class="promo-result"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-promo')">Закрыть</button><button class="btn" id="promo-go">Активировать</button></div></div></div>
 <div class="modal" id="modal-forward"><div class="modal-bg" onclick="closeModal('modal-forward')"></div><div class="modal-content"><div class="modal-title">↪ Переслать</div><div id="forward-list" style="max-height:55vh;overflow-y:auto;"></div><button class="btn btn-secondary" onclick="closeModal('modal-forward')">Отмена</button></div></div>
 <div class="modal" id="modal-poll"><div class="modal-bg" onclick="closeModal('modal-poll')"></div><div class="modal-content"><div class="modal-title">📊 Новый опрос</div><input type="text" id="poll-question" placeholder="Вопрос" maxlength="255" style="margin-bottom:10px;"><textarea id="poll-options" placeholder="Варианты — каждый с новой строки (от 2 до 10)" rows="5" style="resize:none;"></textarea><label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px;"><input type="checkbox" id="poll-multiple" style="width:auto;"> Можно выбрать несколько</label><div class="error" id="modal-poll-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-poll')">Отмена</button><button class="btn" id="btn-poll-send">Отправить</button></div></div></div>
 <div class="modal" id="modal-link-group"><div class="modal-bg" onclick="closeModal('modal-link-group')"></div><div class="modal-content"><div class="modal-title">Группа для комментариев</div><div style="font-size:13px;color:#7e8b99;margin-bottom:12px;">Посты канала будут дублироваться в группу, а под ними появится кнопка «Комментарии». Подписчики, которые комментируют, добавляются в группу.</div><div id="link-group-list"></div><div class="error" id="modal-link-group-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-link-group')">Закрыть</button></div></div></div>
@@ -2919,7 +2928,7 @@ document.getElementById("menu-admin").onclick = () => { closeMenu(); openAdmin()
 document.getElementById("menu-new-channel").onclick = () => { closeMenu(); createChannelDialog(); };
 
 // ПРОМОКОДЫ
-document.getElementById("menu-promo").onclick = () => { closeMenu(); document.getElementById("promo-input").value = ""; document.getElementById("promo-result").textContent = ""; openModal("modal-promo"); };
+document.getElementById("menu-promo").onclick = () => { closeMenu(); document.getElementById("promo-input").value = ""; const pr = document.getElementById("promo-result"); pr.textContent = ""; pr.className = "promo-result"; openModal("modal-promo"); };
 function promoRewardText(r) {
   const out = [];
   if (r.di) out.push("💎 " + r.di + " Di");
@@ -2932,14 +2941,15 @@ function promoRewardText(r) {
 document.getElementById("promo-go").onclick = async () => {
   const box = document.getElementById("promo-result"), btn = document.getElementById("promo-go");
   const code = document.getElementById("promo-input").value.trim(); if (!code) return;
-  btn.disabled = true; box.style.color = ""; box.textContent = "Проверяю...";
+  btn.disabled = true; box.className = "promo-result"; box.textContent = "Проверяю...";
   try {
     const d = await api("/api/promo/activate", { method: "POST", body: JSON.stringify({ code }) });
-    box.style.color = "#4caf50"; box.textContent = "Готово! Ты получил: " + promoRewardText(d.rewards).join(", ");
+    box.className = "promo-result ok"; box.textContent = "🎉 Готово! Ты получил: " + promoRewardText(d.rewards).join(", ");
     try { const me = await api("/api/me"); currentUser = me.user; } catch (e) {}
-  } catch (e) { box.style.color = "#ff5b5b"; box.textContent = e.message; }
+  } catch (e) { box.className = "promo-result err"; box.textContent = e.message; }
   btn.disabled = false;
 };
+document.getElementById("promo-input").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("promo-go").click(); });
 async function loadAdminPromo() {
   const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
   try {
