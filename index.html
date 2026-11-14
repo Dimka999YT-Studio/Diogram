@@ -1039,6 +1039,7 @@ async function openUserByUsername(username) {
   try {
     const data = await api("/api/users/by_username/" + encodeURIComponent(username));
     if (data.exists && data.user) openUserProfile(data.user.id);
+    else if (data.channel) openChannel(data.channel.id);   // @username принадлежит каналу
     else alert("Аккаунт не найден, юзернейм @" + username + " свободен");
   } catch (e) { if (e.message !== "banned") alert("Аккаунт не найден, юзернейм @" + username + " свободен"); }
 }
@@ -1891,7 +1892,7 @@ document.getElementById("search-input").addEventListener("input", (e) => {
                     if (u.avatar_url) av.innerHTML = avatarHtml(u.avatar_url); else av.textContent = initial(name);
                     el.appendChild(av);
                     const info = document.createElement("div"); info.className = "list-info";
-                    info.innerHTML = '<div class="list-name">' + escapeHtml(name) + '</div><div class="list-last">@' + escapeHtml(u.username || "—") + '</div>';
+                    info.innerHTML = '<div class="list-name">' + escapeHtml(name) + '</div><div class="list-last">@' + escapeHtml(u.username || "—") + (u.collection_username ? ' · в коллекции @' + escapeHtml(u.collection_username) : '') + '</div>';
                     el.appendChild(info);
                     el.onclick = () => openUserProfile(u.id);
                     box.appendChild(el);
