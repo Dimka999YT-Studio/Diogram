@@ -1414,11 +1414,24 @@ def is_chat_member(chat_id, user_id):
 
 
 def get_username_purchase_info(username):
-    res = supabase.table("frigdmant_listings").select("*").eq("username", username).eq("status", "sold").order("created_at", desc=True).limit(1).execute()
-    if res.data:
-        listing = res.data[0]
-        return {"price": listing.get("price", 0), "date": listing.get("updated_at") or listing.get("created_at")}
-    return None
+    """Когда и за сколько куплено имя на Frigdmant. None, если его не покупали.
+    Дата и цена берутся из строки владения (owned_usernames: её создаёт сама покупка или закрытие аукциона),
+    а не из лота: у лота есть только created_at (день выставления) и стартовая цена (у аукциона итог это current_bid)."""
+    res = supabase.table("frigdmant_listings").select("*").eq("username", username).eq("status", "sold").order("id", desc=True).limit(1).execute()
+    if not res.data: return None
+    listing = res.data[0]
+    price = listing.get("current_bid") if listing.get("listing_type") == "auction" and listing.get("current_bid") else listing.get("price", 0)
+    date = listing.get("created_at")
+    try:
+        own = supabase.table("owned_usernames").select("purchased_at,purchase_price").eq("username", username).limit(1).execute().data
+        if own:
+            if own[0].get("purchased_at"): date = own[0]["purchased_at"]
+            if own[0].get("purchase_price"): price = own[0]["purchase_price"]
+        # Аукцион выигран в момент окончания, а закрывается лениво (при первом открытии Frigdmant): берём end_time
+        if listing.get("listing_type") == "auction" and listing.get("end_time"): date = listing["end_time"]
+    except Exception as e:
+        print(f"[purchase_info] {e!r}")
+    return {"price": price or 0, "date": date}
 
 
 def create_group_chat(owner_id, name, member_ids):
@@ -1457,11 +1470,24 @@ def is_chat_member(chat_id, user_id):
     return len(res.data or []) > 0
 
 def get_username_purchase_info(username):
-    res = supabase.table("frigdmant_listings").select("*").eq("username", username).eq("status", "sold").order("created_at", desc=True).limit(1).execute()
-    if res.data:
-        listing = res.data[0]
-        return {"price": listing.get("price", 0), "date": listing.get("updated_at") or listing.get("created_at")}
-    return None
+    """Когда и за сколько куплено имя на Frigdmant. None, если его не покупали.
+    Дата и цена берутся из строки владения (owned_usernames: её создаёт сама покупка или закрытие аукциона),
+    а не из лота: у лота есть только created_at (день выставления) и стартовая цена (у аукциона итог это current_bid)."""
+    res = supabase.table("frigdmant_listings").select("*").eq("username", username).eq("status", "sold").order("id", desc=True).limit(1).execute()
+    if not res.data: return None
+    listing = res.data[0]
+    price = listing.get("current_bid") if listing.get("listing_type") == "auction" and listing.get("current_bid") else listing.get("price", 0)
+    date = listing.get("created_at")
+    try:
+        own = supabase.table("owned_usernames").select("purchased_at,purchase_price").eq("username", username).limit(1).execute().data
+        if own:
+            if own[0].get("purchased_at"): date = own[0]["purchased_at"]
+            if own[0].get("purchase_price"): price = own[0]["purchase_price"]
+        # Аукцион выигран в момент окончания, а закрывается лениво (при первом открытии Frigdmant): берём end_time
+        if listing.get("listing_type") == "auction" and listing.get("end_time"): date = listing["end_time"]
+    except Exception as e:
+        print(f"[purchase_info] {e!r}")
+    return {"price": price or 0, "date": date}
 
 
 # ==================== РЕАКЦИИ НА СООБЩЕНИЯ ====================
