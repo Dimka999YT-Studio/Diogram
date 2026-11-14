@@ -645,7 +645,7 @@ def captcha_gate(kind, key):
     return jsonify({"error": "Подтверди, что ты человек", "captcha_required": True, "trigger": kind}), 428
 
 # Версия приложения: APP_VERSION поднимаем вручную при релизе, а «сборка» берётся из коммита, который выкатил хостинг.
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.0.4"
 APP_BUILD = (os.environ.get("RAILWAY_GIT_COMMIT_SHA") or os.environ.get("SOURCE_VERSION") or os.environ.get("GIT_COMMIT") or "")[:7]
 
 @app.route("/api/version")
