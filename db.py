@@ -278,9 +278,10 @@ def activate_premium(user_id: int, days: int, cost: int, description: str) -> tu
 
 
 def _activate_premium(user_id: int, days: int, cost: int, description: str) -> tuple:
-    success, err = spend_balance(user_id, cost, description)
-    if not success:
-        return False, err
+    if cost > 0:   # cost == 0 — бесплатное продление (промокод)
+        success, err = spend_balance(user_id, cost, description)
+        if not success:
+            return False, err
     
     user = get_user_by_id(user_id)
     now = datetime.now(timezone.utc)

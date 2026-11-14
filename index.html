@@ -741,6 +741,7 @@
       <button class="admin-tab active" data-tab="users">👥 Юзеры</button>
       <button class="admin-tab" data-tab="reports">📩 Жалобы</button>
       <button class="admin-tab" data-tab="reserved" id="admin-tab-reserved" style="display:none;">⭐ Резерв имён</button>
+      <button class="admin-tab" data-tab="promo" id="admin-tab-promo">🎟 Промокоды</button>
       <button class="admin-tab" data-tab="game" id="admin-tab-game" style="display:none;">🍂 Призы турнира</button>
     </div>
     <div class="search-bar"><input type="text" id="admin-search" placeholder="Поиск по @username или email"></div>
@@ -812,12 +813,14 @@
   <div class="menu-title">Меню</div>
   <div class="menu-item" id="menu-profile"><span class="icon">👤</span> Профиль</div>
   <div class="menu-item" id="menu-shop"><span class="icon">🛒</span> Магазин</div>
+  <div class="menu-item" id="menu-promo"><span class="icon">🎟</span> Промокод</div>
   <div class="menu-item" id="menu-frig"><span class="icon">🏷️</span> Frigdmant</div>
   <div class="menu-item" id="menu-new-channel"><span class="icon">📢</span> Новый канал</div>
   <div class="menu-item" id="menu-admin" style="display:none;"><span class="icon">👑</span> Админка <span id="menu-admin-badge" style="display:none;background:#ff5b5b;color:#fff;font-size:10px;padding:2px 6px;border-radius:8px;margin-left:auto;">0</span></div>
   <div class="menu-item" id="menu-logout"><span class="icon">🚪</span> Выйти</div>
 </div>
 
+<div class="modal" id="modal-promo"><div class="modal-bg" onclick="closeModal('modal-promo')"></div><div class="modal-content"><div class="modal-title">🎟 Промокод</div><input type="text" id="promo-input" placeholder="Введите промокод" maxlength="32" autocomplete="off" autocapitalize="off"><div id="promo-result" style="margin:10px 0;font-size:14px;line-height:1.4;"></div><div class="modal-actions"><button class="btn-secondary" onclick="closeModal('modal-promo')">Закрыть</button><button class="btn-primary" id="promo-go">Активировать</button></div></div></div>
 <div class="modal" id="modal-forward"><div class="modal-bg" onclick="closeModal('modal-forward')"></div><div class="modal-content"><div class="modal-title">↪ Переслать</div><div id="forward-list" style="max-height:55vh;overflow-y:auto;"></div><button class="btn btn-secondary" onclick="closeModal('modal-forward')">Отмена</button></div></div>
 <div class="modal" id="modal-poll"><div class="modal-bg" onclick="closeModal('modal-poll')"></div><div class="modal-content"><div class="modal-title">📊 Новый опрос</div><input type="text" id="poll-question" placeholder="Вопрос" maxlength="255" style="margin-bottom:10px;"><textarea id="poll-options" placeholder="Варианты — каждый с новой строки (от 2 до 10)" rows="5" style="resize:none;"></textarea><label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px;"><input type="checkbox" id="poll-multiple" style="width:auto;"> Можно выбрать несколько</label><div class="error" id="modal-poll-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-poll')">Отмена</button><button class="btn" id="btn-poll-send">Отправить</button></div></div></div>
 <div class="modal" id="modal-link-group"><div class="modal-bg" onclick="closeModal('modal-link-group')"></div><div class="modal-content"><div class="modal-title">Группа для комментариев</div><div style="font-size:13px;color:#7e8b99;margin-bottom:12px;">Посты канала будут дублироваться в группу, а под ними появится кнопка «Комментарии». Подписчики, которые комментируют, добавляются в группу.</div><div id="link-group-list"></div><div class="error" id="modal-link-group-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-link-group')">Закрыть</button></div></div></div>
@@ -2208,6 +2211,10 @@ async function showUsernameInfo(username) {
       const t = data.tournament;
       const d = new Date(t.given_at).toLocaleString("ru-RU", { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
       purchaseBlock.innerHTML = `🍂 Этот юзернейм был получен в осеннем турнире<br>${escapeHtml(d)}<br><b>№${parseInt(t.series_no, 10) || "?"}</b> · Всего выдано таких осенних юзернеймов 2026 года: <b>${parseInt(t.given, 10) || 0}/${parseInt(t.total, 10) || 0}</b><br>Имя личное, продать его нельзя.`;
+    } else if (data.promo) {
+      const pr = data.promo;
+      const d = new Date(pr.given_at).toLocaleString("ru-RU", { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      purchaseBlock.innerHTML = `🎟 Этот юзернейм получен по промокоду<br>${escapeHtml(d)}<br><b>№${parseInt(pr.series_no, 10) || "?"}</b> · это 1 из <b>${parseInt(pr.total, 10) || "?"}</b><br>Перепродаж: <b>${parseInt(pr.resales, 10) || 0}</b>`;
     } else if (data.reserved) {
       purchaseBlock.innerHTML = `Этот юзернейм зарезервирован и выдаётся владельцем.`;
     } else if (data.purchase) {
@@ -2391,7 +2398,7 @@ async function openAdmin() {
 document.querySelectorAll(".admin-tab").forEach(tab => { tab.onclick = () => { document.querySelectorAll(".admin-tab").forEach(t => t.classList.remove("active")); tab.classList.add("active"); currentAdminTab = tab.dataset.tab; adminShowTab(); }; });
 function adminShowTab() {
   document.querySelector("#screen-admin > .search-bar").style.display = currentAdminTab === "users" ? "" : "none";
-  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else if (currentAdminTab === "game") loadAdminGame(); else loadAdminReports();
+  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else if (currentAdminTab === "game") loadAdminGame(); else if (currentAdminTab === "promo") loadAdminPromo(); else loadAdminReports();
 }
 
 async function loadAdminUsers() {
@@ -2910,6 +2917,85 @@ document.getElementById("menu-shop").onclick = () => { closeMenu(); openShop(); 
 document.getElementById("menu-logout").onclick = () => { if (!confirm("Выйти?")) return; doLogout(); };
 document.getElementById("menu-admin").onclick = () => { closeMenu(); openAdmin(); };
 document.getElementById("menu-new-channel").onclick = () => { closeMenu(); createChannelDialog(); };
+
+// ПРОМОКОДЫ
+document.getElementById("menu-promo").onclick = () => { closeMenu(); document.getElementById("promo-input").value = ""; document.getElementById("promo-result").textContent = ""; openModal("modal-promo"); };
+function promoRewardText(r) {
+  const out = [];
+  if (r.di) out.push("💎 " + r.di + " Di");
+  if (r.pdg_days) out.push("⭐ PDG на " + r.pdg_days + " дн.");
+  if (r.clouds) out.push("☁️ " + r.clouds + " облачк.");
+  for (const k in (r.cases || {})) out.push("🎁 кейс «" + k + "» × " + r.cases[k]);
+  if (r.username) out.push("@" + r.username.name + " (№" + r.username.no + ", это 1 из " + r.username.total + ")");
+  return out;
+}
+document.getElementById("promo-go").onclick = async () => {
+  const box = document.getElementById("promo-result"), btn = document.getElementById("promo-go");
+  const code = document.getElementById("promo-input").value.trim(); if (!code) return;
+  btn.disabled = true; box.style.color = ""; box.textContent = "Проверяю...";
+  try {
+    const d = await api("/api/promo/activate", { method: "POST", body: JSON.stringify({ code }) });
+    box.style.color = "#4caf50"; box.textContent = "Готово! Ты получил: " + promoRewardText(d.rewards).join(", ");
+    try { const me = await api("/api/me"); currentUser = me.user; } catch (e) {}
+  } catch (e) { box.style.color = "#ff5b5b"; box.textContent = e.message; }
+  btn.disabled = false;
+};
+async function loadAdminPromo() {
+  const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
+  try {
+    const d = await api("/api/admin/promo"); box.innerHTML = "";
+    const f = document.createElement("div"); f.className = "report-card reserved-form";
+    let caseRows = "";
+    for (const k in d.cases) caseRows += '<label style="display:block;margin:2px 0;">' + escapeHtml(d.cases[k]) + ' × <input type="number" min="0" max="100" value="0" data-case="' + escapeAttr(k) + '" class="pc-case" style="width:60px;"></label>';
+    f.innerHTML = '<div class="report-reason">Новый промокод</div>' +
+      '<input type="text" id="pc-code" placeholder="Код (латиница, цифры, _ -)" maxlength="32">' +
+      '<select id="pc-kind"><option value="limited">Постоянный с лимитом активаций</option><option value="timed">Временный (до даты, без лимита)</option></select>' +
+      '<div id="pc-limit-box"><input type="number" id="pc-max" min="1" placeholder="Активаций (пусто = бесконечно)"></div>' +
+      '<div id="pc-date-box" style="display:none;"><input type="datetime-local" id="pc-date"></div>' +
+      '<div class="report-body" style="margin-top:6px;">Награды (заполни нужные):</div>' +
+      '<input type="number" id="pc-di" min="0" placeholder="Di"><input type="number" id="pc-pdg" min="0" placeholder="Дни PDG"><input type="number" id="pc-clouds" min="0" placeholder="Облачка для игры">' +
+      caseRows +
+      '<label style="display:block;margin-top:4px;"><input type="checkbox" id="pc-uname"> Юзернейм</label>' +
+      '<textarea id="pc-names" placeholder="Юзернеймы: по одному на строку (выдаются по порядку, один на активацию)" style="display:none;"></textarea>' +
+      '<input type="text" id="pc-note" placeholder="Заметка (необязательно)" maxlength="200">' +
+      '<button class="admin-btn" id="pc-create">Создать</button><div id="pc-msg" class="report-body"></div>';
+    box.appendChild(f);
+    document.getElementById("pc-kind").onchange = (e) => { const t = e.target.value === "timed"; document.getElementById("pc-limit-box").style.display = t ? "none" : ""; document.getElementById("pc-date-box").style.display = t ? "" : "none"; };
+    document.getElementById("pc-uname").onchange = (e) => { document.getElementById("pc-names").style.display = e.target.checked ? "" : "none"; };
+    document.getElementById("pc-create").onclick = async () => {
+      const msg = document.getElementById("pc-msg"); const kind = document.getElementById("pc-kind").value;
+      const cases = {}; document.querySelectorAll(".pc-case").forEach(i => { const v = parseInt(i.value, 10); if (v > 0) cases[i.dataset.case] = v; });
+      const num = id => parseInt(document.getElementById(id).value, 10) || 0;
+      const body = { code: document.getElementById("pc-code").value.trim(), kind, note: document.getElementById("pc-note").value,
+        rewards: { di: num("pc-di"), pdg_days: num("pc-pdg"), clouds: num("pc-clouds"), cases, username: document.getElementById("pc-uname").checked },
+        usernames: document.getElementById("pc-names").value };
+      if (kind === "timed") { const v = document.getElementById("pc-date").value; body.expires_at = v ? new Date(v).toISOString() : ""; }
+      else { body.max_activations = num("pc-max") || null; }
+      msg.textContent = "Создаю...";
+      try { await api("/api/admin/promo/create", { method: "POST", body: JSON.stringify(body) }); loadAdminPromo(); }
+      catch (e) { msg.textContent = e.message; }
+    };
+    if (!d.codes.length) { const e = document.createElement("div"); e.className = "empty-state"; e.textContent = "Промокодов пока нет"; box.appendChild(e); }
+    for (const c of d.codes) {
+      const el = document.createElement("div"); el.className = "report-card";
+      const rw = c.rewards || {}, parts = [];
+      if (rw.di) parts.push(rw.di + " Di"); if (rw.pdg_days) parts.push("PDG " + rw.pdg_days + " дн."); if (rw.clouds) parts.push("☁️ " + rw.clouds);
+      for (const k in (rw.cases || {})) parts.push((d.cases[k] || k) + " × " + rw.cases[k]);
+      if (rw.username) parts.push("юзернейм (выдано " + c.usernames_given + "/" + c.usernames_total + ", перепродаж " + c.resales + ")");
+      const expired = c.kind === "timed" && new Date(c.expires_at) <= new Date();
+      const left = c.kind === "limited" ? (c.max_activations ? c.activations + "/" + c.max_activations : c.activations + " / ∞") : c.activations + " активаций";
+      const state = !c.active ? "⛔ отключён" : expired ? "⌛ истёк" : (c.kind === "limited" && c.max_activations && c.activations >= c.max_activations) ? "🔒 лимит исчерпан" : "✅ действует";
+      const until = c.kind === "timed" ? " · до " + new Date(c.expires_at).toLocaleString("ru-RU") : "";
+      el.innerHTML = '<div class="report-reason">' + escapeHtml(c.code) + '</div><div class="report-body">' + escapeHtml(state + " · " + (c.kind === "timed" ? "временный" : "с лимитом") + until + " · " + left) + '<br>' + escapeHtml(parts.join(", ") || "—") + (c.note ? '<br><i>' + escapeHtml(c.note) + '</i>' : '') + '</div>';
+      const row = document.createElement("div"); row.style.marginTop = "8px";
+      const t = document.createElement("button"); t.className = "admin-btn"; t.textContent = c.active ? "Отключить" : "Включить";
+      t.onclick = async () => { try { await api("/api/admin/promo/" + parseInt(c.id, 10) + "/toggle", { method: "POST", body: JSON.stringify({ active: !c.active }) }); loadAdminPromo(); } catch (e) { alert(e.message); } };
+      const a = document.createElement("button"); a.className = "admin-btn"; a.style.marginLeft = "6px"; a.textContent = "Кто активировал";
+      a.onclick = async () => { try { const r = await api("/api/admin/promo/" + parseInt(c.id, 10) + "/activations"); alert(r.activations.length ? r.activations.map(x => "@" + (x.username || "?") + " (ID " + x.user_id + ")").join("\n") : "Пока никто"); } catch (e) { alert(e.message); } };
+      row.appendChild(t); row.appendChild(a); el.appendChild(row); box.appendChild(el);
+    }
+  } catch (e) { box.innerHTML = ""; const er = document.createElement("div"); er.className = "empty-state"; er.textContent = e.message; box.appendChild(er); }
+}
 
 // ИНИЦИАЛИЗАЦИЯ
 (async function init() {
