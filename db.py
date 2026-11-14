@@ -158,7 +158,32 @@ def search_users(query: str, current_user_id: int, limit: int = 20) -> list:
         ).ilike(column, pattern).neq("id", current_user_id).eq("banned", False).limit(limit).execute()
         for row in (res.data or []):
             found.setdefault(row["id"], row)
+    # Юзернеймы из коллекции (не активные): по ним тоже находим владельца. Резерв владельца в коллекцию не входит.
+    try:
+        own = supabase.table("owned_usernames").select("user_id, username").ilike("username", pattern).eq("reserved", False).limit(limit).execute().data or []
+        extra = [o for o in own if o.get("user_id") and o["user_id"] != current_user_id]
+        if extra:
+            holders = supabase.table("users").select(
+                "id, username, first_name, last_name, verified, role, avatar_url"
+            ).in_("id", list({o["user_id"] for o in extra})).eq("banned", False).execute().data or []
+            by_id = {h["id"]: h for h in holders}
+            for o in extra:
+                h = by_id.get(o["user_id"])
+                if h and h["id"] not in found:
+                    found[h["id"]] = dict(h, matched_username=o["username"])
+    except Exception as e:
+        print(f"[search_users collection] {e!r}")
     return list(found.values())[:limit]
+
+
+def get_collection_holder_user(username: str):
+    """Пользователь, у которого юзернейм лежит в коллекции (не активный ник, не резерв), иначе None."""
+    if not username: return None
+    res = supabase.table("owned_usernames").select("user_id, username, reserved").ilike("username", username).limit(20).execute()
+    for row in (res.data or []):
+        if (row.get("username") or "").lower() == username.lower() and not row.get("reserved") and row.get("user_id"):
+            return get_user_by_id(row["user_id"])
+    return None
 
 
 def update_user_profile(user_id: int, username: str, first_name: str, last_name: str = None) -> dict:
@@ -1288,6 +1313,8 @@ def activate_username(user_id: int, username: str) -> bool:
         return False
     existing = get_user_by_username(username)
     if existing and existing["id"] != user_id:
+        return False
+    if get_channel_by_username(username):   # имя занято каналом: два владельца у одного @username быть не может
         return False
     old_user = get_user_by_id(user_id)
     old_name = old_user.get("username")

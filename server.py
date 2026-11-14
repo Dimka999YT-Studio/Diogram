@@ -23,7 +23,7 @@ import httpx
 from db import (
     get_archived, set_archived, MAX_ARCHIVED_PER_USER, set_reaction, get_reactions, set_channel_reaction,
     email_exists, create_user, get_user_by_email,
-    get_user_by_id, get_user_by_username, search_users,
+    get_user_by_id, get_user_by_username, search_users, get_collection_holder_user,
     update_user_profile, update_user_name, update_user_username,
     update_user_avatar, update_user_bio,
     count_username_changes_24h, register_username_change,
@@ -574,13 +574,17 @@ def validate_username(username, role):
     if not re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_]*", username): return False, "Username: начинается с буквы, только латиница, цифры, _"
     return True, ""
 
-def username_conflict(username, acting_user_id=None):
+def username_conflict(username, acting_user_id=None, as_channel=False):
     """Текст ошибки, если @username уже кем-то занят (активный ник, коллекция/резерв, канал), иначе None.
     Свои имена acting_user_id не считаются конфликтом. Раньше сообщение было безликим «занят»,
     а каналы вообще не проверяли коллекции и ники пользователей."""
     existing = get_user_by_username(username)
-    if existing and existing["id"] != acting_user_id:
+    # Для канала активный ник даже своего владельца считается занятым: иначе @Smart оказывался и у пользователя, и у канала.
+    if existing and (as_channel or existing["id"] != acting_user_id):
         return f"Этот юзернейм занят пользователем @{existing.get('username') or username}"
+    if not as_channel:   # каналы раньше вообще не проверялись: пользователь мог занять @username чужого канала
+        ch = get_channel_by_username(username)
+        if ch: return f"Этот юзернейм занят каналом @{ch.get('username') or username}"
     holder = get_owned_username_holder(username)
     if holder is not None and holder != acting_user_id:
         h = get_user_by_id(holder)
@@ -835,7 +839,12 @@ def api_users_search():
     if not check_rate_limit(f"search_{user['id']}", SEARCH_RATE_PER_MIN, 60): return jsonify({"error": "Слишком часто. Подожди немного."}), 429
     users = search_users(q, user["id"], limit=20)
     channels = search_public_channels(q, limit=20)
-    return jsonify({"users": [user_public_dict(u) for u in users], "channels": channels})
+    out = []
+    for u in users:
+        d = user_public_dict(u)
+        if u.get("matched_username"): d["collection_username"] = u["matched_username"]   # найден по имени из коллекции
+        out.append(d)
+    return jsonify({"users": out, "channels": channels})
 
 @app.route("/api/users/by_username/<username>")
 def api_user_by_username(username):
@@ -844,9 +853,15 @@ def api_user_by_username(username):
     username = username.strip().lstrip("@")
     if not username: return jsonify({"error": "Username не указан"}), 400
     target = get_user_by_username(username)
-    if not target: return jsonify({"exists": False, "username": username}), 404
+    via_collection = False
+    if not target:   # имя может лежать в коллекции пользователя (коллекционный юзернейм)
+        target = get_collection_holder_user(username); via_collection = bool(target)
+    if not target:
+        ch = get_channel_by_username(username)
+        if ch and ch.get("type") == "public": return jsonify({"exists": False, "username": username, "channel": {"id": ch["id"], "name": ch.get("name"), "username": ch.get("username")}})
+        return jsonify({"exists": False, "username": username}), 404
     if target.get("banned"): return jsonify({"exists": False, "username": username, "banned": True}), 404
-    return jsonify({"exists": True, "user": user_public_dict(target)})
+    return jsonify({"exists": True, "user": user_public_dict(target), "via_collection": via_collection})
 
 @app.route("/api/users/<int:user_id>")
 def api_user_profile(user_id):
@@ -1809,7 +1824,7 @@ def api_channels_create():
         if not ok: return jsonify({"error": err}), 400
         existing = get_channel_by_username(username)
         if existing: return jsonify({"error": "Этот @username канала занят"}), 400
-        conflict = username_conflict(username, user["id"])
+        conflict = username_conflict(username, user["id"], as_channel=True)
         if conflict: return jsonify({"error": conflict}), 400
         if is_username_on_frigdmant(username): return jsonify({"error": "Этот юзернейм сейчас на продаже на Frigdmant"}), 400
     ch = create_channel(user["id"], name, username, description, ch_type)
@@ -1868,7 +1883,7 @@ def api_channel_update(channel_id):
         if username.lower() != (ch.get("username") or "").lower():
             existing = get_channel_by_username(username)
             if existing and existing["id"] != channel_id: return jsonify({"error": "Этот @username канала занят"}), 400
-            conflict = username_conflict(username, user["id"])
+            conflict = username_conflict(username, user["id"], as_channel=True)
             if conflict: return jsonify({"error": conflict}), 400
             if is_username_on_frigdmant(username): return jsonify({"error": "Этот юзернейм сейчас на продаже на Frigdmant"}), 400
     else: username = None
