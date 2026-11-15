@@ -65,6 +65,7 @@ import game
 import promo
 import captcha
 import game_world
+import gaming
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "").strip()
 JWT_ALGO = "HS256"
@@ -498,7 +499,7 @@ def messaging_blocked(sender, recipient):
     """True, если sender не может писать recipient из-за настройки приватности «Никто».
     Сотрудники (STAFF_ROLES) исключение; себе и ИИ-боту писать можно всегда."""
     if not sender or not recipient or sender["id"] == recipient["id"]: return False
-    if recipient["id"] in (DIO_BOT_ID, GAME_BOT_ID): return False
+    if recipient["id"] in (DIO_BOT_ID, GAME_BOT_ID, gaming.BOT_ID): return False
     if (sender.get("role") or "user") in STAFF_ROLES: return False
     return recipient.get("who_can_message") == "nobody"
 
@@ -1373,6 +1374,10 @@ def api_send():
                     if game_active(): save_message(chat_id, GAME_BOT_ID, GAME_INVITE_TEXT, "game_invite")
                     else: save_message(chat_id, GAME_BOT_ID, GAME_ENDED_TEXT, "text")
             except Exception as e: print(f"[game] {e!r}")
+        elif other_id == gaming.BOT_ID and user["id"] != gaming.BOT_ID:
+            try:
+                if check_rate_limit(f"gamingbot_{user['id']}", 1, 300): save_message(chat_id, gaming.BOT_ID, gaming.INVITE_TEXT, "gaming_invite")
+            except Exception as e: print(f"[gaming] {e!r}")
     sign_attachments([msg])
     return jsonify({"ok": True, "message": msg})
 
@@ -1460,6 +1465,84 @@ def api_game_case_open():
     if err: return jsonify({"error": err}), 400
     fresh = get_user_by_id(user["id"]) or user
     return jsonify({"ok": True, "result": result, "balance": fresh.get("balance", 0), "state": game.my_state(fresh), "stock": game.stock_of(user["id"])})
+
+# ==================== КЕЙСЫ @Gaming (gaming.py) ====================
+def _gaming_state(user):
+    fresh = get_user_by_id(user["id"]) or user
+    return {"cases": gaming.public_cases(), "inventory": gaming.inventory(user["id"]), "balance": fresh.get("balance", 0),
+            "left_today": max(0, gaming.DAILY_OPENS - gaming.opens_today(user["id"])), "statuses": gaming.STATUS_TITLES}
+
+@app.route("/api/gaming/state")
+def api_gaming_state():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    return jsonify(_gaming_state(user))
+
+@app.route("/api/gaming/open", methods=["POST"])
+@serialized_per_user
+def api_gaming_open():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    if not check_rate_limit(f"gaming_open_{user['id']}", 12, 60): return jsonify({"error": "Слишком часто. Подожди минуту."}), 429
+    case_id = to_int(json_body().get("case_id"))
+    if not case_id: return jsonify({"error": "Выбери кейс"}), 400
+    row, err = gaming.open_case(user["id"], case_id)
+    if err: return jsonify({"error": err}), 400
+    st = _gaming_state(user)
+    return jsonify({"ok": True, "won": {"id": row["id"], "kind": "item", "label": row["name"], "image": row.get("image_url")}, "state": st})
+
+@app.route("/api/gaming/withdraw", methods=["POST"])
+@serialized_per_user
+def api_gaming_withdraw():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    if not check_rate_limit(f"gaming_wd_{user['id']}", 20, 60): return jsonify({"error": "Слишком часто. Подожди минуту."}), 429
+    inv_id = to_int(json_body().get("id"))
+    if not inv_id or not gaming.request_withdraw(user, inv_id): return jsonify({"error": "Предмет не найден или заявка уже отправлена"}), 400
+    return jsonify({"ok": True, "state": _gaming_state(user)})
+
+@app.route("/api/admin/gaming")
+def api_admin_gaming():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    ov = gaming.admin_overview()
+    users = get_users_by_ids([r["user_id"] for r in ov["requests"]])
+    for r in ov["requests"]:
+        u = users.get(r["user_id"]) or {}
+        r["player"] = (f"@{u['username']}" if u.get("username") else (u.get("first_name") or "без имени")) + f" (ID {r['user_id']})"
+    return jsonify(ov)
+
+@app.route("/api/admin/gaming/case", methods=["POST"])
+def api_admin_gaming_case():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    d = json_body()
+    row, err = gaming.save_case(to_int(d.get("id")), d.get("title"), to_int(d.get("price")), d.get("active", True))
+    if err: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "case": row})
+
+@app.route("/api/admin/gaming/item", methods=["POST"])
+def api_admin_gaming_item():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    d = json_body()
+    case_id = to_int(d.get("case_id"))
+    if not case_id: return jsonify({"error": "Выбери кейс"}), 400
+    row, err = gaming.save_item(to_int(d.get("id")), case_id, d.get("name"), d.get("image_url"), d.get("info"), d.get("chance"), d.get("active", True))
+    if err: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "item": row})
+
+@app.route("/api/admin/gaming/item/delete", methods=["POST"])
+def api_admin_gaming_item_delete():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    iid = to_int(json_body().get("id"))
+    if not iid: return jsonify({"error": "Нет предмета"}), 400
+    gaming.delete_item(iid); return jsonify({"ok": True})
+
+@app.route("/api/admin/gaming/request", methods=["POST"])
+def api_admin_gaming_request():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    d = json_body()
+    row, err = gaming.set_status(to_int(d.get("id")), str_field(d, "status"), d.get("note"))
+    if err: return jsonify({"error": err}), 400
+    return jsonify({"ok": True})
 
 @app.route("/api/game/give_case", methods=["POST"])
 def api_game_give_case():
