@@ -1204,6 +1204,7 @@ function showListMenu(el) {
   box.addEventListener("touchstart", ev => { const el = target(ev); if (!el) return; clearTimeout(timer); timer = setTimeout(() => { lpUntil = Date.now() + 800; showListMenu(el); }, 450); }, { passive: true });
   for (const t of ["touchend", "touchmove", "touchcancel"]) box.addEventListener(t, () => clearTimeout(timer), { passive: true });
 })();
+let lastListSig = "";
 async function loadList() {
   const box = document.getElementById("list-container");
   try {
@@ -1211,6 +1212,11 @@ async function loadList() {
     const archived = data.items.filter(i => i.archived);
     if (listView === "archive" && !archived.length) listView = "main";   // из пустого архива сразу в обычный список
     const shown = data.items.filter(i => !!i.archived === (listView === "archive"));
+    // Список опрашивается каждые 8 с. Если на экране ничего не изменилось, не перерисовываем: иначе видео-аватарки
+    // создаются заново, моргают синим фоном и начинают проигрываться с начала.
+    const sig = listView + "|" + JSON.stringify(data.items.map(i => { const u = i.other_user || {}; return [i.type, i.chat_id, i.id, i.name, i.avatar_url, u.id, u.first_name, u.username, u.avatar_url, u.is_online, u.role, u.verified, i.last_message, i.last_message_type, i.last_message_at, i.unread_count, i.subscribers_count, i.channel_type, !!i.archived]; }));
+    if (sig === lastListSig && box.childElementCount > 0) return;
+    lastListSig = sig;
     box.innerHTML = "";
     if (listView === "archive") box.appendChild(listRow("←", "Архив", "Нажми и держи чат, чтобы вернуть его", 0, () => { listView = "main"; loadList(); }));
     else if (archived.length) box.appendChild(listRow("📦", "Архив", archived.length + " чатов", archived.reduce((n, i) => n + (i.unread_count || 0), 0), () => { listView = "archive"; loadList(); }));
@@ -1262,7 +1268,7 @@ async function loadList() {
       }
       box.appendChild(el);
     }
-  } catch (e) { if (e.message !== "banned") box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+  } catch (e) { lastListSig = ""; if (e.message !== "banned") box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
 }
 
 function startListPolling() { if (listPollInterval) clearInterval(listPollInterval); listPollInterval = setInterval(() => { if (!document.hidden && document.getElementById("screen-list").classList.contains("active")) loadList(); }, 8000); }
