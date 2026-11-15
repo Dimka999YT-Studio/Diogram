@@ -772,6 +772,7 @@
       <button class="admin-tab" data-tab="promo" id="admin-tab-promo">🎟 Промокоды</button>
       <button class="admin-tab" data-tab="captcha" id="admin-tab-captcha" style="display:none;">✍️ Капча</button>
       <button class="admin-tab" data-tab="gaming" id="admin-tab-gaming" style="display:none;">🎰 Кейсы @Gaming</button>
+      <button class="admin-tab" data-tab="gold" id="admin-tab-gold" style="display:none;">🪙 Голда</button>
       <button class="admin-tab" data-tab="game" id="admin-tab-game" style="display:none;">🍂 Призы турнира</button>
     </div>
     <div class="search-bar"><input type="text" id="admin-search" placeholder="Поиск по @username или email"></div>
@@ -853,6 +854,7 @@
 
 <div class="modal" id="modal-captcha"><div class="modal-bg"></div><div class="modal-content promo-modal"><div class="promo-ico">✍️</div><div class="modal-title">Подтверди, что ты человек</div><div class="promo-hint">Нарисуй круг пальцем или мышкой</div><canvas id="captcha-canvas" width="280" height="280" class="captcha-canvas"></canvas><div id="captcha-msg" class="promo-result"></div><div class="promo-hint" style="font-size:11px;margin:8px 0 0;">Рисунок сохраняется анонимно, без привязки к аккаунту, и может использоваться для обучения ИИ. Подробнее в Политике конфиденциальности (раздел 11).</div><div class="modal-actions"><button class="btn btn-secondary" id="captcha-clear">Очистить</button><button class="btn" id="captcha-send">Отправить</button></div></div></div>
 <div class="modal" id="modal-captcha-view"><div class="modal-bg" onclick="closeModal('modal-captcha-view')"></div><div class="modal-content promo-modal"><div class="modal-title" id="cv-title">Рисунок</div><canvas id="cv-canvas" width="280" height="280" class="captcha-canvas"></canvas><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-captcha-view')">Закрыть</button><button class="btn" id="cv-replay">▶ Повторить</button></div></div></div>
+<div class="modal" id="modal-gold"><div class="modal-bg" onclick="closeModal('modal-gold')"></div><div class="modal-content" style="max-height:88vh;overflow-y:auto;"><div class="modal-title" id="gold-title">Голда</div><div id="gold-body"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-gold')">Закрыть</button></div></div></div>
 <div class="modal" id="modal-promo"><div class="modal-bg" onclick="closeModal('modal-promo')"></div><div class="modal-content promo-modal"><div class="promo-ico">🎟</div><div class="modal-title">Промокод</div><div class="promo-hint">Введи код и получи награду: Di, PDG, кейсы, облачка или юзернейм</div><input type="text" id="promo-input" class="promo-field" placeholder="КОД" maxlength="32" autocomplete="off" autocapitalize="off" spellcheck="false"><div id="promo-result" class="promo-result"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-promo')">Закрыть</button><button class="btn" id="promo-go">Активировать</button></div></div></div>
 <div class="modal" id="modal-forward"><div class="modal-bg" onclick="closeModal('modal-forward')"></div><div class="modal-content"><div class="modal-title">↪ Переслать</div><div id="forward-list" style="max-height:55vh;overflow-y:auto;"></div><button class="btn btn-secondary" onclick="closeModal('modal-forward')">Отмена</button></div></div>
 <div class="modal" id="modal-poll"><div class="modal-bg" onclick="closeModal('modal-poll')"></div><div class="modal-content"><div class="modal-title">📊 Новый опрос</div><input type="text" id="poll-question" placeholder="Вопрос" maxlength="255" style="margin-bottom:10px;"><textarea id="poll-options" placeholder="Варианты — каждый с новой строки (от 2 до 10)" rows="5" style="resize:none;"></textarea><label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px;"><input type="checkbox" id="poll-multiple" style="width:auto;"> Можно выбрать несколько</label><div class="error" id="modal-poll-error" style="margin-top:8px;"></div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-poll')">Отмена</button><button class="btn" id="btn-poll-send">Отправить</button></div></div></div>
@@ -2450,6 +2452,7 @@ async function openAdmin() {
     }
   } catch (e) { console.error("Ошибка загрузки статистики", e); }
   document.getElementById("admin-tab-reserved").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
+  document.getElementById("admin-tab-gold").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-gaming").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-game").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-captcha").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
@@ -2459,7 +2462,7 @@ async function openAdmin() {
 document.querySelectorAll(".admin-tab").forEach(tab => { tab.onclick = () => { document.querySelectorAll(".admin-tab").forEach(t => t.classList.remove("active")); tab.classList.add("active"); currentAdminTab = tab.dataset.tab; adminShowTab(); }; });
 function adminShowTab() {
   document.querySelector("#screen-admin > .search-bar").style.display = currentAdminTab === "users" ? "" : "none";
-  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else if (currentAdminTab === "game") loadAdminGame(); else if (currentAdminTab === "promo") loadAdminPromo(); else if (currentAdminTab === "captcha") loadAdminCaptcha(); else if (currentAdminTab === "gaming") loadAdminGaming(); else loadAdminReports();
+  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else if (currentAdminTab === "game") loadAdminGame(); else if (currentAdminTab === "promo") loadAdminPromo(); else if (currentAdminTab === "captcha") loadAdminCaptcha(); else if (currentAdminTab === "gaming") loadAdminGaming(); else if (currentAdminTab === "gold") loadAdminGold(); else loadAdminReports();
 }
 
 async function loadAdminUsers() {
@@ -2567,14 +2570,18 @@ async function gamingRender(st) {
   try {
     if (!st) { box.innerHTML = '<div class="spinner"></div>'; st = await api("/api/gaming/state"); }
     gamingData = st; box.innerHTML = "";
-    const top = document.createElement("div"); top.className = "game-note"; top.textContent = "Твой баланс: " + (parseFloat(st.balance) || 0).toFixed(1) + " Di · сегодня можно открыть ещё: " + (parseInt(st.left_today, 10) || 0); box.appendChild(top);
+    const wl = st.wallet || { gold: 0, bonus: 0, total: 0 };
+    const top = document.createElement("div"); top.className = "game-note"; top.textContent = "🪙 Голда: " + (parseInt(wl.total, 10) || 0) + (wl.bonus ? " (в т. ч. бонус " + Math.floor(wl.bonus) + ")" : "") + " · Di: " + (parseFloat(st.balance) || 0).toFixed(1) + " · сегодня можно открыть ещё: " + (parseInt(st.left_today, 10) || 0); box.appendChild(top);
+    const wb = document.createElement("div"); wb.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;padding:0 12px 8px;";
+    for (const [label, fn] of [["⇄ Обменять Di", goldExchange], ["📤 Вывести голду", goldWithdraw], ["🎁 Приглашения", goldRef]]) { const b = document.createElement("button"); b.className = "admin-btn primary"; b.textContent = label; b.onclick = () => fn(st); wb.appendChild(b); }
+    box.appendChild(wb);
     const h1 = document.createElement("div"); h1.className = "game-h"; h1.textContent = "🎁 Кейсы"; box.appendChild(h1);
     if (!st.cases.length) { const e = document.createElement("div"); e.className = "empty-state"; e.textContent = "Кейсов пока нет"; box.appendChild(e); }
     for (const c of st.cases) {
       const card = document.createElement("div"); card.className = "game-card";
-      const t = document.createElement("h3"); t.textContent = c.title + " · " + (parseInt(c.price, 10) || 0) + " Di"; card.appendChild(t);
+      const t = document.createElement("h3"); t.textContent = c.title + " · " + (parseInt(c.price, 10) || 0) + " голды"; card.appendChild(t);
       const mini = document.createElement("div"); mini.className = "gi-mini"; for (const d of c.drops) mini.appendChild(gameItemTile(d, true)); card.appendChild(mini);
-      const b = document.createElement("button"); b.className = "btn"; b.textContent = c.ready ? "Открыть за " + (parseInt(c.price, 10) || 0) + " Di" : "Кейс настраивается"; b.disabled = !c.ready;
+      const b = document.createElement("button"); b.className = "btn"; b.textContent = c.ready ? "Открыть за " + (parseInt(c.price, 10) || 0) + " голды" : "Кейс настраивается"; b.disabled = !c.ready;
       b.onclick = () => gamingOpen(c, b); card.appendChild(b); box.appendChild(card);
     }
     const h2 = document.createElement("div"); h2.className = "game-h"; h2.textContent = "🎒 Мой инвентарь"; box.appendChild(h2);
@@ -2595,6 +2602,49 @@ async function gamingRender(st) {
   } catch (e) { if (e.message !== "banned") box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
 }
 let gamingData = null, gamingBusy = false;
+// ---- голда: обмен, вывод, приглашения ----
+function goldModal(title) { document.getElementById("gold-title").textContent = title; const b = document.getElementById("gold-body"); b.innerHTML = ""; openModal("modal-gold"); return b; }
+function goldEl(tag, text, css) { const e = document.createElement(tag); if (text != null) e.textContent = text; if (css) e.style.cssText = css; return e; }
+function goldInput(ph, type, max) { const i = document.createElement("input"); i.type = type || "text"; i.placeholder = ph; if (max) i.maxLength = max; i.style.cssText = "margin-top:8px;width:100%;"; if (type === "number") { i.min = "1"; i.step = "1"; } return i; }
+function goldMsg() { const m = goldEl("div", "", "margin-top:8px;font-size:13px;min-height:18px;"); m.setErr = (t) => { m.style.color = "#ff6b6b"; m.textContent = t; }; m.setOk = (t) => { m.style.color = "#5ecb7a"; m.textContent = t; }; return m; }
+function goldExchange(st) {
+  const b = goldModal("⇄ Обмен Di на голду"); const wl = st.wallet || {};
+  b.appendChild(goldEl("div", "1 Di = 1 голда. У тебя " + (parseFloat(st.balance) || 0).toFixed(1) + " Di. Лимит обмена 1000 Di в сутки.", "font-size:13px;color:#9fb0c0;"));
+  const inp = goldInput("Сколько Di обменять", "number"); b.appendChild(inp); const m = goldMsg(); b.appendChild(m);
+  const go = goldEl("button", "Обменять"); go.className = "btn"; go.style.marginTop = "8px";
+  go.onclick = async () => { go.disabled = true; try { const r = await api("/api/gold/exchange", { method: "POST", body: JSON.stringify({ amount: parseInt(inp.value, 10) }) }); m.setOk("Готово!"); await gamingRender(r.state); setTimeout(() => closeModal("modal-gold"), 600); } catch (e) { m.setErr(e.message); } go.disabled = false; };
+  b.appendChild(go);
+}
+function goldWithdraw(st) {
+  const b = goldModal("📤 Вывод голды в игру"); const wl = st.wallet || {};
+  b.appendChild(goldEl("div", "Можно вывести: " + (parseInt(wl.withdrawable, 10) || 0) + " голды (минимум " + (wl.withdraw_min || 100) + "). Реферальный бонус выводится после того, как ты потратишь на кейсы " + (wl.unlock_spent || 50) + " голды (потрачено " + (wl.spent_total || 0) + "). Заявку проверяет владелец и выдаёт голду в игре вручную.", "font-size:13px;color:#9fb0c0;"));
+  const amt = goldInput("Сколько голды", "number"), nick = goldInput("Твой ник или ID в игре", "text", 60); b.appendChild(amt); b.appendChild(nick); const m = goldMsg(); b.appendChild(m);
+  const go = goldEl("button", "Отправить заявку"); go.className = "btn"; go.style.marginTop = "8px";
+  go.onclick = async () => { go.disabled = true; try { const r = await api("/api/gold/withdraw", { method: "POST", body: JSON.stringify({ amount: parseInt(amt.value, 10), nick: nick.value }) }); m.setOk("Заявка отправлена. Владелец свяжется с тобой."); await gamingRender(r.state); } catch (e) { m.setErr(e.message); } go.disabled = false; };
+  b.appendChild(go);
+  api("/api/gold/withdrawals").then(d => { if (!d.items.length) return; b.appendChild(goldEl("div", "Твои заявки", "margin-top:14px;font-weight:600;")); for (const w of d.items) b.appendChild(goldEl("div", w.amount + " голды · " + (d.statuses[w.status] || w.status) + (w.admin_note ? " · " + w.admin_note : ""), "font-size:13px;color:#9fb0c0;margin-top:4px;")); }).catch(() => {});
+}
+function goldRef() {
+  const b = goldModal("🎁 Приглашения"); b.appendChild(goldEl("div", "Загрузка…", "color:#9fb0c0;"));
+  api("/api/ref/me").then(d => {
+    b.innerHTML = ""; const r = d.rules;
+    b.appendChild(goldEl("div", "Отправь друзьям свой код. Когда друг введёт его в первые " + r.window_days + " дней после регистрации и выполнит условия, вы оба получите по " + r.reward + " голды (бонус для кейсов). Дальше ты получаешь " + r.commission_pct + "% с купленной им голды, которую он потратит.", "font-size:13px;color:#9fb0c0;"));
+    b.appendChild(goldEl("div", "Условия для друга: не меньше " + r.min_msgs + " отправленных сообщений, общение в " + r.min_chats + " чатах с собеседниками (разговоры с ботами и с тобой не считаются) и " + r.min_days + " дня активности. В сутки засчитывается до " + r.daily_limit + " приглашений.", "font-size:12px;color:#7e8b99;margin-top:6px;"));
+    b.appendChild(goldEl("div", "Твой код", "margin-top:12px;font-size:12px;color:#7e8b99;"));
+    const code = goldEl("div", d.code, "font-size:26px;font-weight:700;letter-spacing:2px;cursor:pointer;"); code.title = "Нажми, чтобы скопировать"; code.onclick = () => { copyText(d.code); code.style.color = "#5ecb7a"; setTimeout(() => code.style.color = "", 800); }; b.appendChild(code);
+    b.appendChild(goldEl("div", "Заработано на приглашениях: " + d.earned + " голды", "font-size:13px;margin-top:4px;"));
+    b.appendChild(goldEl("div", "Приглашённые (" + d.invitees.length + ")", "margin-top:14px;font-weight:600;"));
+    if (!d.invitees.length) b.appendChild(goldEl("div", "Пока никого", "font-size:13px;color:#7e8b99;"));
+    for (const i of d.invitees) { const p = i.progress; b.appendChild(goldEl("div", i.name + " · " + (i.status === "paid" ? "✅ засчитан" : p ? "сообщений " + p.msgs + "/" + p.need_msgs + ", чатов " + p.chats + "/" + p.need_chats + ", дней " + p.days + "/" + p.need_days : "ждёт условий"), "font-size:13px;margin-top:4px;")); }
+    if (d.my_use) { b.appendChild(goldEl("div", "Ты вводил чужой код", "margin-top:14px;font-weight:600;")); const p = d.my_use.progress; b.appendChild(goldEl("div", d.my_use.status === "paid" ? "✅ Бонус получен" : p ? "Сообщений " + p.msgs + "/" + p.need_msgs + ", чатов " + p.chats + "/" + p.need_chats + ", дней " + p.days + "/" + p.need_days : "Ждёт условий", "font-size:13px;margin-top:4px;")); }
+    else {
+      b.appendChild(goldEl("div", "Есть код друга?", "margin-top:14px;font-weight:600;")); const inp = goldInput("Код приглашения", "text", 20); inp.autocapitalize = "off"; inp.spellcheck = false; b.appendChild(inp); const m = goldMsg(); b.appendChild(m);
+      const go = goldEl("button", "Применить"); go.className = "btn"; go.style.marginTop = "8px";
+      go.onclick = async () => { go.disabled = true; try { await api("/api/ref/activate", { method: "POST", body: JSON.stringify({ code: inp.value }) }); goldRef(); } catch (e) { m.setErr(e.message); go.disabled = false; } };
+      b.appendChild(go);
+    }
+  }).catch(e => { b.innerHTML = ""; b.appendChild(goldEl("div", "Ошибка: " + e.message, "color:#ff6b6b;")); });
+}
 async function gamingOpen(c, btn) {
   if (gamingBusy) return; gamingBusy = true; btn.disabled = true;
   try {
@@ -3176,6 +3226,33 @@ async function openCaptchaSample(id) {
   } catch (e) { alert(e.message); }
 }
 let captchaFilter = "none";
+async function loadAdminGold() {
+  const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
+  try {
+    const d = await api("/api/admin/gold"); box.innerHTML = "";
+    const mk = (label, fn, cls) => { const b = document.createElement("button"); b.className = "admin-btn" + (cls ? " " + cls : ""); b.style.marginRight = "6px"; b.textContent = label; b.onclick = fn; return b; };
+    const inp = (ph, type, w) => { const i = document.createElement("input"); i.type = type || "text"; i.placeholder = ph; if (w) i.style.width = w; i.style.marginTop = "4px"; return i; };
+    const st = document.createElement("div"); st.className = "report-card"; st.innerHTML = '<div class="report-reason">🪙 В обороте</div>'; st.appendChild(goldEl("div", "Купленной голды: " + d.stats.gold + " · реферального бонуса: " + d.stats.bonus + " · кошельков: " + d.stats.wallets, "font-size:13px;")); box.appendChild(st);
+    const rq = document.createElement("div"); rq.className = "report-card"; rq.innerHTML = '<div class="report-reason">📤 Заявки на вывод (' + d.withdrawals.length + ')</div>';
+    if (!d.withdrawals.length) rq.appendChild(goldEl("div", "Заявок нет", "font-size:13px;color:#7e8b99;"));
+    for (const w of d.withdrawals) {
+      const row = document.createElement("div"); row.style.cssText = "margin-top:8px;padding-top:8px;border-top:1px solid #242f3d;";
+      row.appendChild(goldEl("div", w.player + " · " + w.amount + " голды (купленной " + w.from_gold + ", бонус " + w.from_bonus + ") · ник в игре: " + w.game_nick + " · " + (w.status === "work" ? "в работе" : "новая") + " · " + new Date(w.created_at).toLocaleString("ru-RU"), "font-size:13px;"));
+      const note = inp("Сообщение игроку (необязательно)", "text", "100%"); note.maxLength = 300; row.appendChild(note);
+      const act = document.createElement("div"); act.style.marginTop = "4px";
+      for (const [s2, label, cls] of [["work", "Связался", ""], ["given", "✅ Выдано", "primary"], ["rejected", "Отклонить (вернуть голду)", "danger"]])
+        act.appendChild(mk(label, async () => { if (s2 === "rejected" && !confirm("Отклонить и вернуть голду игроку?")) return; try { await api("/api/admin/gold/withdrawal", { method: "POST", body: JSON.stringify({ id: w.id, status: s2, note: note.value }) }); loadAdminGold(); } catch (e) { alert(e.message); } }, cls));
+      row.appendChild(act); rq.appendChild(row);
+    }
+    box.appendChild(rq);
+    const cc = document.createElement("div"); cc.className = "report-card"; cc.innerHTML = '<div class="report-reason">🎁 Свои реферальные коды (для блогеров)</div>';
+    for (const c of d.codes) { const row = document.createElement("div"); row.style.cssText = "margin-top:6px;font-size:13px;"; row.appendChild(document.createTextNode(c.code + " → " + c.owner_name + " · приглашений " + c.uses + (c.max_uses ? "/" + c.max_uses : "") + (c.active ? "" : " (выключен) "))); row.appendChild(mk(c.active ? "Выключить" : "Включить", async () => { try { await api("/api/admin/gold/code/toggle", { method: "POST", body: JSON.stringify({ id: c.id, active: !c.active }) }); loadAdminGold(); } catch (e) { alert(e.message); } })); cc.appendChild(row); }
+    const nc = inp("Код (3–20: буквы, цифры, _)", "text", "40%"), no = inp("ID владельца кода", "number", "28%"), nm = inp("Лимит (пусто = без)", "number", "28%"); nc.maxLength = 20;
+    const msg = goldEl("div", "", "font-size:13px;min-height:16px;margin-top:4px;");
+    const add = mk("Создать код", async () => { try { await api("/api/admin/gold/code", { method: "POST", body: JSON.stringify({ code: nc.value, owner_id: parseInt(no.value, 10), max_uses: nm.value ? parseInt(nm.value, 10) : null }) }); loadAdminGold(); } catch (e) { msg.textContent = e.message; msg.style.color = "#ff6b6b"; } }, "primary"); add.style.marginTop = "6px";
+    cc.appendChild(nc); cc.appendChild(no); cc.appendChild(nm); cc.appendChild(document.createElement("br")); cc.appendChild(add); cc.appendChild(msg); box.appendChild(cc);
+  } catch (e) { box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+}
 async function loadAdminGaming() {
   const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
   try {
@@ -3199,9 +3276,9 @@ async function loadAdminGaming() {
     // кейсы
     for (const c of d.cases) {
       const card = document.createElement("div"); card.className = "report-card";
-      const head = document.createElement("div"); head.className = "report-reason"; head.textContent = c.title + " · " + c.price + " Di" + (c.active ? "" : " (выключен)") + " · сумма шансов " + c.chance_sum + "%" + (c.ready ? " ✅" : " ⚠ нужно ровно 100%"); card.appendChild(head);
+      const head = document.createElement("div"); head.className = "report-reason"; head.textContent = c.title + " · " + c.price + " голды" + (c.active ? "" : " (выключен)") + " · сумма шансов " + c.chance_sum + "%" + (c.ready ? " ✅" : " ⚠ нужно ровно 100%"); card.appendChild(head);
       const er = document.createElement("div"); er.style.marginTop = "6px";
-      const tt = inp("Название", "text", c.title, "45%"), pp = inp("Цена Di", "number", c.price, "20%"); tt.maxLength = 60; pp.min = 1;
+      const tt = inp("Название", "text", c.title, "45%"), pp = inp("Цена, голда", "number", c.price, "20%"); tt.maxLength = 60; pp.min = 1;
       er.appendChild(tt); er.appendChild(pp);
       er.appendChild(mkBtn("Сохранить", async () => { try { await api("/api/admin/gaming/case", { method: "POST", body: JSON.stringify({ id: c.id, title: tt.value, price: parseInt(pp.value, 10), active: c.active }) }); loadAdminGaming(); } catch (e) { alert(e.message); } }));
       er.appendChild(mkBtn(c.active ? "Выключить" : "Включить", async () => { try { await api("/api/admin/gaming/case", { method: "POST", body: JSON.stringify({ id: c.id, title: c.title, price: c.price, active: !c.active }) }); loadAdminGaming(); } catch (e) { alert(e.message); } }));
@@ -3231,7 +3308,7 @@ async function loadAdminGaming() {
       form.appendChild(save); form.appendChild(msg); card.appendChild(form); box.appendChild(card);
     }
     const nc = document.createElement("div"); nc.className = "report-card";
-    const nt = inp("Название нового кейса", "text", "", "55%"), np = inp("Цена Di", "number", "", "25%"); nt.maxLength = 60; np.min = 1;
+    const nt = inp("Название нового кейса", "text", "", "55%"), np = inp("Цена, голда", "number", "", "25%"); nt.maxLength = 60; np.min = 1;
     nc.innerHTML = '<div class="report-reason">Новый кейс</div>'; nc.appendChild(nt); nc.appendChild(np);
     nc.appendChild(mkBtn("Создать", async () => { try { await api("/api/admin/gaming/case", { method: "POST", body: JSON.stringify({ title: nt.value, price: parseInt(np.value, 10), active: true }) }); loadAdminGaming(); } catch (e) { alert(e.message); } }, "primary"));
     box.appendChild(nc);

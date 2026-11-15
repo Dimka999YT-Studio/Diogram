@@ -66,6 +66,7 @@ import promo
 import captcha
 import game_world
 import gaming
+import gold
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "").strip()
 JWT_ALGO = "HS256"
@@ -741,6 +742,9 @@ def api_me():
     is_banned, ban_reason = check_banned(user)
     if is_banned: return banned_response(user, ban_reason)
     update_last_seen(user["id"])
+    try:
+        if check_rate_limit(f"refsettle_{user['id']}", 1, 120): gold.settle(user["id"])   # засчитать приглашение, если условия выполнены
+    except Exception as e: print(f"[ref settle] {e!r}")
     return jsonify({"user": user_to_dict(user)})
 
 @app.route("/api/heartbeat", methods=["POST"])
@@ -1481,7 +1485,7 @@ def api_game_case_open():
 # ==================== КЕЙСЫ @Gaming (gaming.py) ====================
 def _gaming_state(user):
     fresh = get_user_by_id(user["id"]) or user
-    return {"cases": gaming.public_cases(), "inventory": gaming.inventory(user["id"]), "balance": fresh.get("balance", 0),
+    return {"cases": gaming.public_cases(), "inventory": gaming.inventory(user["id"]), "balance": fresh.get("balance", 0), "wallet": gold.wallet(user["id"]),
             "left_today": max(0, gaming.DAILY_OPENS - gaming.opens_today(user["id"])), "statuses": gaming.STATUS_TITLES}
 
 @app.route("/api/gaming/state")
@@ -1512,6 +1516,84 @@ def api_gaming_withdraw():
     inv_id = to_int(json_body().get("id"))
     if not inv_id or not gaming.request_withdraw(user, inv_id): return jsonify({"error": "Предмет не найден или заявка уже отправлена"}), 400
     return jsonify({"ok": True, "state": _gaming_state(user)})
+
+# ---- голда и рефералка (gold.py) ----
+@app.route("/api/gold/exchange", methods=["POST"])
+@serialized_per_user
+def api_gold_exchange():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    if not check_rate_limit(f"gold_ex_{user['id']}", 10, 60): return jsonify({"error": "Слишком часто. Подожди минуту."}), 429
+    ok, err = gold.exchange(user["id"], to_int(json_body().get("amount")))
+    if not ok: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "state": _gaming_state(user)})
+
+@app.route("/api/gold/withdraw", methods=["POST"])
+@serialized_per_user
+def api_gold_withdraw():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    if not check_rate_limit(f"gold_wd_{user['id']}", 5, 60): return jsonify({"error": "Слишком часто. Подожди минуту."}), 429
+    d = json_body()
+    wid, err = gold.request_withdraw(user, to_int(d.get("amount")), d.get("nick"))
+    if err: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "state": _gaming_state(user)})
+
+@app.route("/api/gold/withdrawals")
+def api_gold_withdrawals():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    return jsonify({"items": gold.my_withdrawals(user["id"]), "statuses": gold.WITHDRAW_STATUS})
+
+@app.route("/api/ref/me")
+def api_ref_me():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    if not check_rate_limit(f"ref_me_{user['id']}", 30, 60): return jsonify({"error": "Слишком часто. Подожди минуту."}), 429
+    return jsonify(gold.ref_state(user["id"]))
+
+@app.route("/api/ref/activate", methods=["POST"])
+@serialized_per_user
+def api_ref_activate():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    if not check_rate_limit(f"ref_act_{user['id']}", 10, 60): return jsonify({"error": "Слишком часто. Подожди минуту."}), 429
+    ok, err = gold.activate(user["id"], str_field(json_body(), "code"))
+    if not ok: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "state": gold.ref_state(user["id"])})
+
+@app.route("/api/admin/gold")
+def api_admin_gold():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    wd = gold.admin_withdrawals(); codes = gold.admin_codes()
+    users = get_users_by_ids(list({r["user_id"] for r in wd} | {c["owner_id"] for c in codes}))
+    nm = lambda uid: (lambda u: (f"@{u['username']}" if u.get("username") else (u.get("first_name") or "без имени")) + f" (ID {uid})")(users.get(uid) or {})
+    for r in wd: r["player"] = nm(r["user_id"])
+    for c in codes: c["owner_name"] = nm(c["owner_id"])
+    return jsonify({"withdrawals": wd, "codes": codes, "stats": gold.stats()})
+
+@app.route("/api/admin/gold/withdrawal", methods=["POST"])
+def api_admin_gold_withdrawal():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    d = json_body()
+    ok, err = gold.close_withdrawal(to_int(d.get("id")), str_field(d, "status"), d.get("note"))
+    if not ok: return jsonify({"error": err}), 400
+    return jsonify({"ok": True})
+
+@app.route("/api/admin/gold/code", methods=["POST"])
+def api_admin_gold_code():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    d = json_body()
+    row, err = gold.create_custom_code(str_field(d, "code"), to_int(d.get("owner_id")), to_int(d.get("max_uses")))
+    if err: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "code": row})
+
+@app.route("/api/admin/gold/code/toggle", methods=["POST"])
+def api_admin_gold_code_toggle():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    d = json_body(); cid = to_int(d.get("id"))
+    if not cid: return jsonify({"error": "Нет кода"}), 400
+    gold.toggle_code(cid, bool(d.get("active"))); return jsonify({"ok": True})
 
 @app.route("/api/admin/gaming")
 def api_admin_gaming():
