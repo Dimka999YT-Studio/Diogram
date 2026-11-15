@@ -149,14 +149,16 @@ class Hub:
             for n in range(1, MAX_LOBBIES + 1):
                 lb = self.lobbies.get(n)
                 if not lb: out.append({"num": n, "state": "empty", "players": 0, "seeker": False, "max": MAX_PLAYERS}); continue
-                out.append({"num": n, "state": lb.state, "players": len(lb.players), "seeker": bool(lb.seekers()), "max": MAX_PLAYERS})
+                out.append({"num": n, "state": "waiting" if lb.state == "starting" else lb.state, "players": len(lb.players), "seeker": bool(lb.seekers()), "max": MAX_PLAYERS})
             return out
 
     def _cleanup(self, now):
         for n, lb in list(self.lobbies.items()):
             dead = lb.state == "ended" and lb.ended_at is not None and now - lb.ended_at > ENDED_KEEP
             empty = not lb.players
-            if dead or empty:
+            # раунд, у которого все игроки пропали (закрыли вкладку), иначе вечно занимал бы лобби: выкидывать некому, тиков нет
+            stale = bool(lb.players) and all(now - pl.seen > IDLE_KICK + 5 for pl in list(lb.players.values()))
+            if dead or empty or stale:
                 for uid in [u for u, num in self.user_lobby.items() if num == n]: self.user_lobby.pop(uid, None)
                 self.lobbies.pop(n, None)
 
@@ -270,11 +272,18 @@ class Hub:
         self._check_end(lb, now)
 
     def _start_round(self, lb, now):
-        for p in list(lb.hiders()):
-            if not p.staff and not self.consume(p.uid):
-                lb.players.pop(p.uid, None); self.user_lobby.pop(p.uid, None); lb.event(f"{p.name} не хватило игр")
-        if not lb.hiders() or not lb.seekers():
-            lb.start_at = None; return
+        # Сначала закрываем вход: join смотрит на state под self.lock, поэтому после этого в лобби уже никто не добавится,
+        # и все прячущиеся, которым спишется попытка, учтены. Раньше join мог вставить игрока посреди списания:
+        # он играл раунд без траты попытки и получал облачка.
+        with self.lock: lb.state = "starting"
+        try:
+            for p in list(lb.hiders()):
+                if not p.staff and not self.consume(p.uid):
+                    lb.players.pop(p.uid, None); self.user_lobby.pop(p.uid, None); lb.event(f"{p.name} не хватило игр")
+            if not lb.hiders() or not lb.seekers():
+                lb.start_at = None; lb.state = "waiting"; return
+        except BaseException:
+            lb.state = "waiting"; raise
         rnd = random.Random()
         spawns = list(MAP["spawns"]); rnd.shuffle(spawns)
         for i, p in enumerate(lb.hiders()):
