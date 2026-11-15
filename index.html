@@ -118,6 +118,12 @@
   .gi .gi-t { position: relative; font-size: 11px; font-weight: 700; color: #e8eef5; line-height: 1.15; }
   .gi.win { outline: 3px solid #fff; box-shadow: 0 0 18px var(--rc, #fff); }
   .gi-mini { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+  .gi .gi-ic img.gi-pic { width: 52px; height: 52px; border-radius: 8px; object-fit: contain; }
+  .gi-mini .gi .gi-ic img.gi-pic { width: 40px; height: 40px; }
+  .inv-row { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid #242f3d; }
+  .inv-row img { width: 48px; height: 48px; border-radius: 8px; object-fit: contain; background: #0e1621; flex: 0 0 48px; }
+  .inv-row .inv-info { flex: 1; min-width: 0; font-size: 13px; }
+  .inv-row .inv-st { font-size: 12px; color: #ff9f43; }
   .gi-mini .gi { flex: 0 0 calc(25% - 5px); height: 84px; }
   .gi-mini .gi .gi-ic { font-size: 26px; height: 30px; } .gi-mini .gi .gi-ic img { width: 28px; height: 28px; } .gi-mini .gi .gi-ic svg { width: 34px; height: 26px; }
   .gi-mini .gi .gi-t { font-size: 10px; }
@@ -703,6 +709,12 @@
     <div id="game-body" style="overflow-y:auto; flex:1;"><div class="spinner"></div></div>
   </div>
 
+  <!-- GAMING (кейсы @Gaming) -->
+  <div class="screen" id="screen-gaming">
+    <div class="header"><button class="header-icon" id="btn-gaming-back">←</button><h1>🎰 Drop4ik</h1></div>
+    <div id="gaming-body" style="overflow-y:auto; flex:1;"><div class="spinner"></div></div>
+  </div>
+
   <!-- GAMEPLAY (карта) -->
   <div class="screen" id="screen-gameplay">
     <canvas id="game-canvas"></canvas>
@@ -759,6 +771,7 @@
       <button class="admin-tab" data-tab="reserved" id="admin-tab-reserved" style="display:none;">⭐ Резерв имён</button>
       <button class="admin-tab" data-tab="promo" id="admin-tab-promo">🎟 Промокоды</button>
       <button class="admin-tab" data-tab="captcha" id="admin-tab-captcha" style="display:none;">✍️ Капча</button>
+      <button class="admin-tab" data-tab="gaming" id="admin-tab-gaming" style="display:none;">🎰 Кейсы @Gaming</button>
       <button class="admin-tab" data-tab="game" id="admin-tab-game" style="display:none;">🍂 Призы турнира</button>
     </div>
     <div class="search-bar"><input type="text" id="admin-search" placeholder="Поиск по @username или email"></div>
@@ -1387,6 +1400,7 @@ document.getElementById("messages").addEventListener("click", async (ev) => {
     go.disabled = false; return;
   }
   if (!ev.target.closest || !ev.target.closest(".game-play-btn")) return;
+  if (ev.target.closest(".gaming-btn")) { openGaming(); return; }
   openGame();
 });
 document.addEventListener("click", closeRxPicker);
@@ -1431,8 +1445,9 @@ function appendMessage(m) {
   if (body.startsWith("\u2063")) {   // пересланное сообщение: метку ставит только сервер, первая строка это заголовок
     const nl = body.indexOf("\n"); fwdHead = (nl < 0 ? body : body.slice(0, nl)).replace(/\u2063/g, ""); body = nl < 0 ? "" : body.slice(nl + 1);
   }
-  content += (m.type === "game_invite" || m.type === "game_case_give" ? '<span class="pre-line">' + linkify(body) + '</span>' : linkify(body));
+  content += (m.type === "game_invite" || m.type === "gaming_invite" || m.type === "game_case_give" ? '<span class="pre-line">' + linkify(body) + '</span>' : linkify(body));
   if (fwdHead) content = '<div class="fwd">' + escapeHtml(fwdHead) + '</div>' + content;
+  if (m.type === "gaming_invite") content += '<button class="game-play-btn gaming-btn" type="button">🎰 Играть</button>';
   if (m.type === "game_invite") content += '<button class="game-play-btn" type="button">🎮 Играть</button>';
   if (m.type === "game_case_give") { const idm = /ID (\d{1,12})/.exec(m.text || ""); if (idm) content += '<div class="cg-form" data-uid="' + parseInt(idm[1], 10) + '"><select class="cg-case">' + GAME_CASES.map(c => '<option value="' + c.key + '">' + escapeHtml(c.title) + ' (' + c.price + ' Di)</option>').join("") + '</select><input class="cg-qty" type="number" min="1" max="100" value="1"><button class="game-play-btn cg-go" type="button">Выдать</button><div class="cg-out"></div></div>'; }
   
@@ -2429,6 +2444,7 @@ async function openAdmin() {
     }
   } catch (e) { console.error("Ошибка загрузки статистики", e); }
   document.getElementById("admin-tab-reserved").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
+  document.getElementById("admin-tab-gaming").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-game").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-captcha").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   adminShowTab();
@@ -2437,7 +2453,7 @@ async function openAdmin() {
 document.querySelectorAll(".admin-tab").forEach(tab => { tab.onclick = () => { document.querySelectorAll(".admin-tab").forEach(t => t.classList.remove("active")); tab.classList.add("active"); currentAdminTab = tab.dataset.tab; adminShowTab(); }; });
 function adminShowTab() {
   document.querySelector("#screen-admin > .search-bar").style.display = currentAdminTab === "users" ? "" : "none";
-  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else if (currentAdminTab === "game") loadAdminGame(); else if (currentAdminTab === "promo") loadAdminPromo(); else if (currentAdminTab === "captcha") loadAdminCaptcha(); else loadAdminReports();
+  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else if (currentAdminTab === "game") loadAdminGame(); else if (currentAdminTab === "promo") loadAdminPromo(); else if (currentAdminTab === "captcha") loadAdminCaptcha(); else if (currentAdminTab === "gaming") loadAdminGaming(); else loadAdminReports();
 }
 
 async function loadAdminUsers() {
@@ -2538,6 +2554,58 @@ document.getElementById("admin-list").addEventListener("click", async (e) => {
 let gameView = "menu";
 const GAME_PRIZES_TEXT = ["🥇 Аккаунт Diogram (можно использовать как твинк)", "🥈 @Legend: коллекционный лимитированный осенний юзернейм навсегда", "🥉 15 дней подписки PDG бесплатно"];
 function gameBody() { return document.getElementById("game-body"); }
+// ---- @Gaming: кейсы с виртуальными предметами ----
+async function openGaming() { show("screen-gaming"); await gamingRender(); }
+async function gamingRender(st) {
+  const box = document.getElementById("gaming-body");
+  try {
+    if (!st) { box.innerHTML = '<div class="spinner"></div>'; st = await api("/api/gaming/state"); }
+    gamingData = st; box.innerHTML = "";
+    const top = document.createElement("div"); top.className = "game-note"; top.textContent = "Твой баланс: " + (parseFloat(st.balance) || 0).toFixed(1) + " Di · сегодня можно открыть ещё: " + (parseInt(st.left_today, 10) || 0); box.appendChild(top);
+    const h1 = document.createElement("div"); h1.className = "game-h"; h1.textContent = "🎁 Кейсы"; box.appendChild(h1);
+    if (!st.cases.length) { const e = document.createElement("div"); e.className = "empty-state"; e.textContent = "Кейсов пока нет"; box.appendChild(e); }
+    for (const c of st.cases) {
+      const card = document.createElement("div"); card.className = "game-card";
+      const t = document.createElement("h3"); t.textContent = c.title + " · " + (parseInt(c.price, 10) || 0) + " Di"; card.appendChild(t);
+      const mini = document.createElement("div"); mini.className = "gi-mini"; for (const d of c.drops) mini.appendChild(gameItemTile(d, true)); card.appendChild(mini);
+      const b = document.createElement("button"); b.className = "btn"; b.textContent = c.ready ? "Открыть за " + (parseInt(c.price, 10) || 0) + " Di" : "Кейс настраивается"; b.disabled = !c.ready;
+      b.onclick = () => gamingOpen(c, b); card.appendChild(b); box.appendChild(card);
+    }
+    const h2 = document.createElement("div"); h2.className = "game-h"; h2.textContent = "🎒 Мой инвентарь"; box.appendChild(h2);
+    const inv = document.createElement("div"); inv.className = "game-card";
+    if (!st.inventory.length) inv.innerHTML = '<div class="game-note" style="margin:0;">Пока пусто. Открой кейс!</div>';
+    for (const it of st.inventory) {
+      const row = document.createElement("div"); row.className = "inv-row";
+      if (it.image_url) { const im = document.createElement("img"); im.src = it.image_url; im.alt = ""; row.appendChild(im); }
+      const info = document.createElement("div"); info.className = "inv-info";
+      const nm = document.createElement("b"); nm.textContent = it.name; info.appendChild(nm);
+      if (it.info) { const x = document.createElement("div"); x.style.color = "#9fb0c0"; x.textContent = it.info; info.appendChild(x); }
+      const stt = document.createElement("div"); stt.className = "inv-st"; stt.textContent = (st.statuses && st.statuses[it.status]) || it.status; if (it.admin_note) stt.textContent += " · " + it.admin_note; info.appendChild(stt);
+      row.appendChild(info);
+      if (it.status === "have") { const w = document.createElement("button"); w.className = "admin-btn primary"; w.textContent = "Вывести"; w.onclick = () => gamingWithdraw(it, w); row.appendChild(w); }
+      inv.appendChild(row);
+    }
+    box.appendChild(inv);
+  } catch (e) { if (e.message !== "banned") box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+}
+let gamingData = null, gamingBusy = false;
+async function gamingOpen(c, btn) {
+  if (gamingBusy) return; gamingBusy = true; btn.disabled = true;
+  try {
+    const r = await api("/api/gaming/open", { method: "POST", body: JSON.stringify({ case_id: c.id }) });
+    await gameRoll(c, { prize: r.won, label: r.won.label });
+    await gamingRender(r.state);
+    alert("🎉 Тебе выпало: " + r.won.label + "\nПредмет лежит в инвентаре. Нажми «Вывести», чтобы получить его.");
+  } catch (e) { alert(e.message); btn.disabled = false; }
+  gamingBusy = false;
+}
+async function gamingWithdraw(it, btn) {
+  if (!confirm("Отправить заявку на вывод «" + it.name + "»? Владелец свяжется с тобой.")) return;
+  btn.disabled = true;
+  try { const r = await api("/api/gaming/withdraw", { method: "POST", body: JSON.stringify({ id: it.id }) }); await gamingRender(r.state); alert("Заявка отправлена. Владелец свяжется с тобой в Diogram."); }
+  catch (e) { alert(e.message); btn.disabled = false; }
+}
+document.getElementById("btn-gaming-back").onclick = () => { show("screen-list"); loadList(); };
 async function openGame() { gameView = "menu"; show("screen-game"); await gameRender(); }
 async function gameRender() {
   const box = gameBody(); box.innerHTML = '<div class="spinner"></div>';
@@ -2597,7 +2665,8 @@ const CLOUD_SVG = '<svg viewBox="0 0 44 34" aria-hidden="true"><path d="M11 29a8
 function gameItemTile(d, withChance) {
   const el = document.createElement("div"); el.className = "gi"; el.style.setProperty("--rc", gameRarity(parseFloat(d.chance) || 100));
   const ic = document.createElement("div"); ic.className = "gi-ic";
-  if (d.kind === "di") { const im = document.createElement("img"); im.src = COIN_URL; im.alt = ""; ic.appendChild(im); }
+  if (d.image) { const im = document.createElement("img"); im.className = "gi-pic"; im.src = d.image; im.alt = ""; ic.appendChild(im); }
+  else if (d.kind === "di") { const im = document.createElement("img"); im.src = COIN_URL; im.alt = ""; ic.appendChild(im); }
   else if (d.kind === "clouds") ic.innerHTML = CLOUD_SVG;
   else ic.textContent = d.kind === "games" ? "🎮" : d.kind === "username" ? "🏷️" : d.kind === "account" ? "🗝️" : "🎁";
   const t = document.createElement("div"); t.className = "gi-t"; t.textContent = d.label || "";
@@ -3101,6 +3170,68 @@ async function openCaptchaSample(id) {
   } catch (e) { alert(e.message); }
 }
 let captchaFilter = "none";
+async function loadAdminGaming() {
+  const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
+  try {
+    const d = await api("/api/admin/gaming"); box.innerHTML = "";
+    const mkBtn = (label, fn, cls) => { const b = document.createElement("button"); b.className = "admin-btn" + (cls ? " " + cls : ""); b.style.marginRight = "6px"; b.textContent = label; b.onclick = fn; return b; };
+    const inp = (ph, type, val, w) => { const i = document.createElement("input"); i.type = type || "text"; i.placeholder = ph; if (val != null) i.value = val; if (w) i.style.width = w; return i; };
+    // заявки на вывод
+    const rq = document.createElement("div"); rq.className = "report-card";
+    rq.innerHTML = '<div class="report-reason">📤 Заявки на вывод (' + d.requests.length + ')</div>';
+    if (!d.requests.length) { const e = document.createElement("div"); e.className = "report-body"; e.textContent = "Заявок нет"; rq.appendChild(e); }
+    for (const r of d.requests) {
+      const row = document.createElement("div"); row.style.cssText = "margin-top:8px;padding-top:8px;border-top:1px solid #242f3d;";
+      const t = document.createElement("div"); t.className = "report-body"; t.textContent = r.player + " · " + r.name + " (" + r.case_title + ") · " + (r.status === "work" ? "в работе" : "новая") + " · " + new Date(r.requested_at || r.created_at).toLocaleString("ru-RU"); row.appendChild(t);
+      const note = inp("Сообщение игроку (необязательно)", "text", "", "100%"); note.maxLength = 300; note.style.marginTop = "4px"; row.appendChild(note);
+      const act = document.createElement("div"); act.style.marginTop = "4px";
+      for (const [st, label, cls] of [["work", "Связался", ""], ["given", "✅ Выдано", "primary"], ["rejected", "Отклонить", "danger"]])
+        act.appendChild(mkBtn(label, async () => { try { await api("/api/admin/gaming/request", { method: "POST", body: JSON.stringify({ id: r.id, status: st, note: note.value }) }); loadAdminGaming(); } catch (e) { alert(e.message); } }, cls));
+      row.appendChild(act); rq.appendChild(row);
+    }
+    box.appendChild(rq);
+    // кейсы
+    for (const c of d.cases) {
+      const card = document.createElement("div"); card.className = "report-card";
+      const head = document.createElement("div"); head.className = "report-reason"; head.textContent = c.title + " · " + c.price + " Di" + (c.active ? "" : " (выключен)") + " · сумма шансов " + c.chance_sum + "%" + (c.ready ? " ✅" : " ⚠ нужно ровно 100%"); card.appendChild(head);
+      const er = document.createElement("div"); er.style.marginTop = "6px";
+      const tt = inp("Название", "text", c.title, "45%"), pp = inp("Цена Di", "number", c.price, "20%"); tt.maxLength = 60; pp.min = 1;
+      er.appendChild(tt); er.appendChild(pp);
+      er.appendChild(mkBtn("Сохранить", async () => { try { await api("/api/admin/gaming/case", { method: "POST", body: JSON.stringify({ id: c.id, title: tt.value, price: parseInt(pp.value, 10), active: c.active }) }); loadAdminGaming(); } catch (e) { alert(e.message); } }));
+      er.appendChild(mkBtn(c.active ? "Выключить" : "Включить", async () => { try { await api("/api/admin/gaming/case", { method: "POST", body: JSON.stringify({ id: c.id, title: c.title, price: c.price, active: !c.active }) }); loadAdminGaming(); } catch (e) { alert(e.message); } }));
+      card.appendChild(er);
+      for (const it of c.items) {
+        const row = document.createElement("div"); row.className = "inv-row";
+        if (it.image_url) { const im = document.createElement("img"); im.src = it.image_url; im.alt = ""; row.appendChild(im); }
+        const info = document.createElement("div"); info.className = "inv-info"; info.textContent = it.name + " · " + parseFloat(it.chance) + "%" + (it.active ? "" : " (выключен)") + (it.info ? " · " + it.info : ""); row.appendChild(info);
+        row.appendChild(mkBtn("✎", () => fillItemForm(c.id, it)));
+        row.appendChild(mkBtn(it.active ? "Выкл" : "Вкл", async () => { try { await api("/api/admin/gaming/item", { method: "POST", body: JSON.stringify({ id: it.id, case_id: c.id, name: it.name, info: it.info, chance: it.chance, active: !it.active }) }); loadAdminGaming(); } catch (e) { alert(e.message); } }));
+        row.appendChild(mkBtn("🗑", async () => { if (!confirm("Удалить предмет «" + it.name + "»? Уже выпавшие у игроков останутся.")) return; try { await api("/api/admin/gaming/item/delete", { method: "POST", body: JSON.stringify({ id: it.id }) }); loadAdminGaming(); } catch (e) { alert(e.message); } }, "danger"));
+        card.appendChild(row);
+      }
+      const form = document.createElement("div"); form.style.cssText = "margin-top:8px;padding-top:8px;border-top:1px solid #242f3d;"; form.id = "gi-form-" + c.id;
+      const fl = document.createElement("div"); fl.className = "report-body"; fl.textContent = "Новый предмет (откуда выпадает: этот кейс)"; form.appendChild(fl);
+      const fn = inp("Название предмета", "text", "", "100%"), fu = inp("Ссылка на фото (https://…, скопируем к нам)", "text", "", "100%"), fi = inp("Доп. информация (видна игроку)", "text", "", "100%"), fc = inp("Шанс, % (например 2.5)", "number", "", "100%");
+      fn.maxLength = 80; fi.maxLength = 1000; fc.step = "any"; fc.min = "0.001"; fc.max = "100";
+      for (const x of [fn, fu, fi, fc]) { x.style.marginTop = "4px"; form.appendChild(x); }
+      const idHolder = { id: null };
+      const msg = document.createElement("div"); msg.className = "report-body";
+      const save = mkBtn("Добавить предмет", async () => {
+        save.disabled = true; msg.textContent = "Сохраняю…";
+        try { await api("/api/admin/gaming/item", { method: "POST", body: JSON.stringify({ id: idHolder.id, case_id: c.id, name: fn.value, image_url: fu.value, info: fi.value, chance: parseFloat(fc.value), active: true }) }); loadAdminGaming(); }
+        catch (e) { msg.textContent = e.message; save.disabled = false; }
+      }, "primary"); save.style.marginTop = "6px";
+      form._fill = (it) => { idHolder.id = it.id; fn.value = it.name; fu.value = ""; fu.placeholder = "Новая ссылка на фото (пусто = оставить текущее)"; fi.value = it.info || ""; fc.value = parseFloat(it.chance); save.textContent = "Сохранить предмет"; fl.textContent = "Правка: " + it.name; };
+      form.appendChild(save); form.appendChild(msg); card.appendChild(form); box.appendChild(card);
+    }
+    const nc = document.createElement("div"); nc.className = "report-card";
+    const nt = inp("Название нового кейса", "text", "", "55%"), np = inp("Цена Di", "number", "", "25%"); nt.maxLength = 60; np.min = 1;
+    nc.innerHTML = '<div class="report-reason">Новый кейс</div>'; nc.appendChild(nt); nc.appendChild(np);
+    nc.appendChild(mkBtn("Создать", async () => { try { await api("/api/admin/gaming/case", { method: "POST", body: JSON.stringify({ title: nt.value, price: parseInt(np.value, 10), active: true }) }); loadAdminGaming(); } catch (e) { alert(e.message); } }, "primary"));
+    box.appendChild(nc);
+  } catch (e) { box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
+}
+function fillItemForm(caseId, it) { const f = document.getElementById("gi-form-" + caseId); if (f && f._fill) { f._fill(it); f.scrollIntoView({ block: "center" }); } }
 async function loadAdminCaptcha() {
   const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
   try {
