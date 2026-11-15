@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Diogram 1.0.3</title>
+<title>Diogram</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0e1621; color: #fff; overflow: hidden; }
@@ -683,7 +683,7 @@
         <div id="sessions-list"></div>
       </div>
       <div class="profile-block">
-        <div class="profile-row"><div class="profile-row-icon">ℹ️</div><div class="profile-row-content"><div class="profile-row-label">Версия</div><div class="profile-row-value">1.0.3</div></div></div>
+        <div class="profile-row"><div class="profile-row-icon">ℹ️</div><div class="profile-row-content"><div class="profile-row-label">Версия</div><div class="profile-row-value" id="app-version">…</div></div></div>
         <div class="profile-row"><div class="profile-row-icon">💬</div><div class="profile-row-content"><div class="profile-row-label">Поддержка</div><div class="profile-row-value"><a href="https://t.me/Dipxex" target="_blank" style="color:#5b8bff;text-decoration:none;">@Dipxex</a></div></div></div>
       </div>
     </div>
@@ -3258,6 +3258,8 @@ async function loadAdminCaptcha() {
   } catch (e) { box.innerHTML = ""; const er = document.createElement("div"); er.className = "empty-state"; er.textContent = e.message; box.appendChild(er); }
 }
 
+// Версия приложения с сервера (раньше была зашита в страницу и всегда показывала 1.0.3)
+fetch(API + "/api/version").then(r => r.json()).then(d => { const el = document.getElementById("app-version"); if (el && d.version) el.textContent = d.version + (d.build ? " (" + d.build + ")" : ""); }).catch(() => { const el = document.getElementById("app-version"); if (el) el.textContent = "—"; });
 // ИНИЦИАЛИЗАЦИЯ
 (async function init() {
   if (token) {
