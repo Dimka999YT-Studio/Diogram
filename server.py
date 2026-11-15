@@ -539,7 +539,10 @@ def block_banned_users():
 # страницу нельзя встроить в чужую (clickjacking), плагины и <base> запрещены.
 def _csp():
     sb = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
-    storage = "https://*.supabase.co" + ((" " + sb) if sb.startswith("https://") and not sb.endswith(".supabase.co") else "")
+    # Только наш проект: подстановка *.supabase.co пускала бы картинки с любого чужого проекта Supabase (канал утечки данных).
+    # Без SUPABASE_URL (локальный запуск) остаётся запасной вариант с подстановкой.
+    host = urllib.parse.urlparse(sb).hostname if sb.startswith("https://") else None
+    storage = ("https://" + host) if host else "https://*.supabase.co"
     return ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
             f"img-src 'self' data: blob: {storage}; media-src 'self' blob: {storage}; connect-src 'self'; font-src 'self'; "
             "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
@@ -1239,7 +1242,8 @@ def api_create_group():
         if mid != user["id"] and mid not in member_ids: member_ids.append(mid)
     staff = user.get("role") in STAFF_ROLES
     if not staff:
-        if len(get_owned_groups(user["id"])) >= MAX_OWNED_GROUPS: return jsonify({"error": f"Можно владеть не больше чем {MAX_OWNED_GROUPS} группами"}), 400
+        # владение без участия (последний участник вышел) не занимает квоту
+        if len([g for g in get_owned_groups(user["id"]) if is_chat_member(g["id"], user["id"])]) >= MAX_OWNED_GROUPS:   return jsonify({"error": f"Можно владеть не больше чем {MAX_OWNED_GROUPS} группами"}), 400
         if not check_rate_limit(f"group_create_{user['id']}", GROUPS_CREATED_PER_HOUR, 3600): return jsonify({"error": "Слишком много новых групп. Подожди час."}), 429
     total_members = len(member_ids) + 1
     max_limit = 110 if check_premium(user) else 10
@@ -1672,6 +1676,8 @@ def api_message_react(message_id):
     if not msg: return jsonify({"error": "Сообщение не найдено"}), 404
     chat = get_chat_cached(msg["chat_id"])
     if not chat or not has_chat_access(chat, user["id"]): return jsonify({"error": "Нет доступа"}), 403
+    blocked = private_chat_blocked(chat, user)   # реакция это тоже запись в чужой личный чат
+    if blocked: return blocked
     set_reaction(message_id, msg["chat_id"], user["id"], emoji)
     with _reaction_ver_lock:
         _reaction_ver[msg["chat_id"]] += 1
