@@ -1,4 +1,4 @@
-"""Кейсы @Gaming: виртуальные предметы за Di. Кейсы и предметы ведёт owner в админке.
+"""Кейсы @Gaming: виртуальные предметы за голду (gold.py; 1 Di = 1 голда). Кейсы и предметы ведёт owner в админке.
 Выпавший предмет попадает в инвентарь, «Вывести» создаёт заявку владельцу (статусы have/new/work/given/rejected).
 Таблицы: supabase/migrations/20261116_gaming_cases.sql. Всё считается на сервере."""
 import io
@@ -12,14 +12,15 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from PIL import Image
 
-from db import supabase, spend_balance, add_balance, get_or_create_chat, save_message
+import gold
+from db import supabase, get_or_create_chat, save_message
 
 BOT_ID = 1000020
 MSK = timezone(timedelta(hours=3))
 DAILY_OPENS = 30
 MAX_IMG_BYTES = 3 * 1024 * 1024
 STATUS_TITLES = {"have": "в инвентаре", "new": "заявка отправлена", "work": "владелец связался", "given": "выдано", "rejected": "отклонено"}
-INVITE_TEXT = ("🎰 Drop4ik\n\nОткрывай кейсы за Di и получай виртуальные предметы для игры. "
+INVITE_TEXT = ("🎰 Drop4ik\n\nОткрывай кейсы за голду (1 Di = 1 голда) и получай виртуальные предметы для игры. "
                "Выпавший предмет можно вывести: нажми «Вывести», и владелец свяжется с тобой.")
 
 
@@ -74,7 +75,7 @@ def opens_today(user_id):
 
 
 def open_case(user_id, case_id, rnd=None):
-    """Купить и открыть кейс. Возвращает (строка инвентаря, ошибка). Сбой после списания возвращает Di."""
+    """Купить и открыть кейс. Возвращает (строка инвентаря, ошибка). Сбой после списания возвращает голду."""
     try:
         res = supabase.table("gcase_cases").select("*").eq("id", case_id).eq("active", True).execute().data
     except Exception as e:
@@ -84,18 +85,18 @@ def open_case(user_id, case_id, rnd=None):
     items = [i for i in (supabase.table("gcase_items").select("*").eq("case_id", case_id).eq("active", True).execute().data or [])]
     if not items or not _chance_ok(items): return None, "Этот кейс ещё настраивается"
     if opens_today(user_id) >= DAILY_OPENS: return None, f"Лимит {DAILY_OPENS} кейсов в день. Приходи завтра."
-    ok, err = spend_balance(user_id, case["price"], f"Кейс «{case['title']}»")
-    if not ok: return None, err
+    parts, err = gold.spend(user_id, case["price"], f"case:{case['id']}")
+    if err: return None, err
     try:
         item = roll(items, rnd)
         row = supabase.table("gcase_inventory").insert({
             "user_id": user_id, "item_id": item["id"], "case_id": case["id"], "case_title": case["title"], "price_paid": case["price"],
             "name": item["name"], "image_url": item.get("image_url"), "info": item.get("info")}).execute().data[0]
     except Exception as e:
-        print(f"[gaming] выдача не удалась ({e!r}), возвращаю Di пользователю {user_id}")
-        if not add_balance(user_id, case["price"], f"Возврат: не удалось выдать предмет кейса «{case['title']}»"):
-            print(f"[gaming] !!! возврат не прошёл: user={user_id} case={case_id} price={case['price']}")
-        return None, "Не удалось выдать предмет. Di возвращены, попробуй ещё раз."
+        print(f"[gaming] выдача не удалась ({e!r}), возвращаю голду пользователю {user_id}")
+        gold.refund(user_id, parts, f"case:{case['id']}")
+        return None, "Не удалось выдать предмет. Голда возвращена, попробуй ещё раз."
+    gold.commission(user_id, parts[1])   # 5% пригласившему только с купленной голды
     return row, None
 
 
@@ -133,7 +134,7 @@ def admin_overview():
 def save_case(cid, title, price, active):
     title = _clean(title, 60)
     if not title: return None, "Нужно название"
-    if not isinstance(price, int) or isinstance(price, bool) or not 1 <= price <= 100000: return None, "Цена от 1 до 100000 Di"
+    if not isinstance(price, int) or isinstance(price, bool) or not 1 <= price <= 100000: return None, "Цена от 1 до 100000 голды"
     data = {"title": title, "price": price, "active": bool(active)}
     if cid: res = supabase.table("gcase_cases").update(data).eq("id", cid).execute().data
     else: res = supabase.table("gcase_cases").insert(dict(data, sort_no=int(time.time()) % 1000000)).execute().data

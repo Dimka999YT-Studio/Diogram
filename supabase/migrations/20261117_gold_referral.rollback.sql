@@ -1,0 +1,14 @@
+drop function if exists public.ref_settle(bigint, bigint[], int, int, int, numeric, int);
+drop function if exists public.ref_activate(bigint, text, int);
+drop function if exists public.ref_progress(bigint, bigint, bigint[]);
+drop function if exists public.gold_withdraw_close(bigint, text, text);
+drop function if exists public.gold_withdraw_request(bigint, int, text, int, int);
+drop function if exists public.gold_commission(bigint, int, numeric);
+drop function if exists public.gold_refund(bigint, int, int, text);
+drop function if exists public.gold_spend(bigint, int, text);
+drop function if exists public.gold_add(bigint, int, numeric, text, text);
+drop table if exists public.ref_uses;
+drop table if exists public.ref_codes;
+drop table if exists public.gold_withdrawals;
+drop table if exists public.gold_log;
+drop table if exists public.gold_wallets;
