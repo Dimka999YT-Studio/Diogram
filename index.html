@@ -848,6 +848,7 @@
   <div class="menu-item" id="menu-promo"><span class="icon">🎟</span> Промокод</div>
   <div class="menu-item" id="menu-frig"><span class="icon">🏷️</span> Frigdmant</div>
   <div class="menu-item" id="menu-new-channel"><span class="icon">📢</span> Новый канал</div>
+  <div class="menu-item" id="menu-refcodes" style="display:none;"><span class="icon">🎁</span> Реф-коды</div>
   <div class="menu-item" id="menu-admin" style="display:none;"><span class="icon">👑</span> Админка <span id="menu-admin-badge" style="display:none;background:#ff5b5b;color:#fff;font-size:10px;padding:2px 6px;border-radius:8px;margin-left:auto;">0</span></div>
   <div class="menu-item" id="menu-logout"><span class="icon">🚪</span> Выйти</div>
 </div>
@@ -1138,6 +1139,8 @@ function afterLogin() {
   if (currentUser.role === "owner" || currentUser.role === "developer") {
     document.getElementById("menu-admin").style.display = "flex"; startAdminPoll();
   }
+  if (["owner", "developer", "moderator"].includes(currentUser.role)) document.getElementById("menu-refcodes").style.display = "flex";
+  refPrompt();
 }
 
 document.getElementById("btn-save-profile").onclick = async () => {
@@ -2624,24 +2627,64 @@ function goldWithdraw(st) {
   b.appendChild(go);
   api("/api/gold/withdrawals").then(d => { if (!d.items.length) return; b.appendChild(goldEl("div", "Твои заявки", "margin-top:14px;font-weight:600;")); for (const w of d.items) b.appendChild(goldEl("div", w.amount + " голды · " + (d.statuses[w.status] || w.status) + (w.admin_note ? " · " + w.admin_note : ""), "font-size:13px;color:#9fb0c0;margin-top:4px;")); }).catch(() => {});
 }
+function refEnterForm(b, onDone) {
+  b.appendChild(goldEl("div", "Есть код приглашения?", "margin-top:14px;font-weight:600;"));
+  const inp = goldInput("Код приглашения", "text", 20); inp.autocapitalize = "off"; inp.spellcheck = false; b.appendChild(inp);
+  const m = goldMsg(); b.appendChild(m);
+  const go = goldEl("button", "Применить"); go.className = "btn"; go.style.marginTop = "8px";
+  go.onclick = async () => { go.disabled = true; try { await api("/api/ref/activate", { method: "POST", body: JSON.stringify({ code: inp.value }) }); onDone(); } catch (e) { m.setErr(e.message); go.disabled = false; } };
+  b.appendChild(go); return inp;
+}
 function goldRef() {
   const b = goldModal("🎁 Приглашения"); b.appendChild(goldEl("div", "Загрузка…", "color:#9fb0c0;"));
   api("/api/ref/me").then(d => {
     b.innerHTML = ""; const r = d.rules;
-    b.appendChild(goldEl("div", "Отправь друзьям свой код. Когда друг введёт его в первые " + r.window_days + " дней после регистрации и выполнит условия, вы оба получите по " + r.reward + " голды (бонус для кейсов). Дальше ты получаешь " + r.commission_pct + "% с купленной им голды, которую он потратит.", "font-size:13px;color:#9fb0c0;"));
-    b.appendChild(goldEl("div", "Условия для друга: не меньше " + r.min_msgs + " отправленных сообщений, общение в " + r.min_chats + " чатах с собеседниками (разговоры с ботами и с тобой не считаются) и " + r.min_days + " дня активности. В сутки засчитывается до " + r.daily_limit + " приглашений.", "font-size:12px;color:#7e8b99;margin-top:6px;"));
-    b.appendChild(goldEl("div", "Твой код", "margin-top:12px;font-size:12px;color:#7e8b99;"));
-    const code = goldEl("div", d.code, "font-size:26px;font-weight:700;letter-spacing:2px;cursor:pointer;"); code.title = "Нажми, чтобы скопировать"; code.onclick = () => { copyText(d.code); code.style.color = "#5ecb7a"; setTimeout(() => code.style.color = "", 800); }; b.appendChild(code);
-    b.appendChild(goldEl("div", "Заработано на приглашениях: " + d.earned + " голды", "font-size:13px;margin-top:4px;"));
-    b.appendChild(goldEl("div", "Приглашённые (" + d.invitees.length + ")", "margin-top:14px;font-weight:600;"));
-    if (!d.invitees.length) b.appendChild(goldEl("div", "Пока никого", "font-size:13px;color:#7e8b99;"));
-    for (const i of d.invitees) { const p = i.progress; b.appendChild(goldEl("div", i.name + " · " + (i.status === "paid" ? "✅ засчитан" : p ? "сообщений " + p.msgs + "/" + p.need_msgs + ", чатов " + p.chats + "/" + p.need_chats + ", дней " + p.days + "/" + p.need_days : "ждёт условий"), "font-size:13px;margin-top:4px;")); }
+    b.appendChild(goldEl("div", "Реферальный код можно ввести один раз, в первые " + r.window_days + " дней после регистрации. Когда друг введёт код и выполнит условия, вы оба получите по " + r.reward + " голды (бонус для кейсов). Дальше владелец кода получает с купленной другом голды, которую тот потратит: " + r.partner_pct + "% (партнёр) или " + r.creator_pct + "% (креатор). Коды выдают разработчики, модераторы и владелец: партнёрам (помогают проекту деньгами или приглашают людей) и креаторам (создателям контента).", "font-size:13px;color:#9fb0c0;"));
+    b.appendChild(goldEl("div", "Условия для друга: не меньше " + r.min_msgs + " отправленных сообщений, общение в " + r.min_chats + " чатах с собеседниками (разговоры с ботами и с владельцем кода не считаются) и " + r.min_days + " дня активности. В сутки засчитывается до " + r.daily_limit + " приглашений.", "font-size:12px;color:#7e8b99;margin-top:6px;"));
+    if (d.codes.length) {
+      b.appendChild(goldEl("div", "Твои коды", "margin-top:12px;font-size:12px;color:#7e8b99;"));
+      for (const c of d.codes) { const row = goldEl("div", c.code, "font-size:24px;font-weight:700;letter-spacing:2px;cursor:pointer;"); row.title = "Нажми, чтобы скопировать"; row.onclick = () => { copyText(c.code); row.style.color = "#5ecb7a"; setTimeout(() => row.style.color = "", 800); }; b.appendChild(row); b.appendChild(goldEl("div", c.tier_name + " · " + c.pct + "% · приглашений " + c.uses + (c.max_uses ? "/" + c.max_uses : ""), "font-size:12px;color:#7e8b99;")); }
+      b.appendChild(goldEl("div", "Заработано на приглашениях: " + d.earned + " голды", "font-size:13px;margin-top:6px;"));
+    } else b.appendChild(goldEl("div", "Своего кода у тебя нет. Партнёрский или креаторский код можно попросить у разработчика, модератора или владельца.", "font-size:13px;margin-top:12px;"));
+    if (d.invitees.length) {
+      b.appendChild(goldEl("div", "Приглашённые (" + d.invitees.length + ")", "margin-top:14px;font-weight:600;"));
+      for (const i of d.invitees) { const p = i.progress; b.appendChild(goldEl("div", i.name + " · " + (i.status === "paid" ? "✅ засчитан" : p ? "сообщений " + p.msgs + "/" + p.need_msgs + ", чатов " + p.chats + "/" + p.need_chats + ", дней " + p.days + "/" + p.need_days : "ждёт условий"), "font-size:13px;margin-top:4px;")); }
+    }
     if (d.my_use) { b.appendChild(goldEl("div", "Ты вводил чужой код", "margin-top:14px;font-weight:600;")); const p = d.my_use.progress; b.appendChild(goldEl("div", d.my_use.status === "paid" ? "✅ Бонус получен" : p ? "Сообщений " + p.msgs + "/" + p.need_msgs + ", чатов " + p.chats + "/" + p.need_chats + ", дней " + p.days + "/" + p.need_days : "Ждёт условий", "font-size:13px;margin-top:4px;")); }
-    else {
-      b.appendChild(goldEl("div", "Есть код друга?", "margin-top:14px;font-weight:600;")); const inp = goldInput("Код приглашения", "text", 20); inp.autocapitalize = "off"; inp.spellcheck = false; b.appendChild(inp); const m = goldMsg(); b.appendChild(m);
-      const go = goldEl("button", "Применить"); go.className = "btn"; go.style.marginTop = "8px";
-      go.onclick = async () => { go.disabled = true; try { await api("/api/ref/activate", { method: "POST", body: JSON.stringify({ code: inp.value }) }); goldRef(); } catch (e) { m.setErr(e.message); go.disabled = false; } };
-      b.appendChild(go);
+    else if (d.can_enter) refEnterForm(b, goldRef);
+  }).catch(e => { b.innerHTML = ""; b.appendChild(goldEl("div", "Ошибка: " + e.message, "color:#ff6b6b;")); });
+}
+// После регистрации один раз предлагаем ввести реферальный код (повторно можно из «@Gaming → Приглашения», пока не прошло 7 дней).
+async function refPrompt() {
+  const key = "diogram_refask_" + currentUser.id;
+  try { if (localStorage.getItem(key)) return; } catch (e) {}
+  try {
+    const d = await api("/api/ref/me"); if (!d.can_enter) return;
+    try { localStorage.setItem(key, "1"); } catch (e) {}
+    const b = goldModal("🎁 Есть код приглашения?");
+    b.appendChild(goldEl("div", "Если тебя пригласили, введи код: вы оба получите по " + d.rules.reward + " голды (бонус для кейсов @Gaming) после того, как ты немного пообщаешься в мессенджере. Ввести код можно один раз.", "font-size:13px;color:#9fb0c0;"));
+    refEnterForm(b, () => { b.innerHTML = ""; b.appendChild(goldEl("div", "✅ Код принят. Бонус придёт, когда выполнишь условия (подробности в @Gaming → Приглашения).", "font-size:14px;")); });
+    const skip = goldEl("button", "Пропустить"); skip.className = "btn"; skip.style.cssText = "margin-top:8px;margin-left:8px;background:#242f3d;"; skip.onclick = () => closeModal("modal-gold"); b.appendChild(skip);
+  } catch (e) {}
+}
+function refCodes() {
+  const b = goldModal("🎁 Реф-коды"); b.appendChild(goldEl("div", "Загрузка…", "color:#9fb0c0;"));
+  api("/api/staff/ref/codes").then(d => {
+    b.innerHTML = "";
+    b.appendChild(goldEl("div", "Код создаётся для конкретного человека (по ID): он получает процент с голды приглашённых. Партнёр: " + d.tiers.partner.pct + "%, креатор: " + d.tiers.creator.pct + "%. Бонус каждому приглашённому и его условия те же.", "font-size:13px;color:#9fb0c0;"));
+    b.appendChild(goldEl("div", "Новый код", "margin-top:12px;font-weight:600;"));
+    const nc = goldInput("Код (3–20: буквы, цифры, _)", "text", 20), no = goldInput("ID владельца кода", "number"), nm = goldInput("Лимит приглашений (пусто = без лимита)", "number");
+    const tier = document.createElement("select"); tier.style.cssText = "margin-top:8px;width:100%;";
+    for (const k in d.tiers) { const o = document.createElement("option"); o.value = k; o.textContent = d.tiers[k].name + " (" + d.tiers[k].pct + "%)"; tier.appendChild(o); }
+    const msg = goldMsg(); const add = goldEl("button", "Создать код"); add.className = "btn"; add.style.marginTop = "8px";
+    add.onclick = async () => { add.disabled = true; try { await api("/api/staff/ref/code", { method: "POST", body: JSON.stringify({ code: nc.value.trim(), owner_id: parseInt(no.value, 10), max_uses: nm.value ? parseInt(nm.value, 10) : null, tier: tier.value }) }); refCodes(); } catch (e) { msg.setErr(e.message); add.disabled = false; } };
+    for (const e of [nc, no, tier, nm, add, msg]) b.appendChild(e);
+    b.appendChild(goldEl("div", "Коды (" + d.codes.length + ")", "margin-top:14px;font-weight:600;"));
+    if (!d.codes.length) b.appendChild(goldEl("div", "Пока нет", "font-size:13px;color:#7e8b99;"));
+    for (const c of d.codes) {
+      const row = goldEl("div", "", "margin-top:6px;font-size:13px;"); row.appendChild(document.createTextNode(c.code + " → " + c.owner_name + " · " + c.tier_name + " · приглашений " + c.uses + (c.max_uses ? "/" + c.max_uses : "") + (c.active ? " " : " (выключен) ")));
+      const t = goldEl("button", c.active ? "Выключить" : "Включить"); t.className = "admin-btn"; t.onclick = async () => { try { await api("/api/staff/ref/code/toggle", { method: "POST", body: JSON.stringify({ id: c.id, active: !c.active }) }); refCodes(); } catch (e) { alert(e.message); } };
+      row.appendChild(t); b.appendChild(row);
     }
   }).catch(e => { b.innerHTML = ""; b.appendChild(goldEl("div", "Ошибка: " + e.message, "color:#ff6b6b;")); });
 }
@@ -3080,6 +3123,7 @@ document.getElementById("menu-profile").onclick = () => { closeMenu(); openProfi
 document.getElementById("menu-shop").onclick = () => { closeMenu(); openShop(); };
 document.getElementById("menu-logout").onclick = () => { if (!confirm("Выйти?")) return; doLogout(); };
 document.getElementById("menu-admin").onclick = () => { closeMenu(); openAdmin(); };
+document.getElementById("menu-refcodes").onclick = () => { closeMenu(); refCodes(); };
 document.getElementById("menu-new-channel").onclick = () => { closeMenu(); createChannelDialog(); };
 
 // ПРОМОКОДЫ
@@ -3087,6 +3131,7 @@ document.getElementById("menu-promo").onclick = () => { closeMenu(); document.ge
 function promoRewardText(r) {
   const out = [];
   if (r.di) out.push("💎 " + r.di + " Di");
+  if (r.gold) out.push("🪙 " + r.gold + " голды");
   if (r.pdg_days) out.push("⭐ PDG на " + r.pdg_days + " дн.");
   if (r.clouds) out.push("☁️ " + r.clouds + " облачк.");
   for (const k in (r.cases || {})) out.push("🎁 кейс «" + k + "» × " + r.cases[k]);
@@ -3118,7 +3163,7 @@ async function loadAdminPromo() {
       '<div id="pc-limit-box"><input type="number" id="pc-max" min="1" placeholder="Активаций (пусто = бесконечно)"></div>' +
       '<div id="pc-date-box" style="display:none;"><input type="datetime-local" id="pc-date"></div>' +
       '<div class="report-body" style="margin-top:6px;">Награды (заполни нужные):</div>' +
-      '<input type="number" id="pc-di" min="0" placeholder="Di"><input type="number" id="pc-pdg" min="0" placeholder="Дни PDG"><input type="number" id="pc-clouds" min="0" placeholder="Облачка для игры">' +
+      '<input type="number" id="pc-di" min="0" placeholder="Di"><input type="number" id="pc-gold" min="0" placeholder="Голда (бонусная, для кейсов)"><input type="number" id="pc-pdg" min="0" placeholder="Дни PDG"><input type="number" id="pc-clouds" min="0" placeholder="Облачка для игры">' +
       caseRows +
       '<label style="display:block;margin-top:4px;"><input type="checkbox" id="pc-uname"> Юзернейм</label>' +
       '<textarea id="pc-names" placeholder="Юзернеймы: по одному на строку (выдаются по порядку, один на активацию)" style="display:none;"></textarea>' +
@@ -3132,7 +3177,7 @@ async function loadAdminPromo() {
       const cases = {}; document.querySelectorAll(".pc-case").forEach(i => { const v = parseInt(i.value, 10); if (v > 0) cases[i.dataset.case] = v; });
       const num = id => parseInt(document.getElementById(id).value, 10) || 0;
       const body = { code: document.getElementById("pc-code").value.trim(), kind, note: document.getElementById("pc-note").value,
-        rewards: { di: num("pc-di"), pdg_days: num("pc-pdg"), clouds: num("pc-clouds"), cases, username: document.getElementById("pc-uname").checked },
+        rewards: { di: num("pc-di"), gold: num("pc-gold"), pdg_days: num("pc-pdg"), clouds: num("pc-clouds"), cases, username: document.getElementById("pc-uname").checked },
         usernames: document.getElementById("pc-names").value };
       if (kind === "timed") { const v = document.getElementById("pc-date").value; body.expires_at = v ? new Date(v).toISOString() : ""; }
       else { body.max_activations = num("pc-max") || null; }
@@ -3144,7 +3189,7 @@ async function loadAdminPromo() {
     for (const c of d.codes) {
       const el = document.createElement("div"); el.className = "report-card";
       const rw = c.rewards || {}, parts = [];
-      if (rw.di) parts.push(rw.di + " Di"); if (rw.pdg_days) parts.push("PDG " + rw.pdg_days + " дн."); if (rw.clouds) parts.push("☁️ " + rw.clouds);
+      if (rw.di) parts.push(rw.di + " Di"); if (rw.gold) parts.push("🪙 " + rw.gold); if (rw.pdg_days) parts.push("PDG " + rw.pdg_days + " дн."); if (rw.clouds) parts.push("☁️ " + rw.clouds);
       for (const k in (rw.cases || {})) parts.push((d.cases[k] || k) + " × " + rw.cases[k]);
       if (rw.username) parts.push("юзернейм (выдано " + c.usernames_given + "/" + c.usernames_total + ", перепродаж " + c.resales + ")");
       const expired = c.kind === "timed" && new Date(c.expires_at) <= new Date();
@@ -3245,12 +3290,7 @@ async function loadAdminGold() {
       row.appendChild(act); rq.appendChild(row);
     }
     box.appendChild(rq);
-    const cc = document.createElement("div"); cc.className = "report-card"; cc.innerHTML = '<div class="report-reason">🎁 Свои реферальные коды (для блогеров)</div>';
-    for (const c of d.codes) { const row = document.createElement("div"); row.style.cssText = "margin-top:6px;font-size:13px;"; row.appendChild(document.createTextNode(c.code + " → " + c.owner_name + " · приглашений " + c.uses + (c.max_uses ? "/" + c.max_uses : "") + (c.active ? "" : " (выключен) "))); row.appendChild(mk(c.active ? "Выключить" : "Включить", async () => { try { await api("/api/admin/gold/code/toggle", { method: "POST", body: JSON.stringify({ id: c.id, active: !c.active }) }); loadAdminGold(); } catch (e) { alert(e.message); } })); cc.appendChild(row); }
-    const nc = inp("Код (3–20: буквы, цифры, _)", "text", "40%"), no = inp("ID владельца кода", "number", "28%"), nm = inp("Лимит (пусто = без)", "number", "28%"); nc.maxLength = 20;
-    const msg = goldEl("div", "", "font-size:13px;min-height:16px;margin-top:4px;");
-    const add = mk("Создать код", async () => { try { await api("/api/admin/gold/code", { method: "POST", body: JSON.stringify({ code: nc.value, owner_id: parseInt(no.value, 10), max_uses: nm.value ? parseInt(nm.value, 10) : null }) }); loadAdminGold(); } catch (e) { msg.textContent = e.message; msg.style.color = "#ff6b6b"; } }, "primary"); add.style.marginTop = "6px";
-    cc.appendChild(nc); cc.appendChild(no); cc.appendChild(nm); cc.appendChild(document.createElement("br")); cc.appendChild(add); cc.appendChild(msg); box.appendChild(cc);
+    const hint = document.createElement("div"); hint.className = "report-card"; hint.appendChild(goldEl("div", "Реферальные коды выдаются через меню «🎁 Реф-коды» (доступно owner, developer и moderator).", "font-size:13px;color:#9fb0c0;")); box.appendChild(hint);
   } catch (e) { box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
 }
 async function loadAdminGaming() {
