@@ -1,16 +1,17 @@
 """Промокоды: создание (owner/developer), активация, награды.
 Типы: timed (до даты, без лимита активаций) и limited (лимит активаций 1..∞, без даты).
-Награды (rewards): di, pdg_days, clouds, cases {ключ: шт}, username (bool, имена в promo_usernames).
+Награды (rewards): di, gold (бонусная голда @Gaming), pdg_days, clouds, cases {ключ: шт}, username (bool, имена в promo_usernames).
 Одна активация на человека. Атомарность — SQL-функции promo_claim / promo_release."""
 import re
 from datetime import datetime, timezone
 
 import game
+import gold
 from db import supabase, add_balance, activate_premium
 
 CODE_RE = re.compile(r"[A-Za-z0-9_\-]{3,32}")
 USERNAME_RE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_]{0,31}")
-MAX_DI, MAX_PDG, MAX_CLOUDS, MAX_CASES = 1_000_000, 3650, 1000, 100
+MAX_DI, MAX_PDG, MAX_CLOUDS, MAX_CASES, MAX_GOLD = 1_000_000, 3650, 1000, 100, 100_000
 
 CLAIM_ERRORS = {
     "not_found": "Такого промокода нет",
@@ -36,6 +37,10 @@ def clean_rewards(raw):
         v = _int(raw["di"], 1, MAX_DI)
         if v is None: return None, f"Di: от 1 до {MAX_DI}"
         out["di"] = v
+    if raw.get("gold") not in (None, 0, ""):
+        v = _int(raw["gold"], 1, MAX_GOLD)
+        if v is None: return None, f"Голда: от 1 до {MAX_GOLD}"
+        out["gold"] = v
     if raw.get("pdg_days") not in (None, 0, ""):
         v = _int(raw["pdg_days"], 1, MAX_PDG)
         if v is None: return None, f"Дни PDG: от 1 до {MAX_PDG}"
@@ -153,6 +158,9 @@ def claim(user_id, code):
         if rw.get("di"):
             if not add_balance(user_id, int(rw["di"]), f"Промокод {code.strip()}"): raise RuntimeError("di")
             got["di"] = int(rw["di"])
+        if rw.get("gold"):
+            gold.grant_promo(user_id, int(rw["gold"]), code.strip())
+            got["gold"] = int(rw["gold"])
         if rw.get("pdg_days"):
             ok, err = activate_premium(user_id, int(rw["pdg_days"]), 0, f"Промокод {code.strip()}")
             if not ok: raise RuntimeError(f"pdg {err}")

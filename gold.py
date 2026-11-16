@@ -14,7 +14,10 @@ WITHDRAW_MIN = 100           # минимум голды для вывода
 WITHDRAW_UNLOCK_SPENT = 50   # реферальный бонус выводится после траты стольких голд на кейсы
 MAX_OPEN_WITHDRAWALS = 3     # активных заявок на вывод у одного человека
 REF_REWARD = 10              # каждому: приглашённому и пригласившему
-REF_COMMISSION = 0.05        # пригласившему с купленной голды приглашённого
+# Процент пригласившему с купленной голды приглашённого: партнёр 5%, креатор на 5 п.п. больше.
+# Партнёр: помогает проекту деньгами или приглашает людей. Креатор: создатель контента.
+REF_RATES = {"partner": 0.05, "creator": 0.10}
+TIER_NAMES = {"partner": "Партнёр", "creator": "Креатор"}
 REF_WINDOW_DAYS = 7          # код можно ввести в первые 7 дней после регистрации
 REF_MIN_MSGS, REF_MIN_CHATS, REF_MIN_DAYS = 15, 2, 3
 REF_DAILY_LIMIT = 10         # засчитанных приглашений в сутки на одного пригласившего
@@ -89,10 +92,26 @@ def refund(uid, parts, ref=None):
     except Exception as e: print(f"[gold] !!! возврат голды не прошёл: user={uid} parts={parts} {e!r}"); return False
 
 
+def grant_promo(uid, amount, code):
+    """Голда по промокоду: бонусная (тратится на кейсы, выводится после траты 50 голды, как реферальная)."""
+    _rpc("gold_add", {"p_user": uid, "p_gold": 0, "p_bonus": int(amount), "p_kind": "promo", "p_ref": code})
+
+
+def invite_rate(uid):
+    """Процент для приглашённого uid по типу его кода (партнёр/креатор). 0, если приглашения нет."""
+    use = supabase.table("ref_uses").select("code_id").eq("invitee_id", uid).eq("status", "paid").limit(1).execute().data
+    if not use: return 0.0
+    code = supabase.table("ref_codes").select("tier").eq("id", use[0]["code_id"]).limit(1).execute().data
+    return REF_RATES.get((code[0] if code else {}).get("tier"), REF_RATES["partner"])
+
+
 def commission(uid, gold_part):
-    """5% пригласившему с купленной голды (если приглашение засчитано). Сбой не должен ломать открытие кейса."""
+    """Процент пригласившему с купленной голды (партнёр 5%, креатор 10%), если приглашение засчитано.
+    Сбой не должен ломать открытие кейса."""
     if gold_part <= 0: return
-    try: _rpc("gold_commission", {"p_user": uid, "p_gold": gold_part, "p_rate": REF_COMMISSION})
+    try:
+        rate = invite_rate(uid)
+        if rate > 0: _rpc("gold_commission", {"p_user": uid, "p_gold": gold_part, "p_rate": rate})
     except Exception as e: print(f"[gold commission] {e!r}")
 
 
@@ -138,18 +157,11 @@ def close_withdrawal(wid, status, note):
 
 
 # ---------- рефералка ----------
-def personal_code(uid):
-    rows = supabase.table("ref_codes").select("code").eq("owner_id", uid).eq("kind", "personal").limit(1).execute().data
-    if rows: return rows[0]["code"]
-    for _ in range(8):
-        code = "".join(secrets.choice(_ALPHA) for _ in range(6))
-        try:
-            supabase.table("ref_codes").insert({"code": code, "owner_id": uid, "kind": "personal"}).execute(); return code
-        except Exception as e:
-            again = supabase.table("ref_codes").select("code").eq("owner_id", uid).eq("kind", "personal").limit(1).execute().data
-            if again: return again[0]["code"]
-            print(f"[ref code] {e!r}")
-    raise RuntimeError("не удалось создать реферальный код")
+def my_codes(uid):
+    """Коды, владельцем которых назначен пользователь (их выдаёт персонал; сами не создаются)."""
+    rows = supabase.table("ref_codes").select("code,tier,uses,max_uses,active").eq("owner_id", uid).eq("active", True).order("id").limit(20).execute().data or []
+    return [{"code": r["code"], "tier": r.get("tier") or "partner", "tier_name": TIER_NAMES.get(r.get("tier") or "partner"),
+             "pct": int(REF_RATES.get(r.get("tier") or "partner", 0.05) * 100), "uses": r["uses"], "max_uses": r["max_uses"]} for r in rows]
 
 
 _ACT_ERR = {"not_found": "Такого кода нет", "inactive": "Этот код отключён", "exhausted": "У этого кода закончились приглашения",
@@ -178,8 +190,20 @@ def settle(uid):
     except Exception as e: print(f"[ref settle] {e!r}"); return "error"
     if r.get("status") == "paid":
         _tell(uid, f"🎁 Бонус за приглашение: +{REF_REWARD} голды. Её можно потратить на кейсы.")
-        _tell(r["owner_id"], f"🎁 Твой приглашённый выполнил условия: +{REF_REWARD} голды. Дальше ты получаешь {int(REF_COMMISSION * 100)}% с голды, которую он купит и потратит.")
+        _tell(r["owner_id"], f"🎁 Твой приглашённый выполнил условия: +{REF_REWARD} голды. Дальше ты получаешь {int(invite_rate(uid) * 100)}% с голды, которую он купит и потратит.")
     return r.get("status", "none")
+
+
+def can_enter(uid, has_use=None):
+    """Можно ли ещё ввести реферальный код: не вводил раньше и с регистрации не больше REF_WINDOW_DAYS дней."""
+    if has_use is None: has_use = bool(supabase.table("ref_uses").select("owner_id").eq("invitee_id", uid).limit(1).execute().data)
+    if has_use: return False
+    u = (supabase.table("users").select("created_at").eq("id", uid).limit(1).execute().data or [None])[0]
+    if not u or not u.get("created_at"): return False
+    try: created = datetime.fromisoformat(str(u["created_at"]).replace("Z", "+00:00"))
+    except ValueError: return False
+    if created.tzinfo is None: created = created.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - created).days < REF_WINDOW_DAYS
 
 
 def ref_state(uid):
@@ -201,28 +225,35 @@ def ref_state(uid):
         out.append({"name": ("@" + u["username"]) if u.get("username") else (u.get("first_name") or "без имени"), "status": i["status"],
                     "progress": progress(i["invitee_id"], uid) if i["status"] == "pending" else None})
     earned = supabase.table("gold_log").select("bonus,kind").eq("user_id", uid).in_("kind", ["ref_invite", "ref_commission"]).execute().data or []
-    return {"code": personal_code(uid), "my_use": my_use, "invitees": out, "earned": round(sum(float(e["bonus"]) for e in earned), 2),
-            "rules": {"reward": REF_REWARD, "commission_pct": int(REF_COMMISSION * 100), "min_msgs": REF_MIN_MSGS, "min_chats": REF_MIN_CHATS, "min_days": REF_MIN_DAYS,
+    return {"codes": my_codes(uid), "can_enter": can_enter(uid, bool(mine)), "my_use": my_use, "invitees": out, "earned": round(sum(float(e["bonus"]) for e in earned), 2),
+            "rules": {"reward": REF_REWARD, "partner_pct": int(REF_RATES["partner"] * 100), "creator_pct": int(REF_RATES["creator"] * 100), "min_msgs": REF_MIN_MSGS, "min_chats": REF_MIN_CHATS, "min_days": REF_MIN_DAYS,
                       "window_days": REF_WINDOW_DAYS, "daily_limit": REF_DAILY_LIMIT}}
 
 
 # ---------- админка ----------
-def admin_codes():
-    return supabase.table("ref_codes").select("*").eq("kind", "custom").order("id", desc=True).limit(200).execute().data or []
+def staff_codes(viewer):
+    """Коды для списка: owner видит все, developer и moderator только выданные ими."""
+    q = supabase.table("ref_codes").select("*").eq("kind", "custom")
+    if viewer.get("role") != "owner": q = q.eq("created_by", viewer["id"])
+    return q.order("id", desc=True).limit(200).execute().data or []
 
 
-def create_custom_code(code, owner_id, max_uses):
+def create_custom_code(code, owner_id, max_uses, tier, creator_id):
     if not isinstance(code, str) or not (3 <= len(code.strip()) <= 20) or not all(c.isalnum() or c == "_" for c in code.strip()): return None, "Код: 3–20 символов, буквы, цифры, _"
+    if tier not in REF_RATES: return None, "Тип кода: партнёр или креатор"
     if not isinstance(owner_id, int) or not supabase.table("users").select("id").eq("id", owner_id).execute().data: return None, "Не нашёл пользователя с таким ID"
     if max_uses is not None and (not isinstance(max_uses, int) or isinstance(max_uses, bool) or max_uses < 1): return None, "Лимит приглашений от 1 или пусто"
     if supabase.table("ref_codes").select("id").ilike("code", code.strip()).execute().data: return None, "Такой код уже есть"
-    try: row = supabase.table("ref_codes").insert({"code": code.strip(), "owner_id": owner_id, "kind": "custom", "max_uses": max_uses}).execute().data[0]
+    try: row = supabase.table("ref_codes").insert({"code": code.strip(), "owner_id": owner_id, "kind": "custom", "max_uses": max_uses,
+                                                  "tier": tier, "created_by": creator_id}).execute().data[0]
     except Exception as e: print(f"[ref custom] {e!r}"); return None, "Не удалось создать код"
     return row, None
 
 
-def toggle_code(cid, active):
-    supabase.table("ref_codes").update({"active": bool(active)}).eq("id", cid).execute()
+def toggle_code(cid, active, viewer):
+    q = supabase.table("ref_codes").update({"active": bool(active)}).eq("id", cid)
+    if viewer.get("role") != "owner": q = q.eq("created_by", viewer["id"])   # не владелец трогает только свои коды
+    return bool(q.execute().data)
 
 
 def stats():

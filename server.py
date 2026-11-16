@@ -1565,12 +1565,11 @@ def api_ref_activate():
 @app.route("/api/admin/gold")
 def api_admin_gold():
     if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
-    wd = gold.admin_withdrawals(); codes = gold.admin_codes()
-    users = get_users_by_ids(list({r["user_id"] for r in wd} | {c["owner_id"] for c in codes}))
+    wd = gold.admin_withdrawals()
+    users = get_users_by_ids(list({r["user_id"] for r in wd}))
     nm = lambda uid: (lambda u: (f"@{u['username']}" if u.get("username") else (u.get("first_name") or "без имени")) + f" (ID {uid})")(users.get(uid) or {})
     for r in wd: r["player"] = nm(r["user_id"])
-    for c in codes: c["owner_name"] = nm(c["owner_id"])
-    return jsonify({"withdrawals": wd, "codes": codes, "stats": gold.stats()})
+    return jsonify({"withdrawals": wd, "stats": gold.stats()})
 
 @app.route("/api/admin/gold/withdrawal", methods=["POST"])
 def api_admin_gold_withdrawal():
@@ -1580,20 +1579,40 @@ def api_admin_gold_withdrawal():
     if not ok: return jsonify({"error": err}), 400
     return jsonify({"ok": True})
 
-@app.route("/api/admin/gold/code", methods=["POST"])
-def api_admin_gold_code():
-    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+def require_staff():
+    user = get_current_user()
+    if not user or user.get("role") not in STAFF_ROLES: return None
+    return user
+
+@app.route("/api/staff/ref/codes")
+def api_staff_ref_codes():
+    """Реферальные коды выдают owner, developer и moderator (сами коды не создаются). Owner видит все, остальные свои."""
+    staff = require_staff()
+    if not staff: return jsonify({"error": "Нет доступа"}), 403
+    codes = gold.staff_codes(staff)
+    users = get_users_by_ids(list({c["owner_id"] for c in codes}))
+    nm = lambda uid: (lambda u: (f"@{u['username']}" if u.get("username") else (u.get("first_name") or "без имени")) + f" (ID {uid})")(users.get(uid) or {})
+    for c in codes: c["owner_name"] = nm(c["owner_id"]); c["tier_name"] = gold.TIER_NAMES.get(c.get("tier") or "partner")
+    return jsonify({"codes": codes, "tiers": {k: {"name": gold.TIER_NAMES[k], "pct": int(v * 100)} for k, v in gold.REF_RATES.items()}})
+
+@app.route("/api/staff/ref/code", methods=["POST"])
+def api_staff_ref_code():
+    staff = require_staff()
+    if not staff: return jsonify({"error": "Нет доступа"}), 403
+    if not check_rate_limit(f"refcode_{staff['id']}", 20, 60): return jsonify({"error": "Слишком часто. Подожди минуту."}), 429
     d = json_body()
-    row, err = gold.create_custom_code(str_field(d, "code"), to_int(d.get("owner_id")), to_int(d.get("max_uses")))
+    row, err = gold.create_custom_code(str_field(d, "code"), to_int(d.get("owner_id")), to_int(d.get("max_uses")), str_field(d, "tier"), staff["id"])
     if err: return jsonify({"error": err}), 400
     return jsonify({"ok": True, "code": row})
 
-@app.route("/api/admin/gold/code/toggle", methods=["POST"])
-def api_admin_gold_code_toggle():
-    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+@app.route("/api/staff/ref/code/toggle", methods=["POST"])
+def api_staff_ref_code_toggle():
+    staff = require_staff()
+    if not staff: return jsonify({"error": "Нет доступа"}), 403
     d = json_body(); cid = to_int(d.get("id"))
     if not cid: return jsonify({"error": "Нет кода"}), 400
-    gold.toggle_code(cid, bool(d.get("active"))); return jsonify({"ok": True})
+    if not gold.toggle_code(cid, bool(d.get("active")), staff): return jsonify({"error": "Код не найден или он выдан не тобой"}), 404
+    return jsonify({"ok": True})
 
 @app.route("/api/admin/gaming")
 def api_admin_gaming():
