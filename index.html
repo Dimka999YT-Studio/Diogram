@@ -2583,8 +2583,9 @@ async function gamingRender(st) {
     for (const c of st.cases) {
       const card = document.createElement("div"); card.className = "game-card";
       const t = document.createElement("h3"); t.textContent = c.title + " · " + (parseInt(c.price, 10) || 0) + " голды"; card.appendChild(t);
+      if (c.locked) { const pl = document.createElement("div"); pl.className = "game-note"; pl.style.cssText = "margin:0 0 8px;padding:8px 10px;border-radius:10px;background:#2a3445;color:#ffd479;"; pl.textContent = "❄️ Этот кейс будет добавлен " + (c.opens_label || "позже"); card.appendChild(pl); }
       const mini = document.createElement("div"); mini.className = "gi-mini"; for (const d of c.drops) mini.appendChild(gameItemTile(d, true)); card.appendChild(mini);
-      const b = document.createElement("button"); b.className = "btn"; b.textContent = c.ready ? "Открыть за " + (parseInt(c.price, 10) || 0) + " голды" : "Кейс настраивается"; b.disabled = !c.ready;
+      const b = document.createElement("button"); b.className = "btn"; b.textContent = c.locked ? "Скоро: " + (c.opens_label || "") : c.ready ? "Открыть за " + (parseInt(c.price, 10) || 0) + " голды" : "Кейс настраивается"; b.disabled = !c.ready || !!c.locked;
       b.onclick = () => gamingOpen(c, b); card.appendChild(b); box.appendChild(card);
     }
     const h2 = document.createElement("div"); h2.className = "game-h"; h2.textContent = "🎒 Мой инвентарь"; box.appendChild(h2);
@@ -3317,11 +3318,13 @@ async function loadAdminGaming() {
     // кейсы
     for (const c of d.cases) {
       const card = document.createElement("div"); card.className = "report-card";
-      const head = document.createElement("div"); head.className = "report-reason"; head.textContent = c.title + " · " + c.price + " голды" + (c.active ? "" : " (выключен)") + " · сумма шансов " + c.chance_sum + "%" + (c.ready ? " ✅" : " ⚠ нужно ровно 100%"); card.appendChild(head);
+      const head = document.createElement("div"); head.className = "report-reason"; head.textContent = c.title + " · " + c.price + " голды" + (c.active ? "" : " (выключен)") + (c.opens_at ? " · с " + new Date(c.opens_at).toLocaleDateString("ru-RU", { timeZone: "Europe/Moscow" }) : "") + " · сумма шансов " + c.chance_sum + "%" + (c.ready ? " ✅" : " ⚠ нужно ровно 100%"); card.appendChild(head);
       const er = document.createElement("div"); er.style.marginTop = "6px";
       const tt = inp("Название", "text", c.title, "45%"), pp = inp("Цена, голда", "number", c.price, "20%"); tt.maxLength = 60; pp.min = 1;
-      er.appendChild(tt); er.appendChild(pp);
-      er.appendChild(mkBtn("Сохранить", async () => { try { await api("/api/admin/gaming/case", { method: "POST", body: JSON.stringify({ id: c.id, title: tt.value, price: parseInt(pp.value, 10), active: c.active }) }); loadAdminGaming(); } catch (e) { alert(e.message); } }));
+      const od = document.createElement("input"); od.type = "date"; od.title = "Доступен с этой даты (00:00 по Москве). Пусто = сразу"; od.style.cssText = "width:30%;margin-left:4px;";
+      try { od.value = c.opens_at ? new Date(c.opens_at).toLocaleDateString("sv-SE", { timeZone: "Europe/Moscow" }) : ""; } catch (e) {}
+      er.appendChild(tt); er.appendChild(pp); er.appendChild(od);
+      er.appendChild(mkBtn("Сохранить", async () => { try { await api("/api/admin/gaming/case", { method: "POST", body: JSON.stringify({ id: c.id, title: tt.value, price: parseInt(pp.value, 10), active: c.active, opens_at: od.value }) }); loadAdminGaming(); } catch (e) { alert(e.message); } }));
       er.appendChild(mkBtn(c.active ? "Выключить" : "Включить", async () => { try { await api("/api/admin/gaming/case", { method: "POST", body: JSON.stringify({ id: c.id, title: c.title, price: c.price, active: !c.active }) }); loadAdminGaming(); } catch (e) { alert(e.message); } }));
       card.appendChild(er);
       for (const it of c.items) {
@@ -3350,8 +3353,9 @@ async function loadAdminGaming() {
     }
     const nc = document.createElement("div"); nc.className = "report-card";
     const nt = inp("Название нового кейса", "text", "", "55%"), np = inp("Цена, голда", "number", "", "25%"); nt.maxLength = 60; np.min = 1;
-    nc.innerHTML = '<div class="report-reason">Новый кейс</div>'; nc.appendChild(nt); nc.appendChild(np);
-    nc.appendChild(mkBtn("Создать", async () => { try { await api("/api/admin/gaming/case", { method: "POST", body: JSON.stringify({ title: nt.value, price: parseInt(np.value, 10), active: true }) }); loadAdminGaming(); } catch (e) { alert(e.message); } }, "primary"));
+    const nd = document.createElement("input"); nd.type = "date"; nd.title = "Доступен с этой даты (пусто = сразу)"; nd.style.cssText = "width:30%;margin-left:4px;";
+    nc.innerHTML = '<div class="report-reason">Новый кейс</div>'; nc.appendChild(nt); nc.appendChild(np); nc.appendChild(nd);
+    nc.appendChild(mkBtn("Создать", async () => { try { await api("/api/admin/gaming/case", { method: "POST", body: JSON.stringify({ title: nt.value, price: parseInt(np.value, 10), active: true, opens_at: nd.value }) }); loadAdminGaming(); } catch (e) { alert(e.message); } }, "primary"));
     box.appendChild(nc);
   } catch (e) { box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
 }
