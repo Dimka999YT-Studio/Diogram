@@ -2771,6 +2771,7 @@ function gameItemTile(d, withChance) {
   const t = document.createElement("div"); t.className = "gi-t"; t.textContent = d.label || "";
   el.appendChild(ic); el.appendChild(t);
   if (withChance) { const c = document.createElement("div"); c.className = "gi-chance"; c.textContent = (parseFloat(d.chance) || 0) + "%"; el.appendChild(c); }
+  if (withChance && Number.isInteger(d.stock)) { const st = document.createElement("div"); st.className = "gi-chance"; st.style.cssText = "top:auto;bottom:2px;"; st.textContent = "осталось " + d.stock; el.appendChild(st); }
   return el;
 }
 function gameMiniHtml(c) { const w = document.createElement("div"); w.className = "gi-mini"; for (const d of c.drops) w.appendChild(gameItemTile(d, true)); return w.outerHTML; }
@@ -3326,25 +3327,25 @@ async function loadAdminGaming() {
       for (const it of c.items) {
         const row = document.createElement("div"); row.className = "inv-row";
         if (it.image_url) { const im = document.createElement("img"); im.src = it.image_url; im.alt = ""; row.appendChild(im); }
-        const info = document.createElement("div"); info.className = "inv-info"; info.textContent = it.name + " · " + parseFloat(it.chance) + "%" + (it.active ? "" : " (выключен)") + (it.info ? " · " + it.info : ""); row.appendChild(info);
+        const info = document.createElement("div"); info.className = "inv-info"; info.textContent = it.name + " · " + parseFloat(it.chance) + "%" + (it.active ? "" : " (выключен)") + (it.stock === null || it.stock === undefined ? "" : it.stock > 0 ? " · осталось " + it.stock : " · разыгран") + (it.info ? " · " + it.info : ""); row.appendChild(info);
         row.appendChild(mkBtn("✎", () => fillItemForm(c.id, it)));
-        row.appendChild(mkBtn(it.active ? "Выкл" : "Вкл", async () => { try { await api("/api/admin/gaming/item", { method: "POST", body: JSON.stringify({ id: it.id, case_id: c.id, name: it.name, info: it.info, chance: it.chance, active: !it.active }) }); loadAdminGaming(); } catch (e) { alert(e.message); } }));
+        row.appendChild(mkBtn(it.active ? "Выкл" : "Вкл", async () => { try { await api("/api/admin/gaming/item", { method: "POST", body: JSON.stringify({ id: it.id, case_id: c.id, name: it.name, info: it.info, chance: it.chance, stock: it.stock === undefined ? null : it.stock, active: !it.active }) }); loadAdminGaming(); } catch (e) { alert(e.message); } }));
         row.appendChild(mkBtn("🗑", async () => { if (!confirm("Удалить предмет «" + it.name + "»? Уже выпавшие у игроков останутся.")) return; try { await api("/api/admin/gaming/item/delete", { method: "POST", body: JSON.stringify({ id: it.id }) }); loadAdminGaming(); } catch (e) { alert(e.message); } }, "danger"));
         card.appendChild(row);
       }
       const form = document.createElement("div"); form.style.cssText = "margin-top:8px;padding-top:8px;border-top:1px solid #242f3d;"; form.id = "gi-form-" + c.id;
       const fl = document.createElement("div"); fl.className = "report-body"; fl.textContent = "Новый предмет (откуда выпадает: этот кейс)"; form.appendChild(fl);
-      const fn = inp("Название предмета", "text", "", "100%"), fu = inp("Ссылка на фото (https://…, скопируем к нам)", "text", "", "100%"), fi = inp("Доп. информация (видна игроку)", "text", "", "100%"), fc = inp("Шанс, % (например 2.5)", "number", "", "100%");
-      fn.maxLength = 80; fi.maxLength = 1000; fc.step = "any"; fc.min = "0.001"; fc.max = "100";
-      for (const x of [fn, fu, fi, fc]) { x.style.marginTop = "4px"; form.appendChild(x); }
+      const fn = inp("Название предмета", "text", "", "100%"), fu = inp("Ссылка на фото (https://…, скопируем к нам)", "text", "", "100%"), fi = inp("Доп. информация (видна игроку)", "text", "", "100%"), fc = inp("Шанс, % (например 2.5)", "number", "", "100%"), fs = inp("Сколько штук в кейсе (пусто = без ограничения, выпал: убавляется)", "number", "", "100%");
+      fn.maxLength = 80; fi.maxLength = 1000; fc.step = "any"; fc.min = "0.001"; fc.max = "100"; fs.min = "0"; fs.step = "1";
+      for (const x of [fn, fu, fi, fc, fs]) { x.style.marginTop = "4px"; form.appendChild(x); }
       const idHolder = { id: null };
       const msg = document.createElement("div"); msg.className = "report-body";
       const save = mkBtn("Добавить предмет", async () => {
         save.disabled = true; msg.textContent = "Сохраняю…";
-        try { await api("/api/admin/gaming/item", { method: "POST", body: JSON.stringify({ id: idHolder.id, case_id: c.id, name: fn.value, image_url: fu.value, info: fi.value, chance: parseFloat(fc.value), active: true }) }); loadAdminGaming(); }
+        try { await api("/api/admin/gaming/item", { method: "POST", body: JSON.stringify({ id: idHolder.id, case_id: c.id, name: fn.value, image_url: fu.value, info: fi.value, chance: parseFloat(fc.value), stock: fs.value === "" ? null : parseInt(fs.value, 10), active: true }) }); loadAdminGaming(); }
         catch (e) { msg.textContent = e.message; save.disabled = false; }
       }, "primary"); save.style.marginTop = "6px";
-      form._fill = (it) => { idHolder.id = it.id; fn.value = it.name; fu.value = ""; fu.placeholder = "Новая ссылка на фото (пусто = оставить текущее)"; fi.value = it.info || ""; fc.value = parseFloat(it.chance); save.textContent = "Сохранить предмет"; fl.textContent = "Правка: " + it.name; };
+      form._fill = (it) => { idHolder.id = it.id; fn.value = it.name; fu.value = ""; fu.placeholder = "Новая ссылка на фото (пусто = оставить текущее)"; fi.value = it.info || ""; fc.value = parseFloat(it.chance); fs.value = it.stock === null || it.stock === undefined ? "" : it.stock; save.textContent = "Сохранить предмет"; fl.textContent = "Правка: " + it.name; };
       form.appendChild(save); form.appendChild(msg); card.appendChild(form); box.appendChild(card);
     }
     const nc = document.createElement("div"); nc.className = "report-card";
