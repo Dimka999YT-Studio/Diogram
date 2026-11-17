@@ -1638,7 +1638,7 @@ def api_admin_gaming_item():
     d = json_body()
     case_id = to_int(d.get("case_id"))
     if not case_id: return jsonify({"error": "Выбери кейс"}), 400
-    row, err = gaming.save_item(to_int(d.get("id")), case_id, d.get("name"), d.get("image_url"), d.get("info"), d.get("chance"), d.get("active", True))
+    row, err = gaming.save_item(to_int(d.get("id")), case_id, d.get("name"), d.get("image_url"), d.get("info"), d.get("chance"), d.get("active", True), d.get("stock"))
     if err: return jsonify({"error": err}), 400
     return jsonify({"ok": True, "item": row})
 
