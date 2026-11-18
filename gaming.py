@@ -32,6 +32,31 @@ def _chance_ok(items):
     return abs(sum(float(i["chance"]) for i in items) - 100) < 0.0005
 
 
+KEEP = object()   # «не менять» для необязательных полей save_case
+_MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+
+
+def _opens_dt(c):
+    """Когда кейс станет доступен (datetime с поясом) или None."""
+    v = c.get("opens_at")
+    if not v: return None
+    try: d = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+    except ValueError: return None
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def is_locked(c):
+    d = _opens_dt(c)
+    return bool(d and d > datetime.now(timezone.utc))
+
+
+def opens_label(c):
+    d = _opens_dt(c)
+    if not d: return None
+    d = d.astimezone(MSK)
+    return f"{d.day} {_MONTHS[d.month - 1]} {d.year} года"
+
+
 def _avail(i):
     """Предмет ещё можно выиграть: включён и не закончился (stock пусто = без ограничения)."""
     return bool(i.get("active")) and (i.get("stock") is None or i["stock"] > 0)
@@ -58,7 +83,7 @@ def public_cases():
     for c in _cases(True):
         # у закончившихся предметов шанс перераспределяется между оставшимися пропорционально
         total = sum(float(i["chance"]) for i in c["items"]) or 100.0
-        out.append({"id": c["id"], "title": c["title"], "price": c["price"], "ready": c["ready"],
+        out.append({"id": c["id"], "title": c["title"], "price": c["price"], "ready": c["ready"], "locked": is_locked(c), "opens_label": opens_label(c),
                     "drops": [{"id": i["id"], "kind": "item", "label": i["name"], "image": i.get("image_url"), "chance": round(float(i["chance"]) * 100 / total, 3),
                                "info": i.get("info"), "stock": i.get("stock")} for i in c["items"]]})
     return out
@@ -115,6 +140,7 @@ def open_case(user_id, case_id, rnd=None):
         print(f"[gaming] {e!r}"); return None, "Не удалось открыть кейс. Попробуй ещё раз."
     if not res: return None, "Такого кейса нет"
     case = res[0]
+    if is_locked(case): return None, f"Этот кейс будет добавлен {opens_label(case)}"
     all_items = [i for i in (supabase.table("gcase_items").select("*").eq("case_id", case_id).eq("active", True).execute().data or [])]
     if not all_items or not _chance_ok(all_items): return None, "Этот кейс ещё настраивается"
     if not any(_avail(i) for i in all_items): return None, "В этом кейсе все предметы разыграны"
@@ -175,11 +201,18 @@ def admin_overview():
     return {"cases": _cases(False), "requests": reqs}
 
 
-def save_case(cid, title, price, active):
+def save_case(cid, title, price, active, opens_at=KEEP):
     title = _clean(title, 60)
     if not title: return None, "Нужно название"
     if not isinstance(price, int) or isinstance(price, bool) or not 1 <= price <= 100000: return None, "Цена от 1 до 100000 голды"
     data = {"title": title, "price": price, "active": bool(active)}
+    if opens_at is not KEEP:   # дата открытия: "ГГГГ-ММ-ДД" (00:00 по Москве) или пусто = сразу
+        if opens_at in (None, ""): data["opens_at"] = None
+        else:
+            try: day = datetime.strptime(str(opens_at).strip()[:10], "%Y-%m-%d")
+            except ValueError: return None, "Дата в формате ГГГГ-ММ-ДД"
+            if not 2020 <= day.year <= 2100: return None, "Дата в формате ГГГГ-ММ-ДД"
+            data["opens_at"] = day.replace(tzinfo=MSK).astimezone(timezone.utc).isoformat()
     if cid: res = supabase.table("gcase_cases").update(data).eq("id", cid).execute().data
     else: res = supabase.table("gcase_cases").insert(dict(data, sort_no=int(time.time()) % 1000000)).execute().data
     return (res[0] if res else None), (None if res else "Кейс не найден")

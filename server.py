@@ -1628,7 +1628,7 @@ def api_admin_gaming():
 def api_admin_gaming_case():
     if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
     d = json_body()
-    row, err = gaming.save_case(to_int(d.get("id")), d.get("title"), to_int(d.get("price")), d.get("active", True))
+    row, err = gaming.save_case(to_int(d.get("id")), d.get("title"), to_int(d.get("price")), d.get("active", True), d["opens_at"] if "opens_at" in d else gaming.KEEP)
     if err: return jsonify({"error": err}), 400
     return jsonify({"ok": True, "case": row})
 
