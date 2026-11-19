@@ -96,10 +96,39 @@ def username_exists(username: str) -> bool:
     return len(res.data) > 0
 
 
+class UserExists(Exception):
+    """Почта или ник уже заняты (вторая параллельная регистрация)."""
+    def __init__(self, kind): super().__init__(kind); self.kind = kind
+
+
 def create_user(email: str, password: str, username: str = None, first_name: str = None, last_name: str = None) -> dict:
+    """Создаёт аккаунт. Через SQL-функцию create_user_atomic: проверка и вставка одним вызовом, без потери номера ID при гонке.
+    Если миграция ещё не применена, работает старый путь (обычный insert)."""
+    pw_hash = hash_password(password)
+    try:
+        res = supabase.rpc("create_user_atomic", {
+            "p_email": email.lower(), "p_password_hash": pw_hash, "p_username": username or None,
+            "p_first_name": first_name, "p_last_name": last_name,
+        }).execute()
+        row = res.data
+        if isinstance(row, list): row = row[0] if row else None
+        if isinstance(row, dict):
+            if row.get("error") in ("email_taken", "username_taken"): raise UserExists(row["error"])
+            if row.get("id"): return row
+        print(f"[create_user] неожиданный ответ create_user_atomic: {row!r}")
+        return None
+    except UserExists: raise
+    except Exception as e:
+        # Запасной путь только если функции нет (миграция не применена). Сбой связи не повторяем вставкой:
+        # запрос мог пройти, и повторный insert упал бы на уникальной почте, сжигая номер ID.
+        msg = str(e)
+        if not ("PGRST202" in msg or "42883" in msg or "Could not find the function" in msg or "does not exist" in msg):
+            print(f"[create_user] create_user_atomic сбой ({e!r})")
+            raise
+        print(f"[create_user] функции create_user_atomic нет ({e!r}), обычная вставка")
     data = {
         "email": email.lower(),
-        "password_hash": hash_password(password),
+        "password_hash": pw_hash,
         "username": username if username else None,
         "first_name": first_name,
         "last_name": last_name,
@@ -112,7 +141,11 @@ def create_user(email: str, password: str, username: str = None, first_name: str
         "file_plus": False,
         "last_seen": datetime.now(timezone.utc).isoformat(),
     }
-    res = supabase.table("users").insert(data).execute()
+    try:
+        res = supabase.table("users").insert(data).execute()
+    except Exception as e:
+        print(f"[create_user] insert не удался ({e!r}): номер ID мог сгореть")
+        raise
     return res.data[0] if res.data else None
 
 
