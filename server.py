@@ -67,11 +67,13 @@ import captcha
 import game_world
 import gaming
 import gold
+import tg_game
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "").strip()
 JWT_ALGO = "HS256"
 JWT_EXP_DAYS = 30
 WORKER_KEY = os.environ.get("WORKER_KEY", "").strip()
+TG_GAME_KEY = os.environ.get("TG_GAME_KEY", "").strip()   # ключ сервера Telegram-игры (награды за задания); пусто = маршруты закрыты
 
 # ==================== AI (GROQ) ====================
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
@@ -1507,6 +1509,74 @@ def _gaming_state(user):
     fresh = get_user_by_id(user["id"]) or user
     return {"cases": gaming.public_cases(), "inventory": gaming.inventory(user["id"]), "balance": fresh.get("balance", 0), "wallet": gold.wallet(user["id"]),
             "left_today": max(0, gaming.DAILY_OPENS - gaming.opens_today(user["id"])), "statuses": gaming.STATUS_TITLES}
+
+# ---------- Telegram-игра: привязка и награды за задания (tg_game.py) ----------
+def game_key_ok():
+    """Заголовок X-Game-Key. Если TG_GAME_KEY не задан, доступ закрыт для всех."""
+    if not TG_GAME_KEY: return False
+    return hmac.compare_digest((request.headers.get("X-Game-Key") or "").encode("utf-8"), TG_GAME_KEY.encode("utf-8"))
+
+@app.route("/api/tg/game/link", methods=["POST"])
+def api_tg_game_link():
+    """Сервер игры: игрок прислал код привязки. {code, tg_id}; tg_id игра берёт из проверенной подписи Telegram."""
+    if not game_key_ok(): return jsonify({"error": "Нет доступа"}), 403
+    d = json_body()
+    if not check_rate_limit("tglink_" + str(d.get("tg_id")), 10, 60): return jsonify({"error": "Слишком часто"}), 429
+    ok, msg = tg_game.link(d.get("code"), to_int(d.get("tg_id")))
+    return (jsonify({"ok": True}) if ok else (jsonify({"error": msg}), 400))
+
+@app.route("/api/tg/game/claim", methods=["POST"])
+def api_tg_game_claim():
+    """Сервер игры: игрок выполнил задание. {tg_id, task_id}. Выдача идемпотентна: повтор вернёт already."""
+    if not game_key_ok(): return jsonify({"error": "Нет доступа"}), 403
+    d = json_body()
+    if not check_rate_limit("tgclaim_" + str(d.get("tg_id")), 60, 60): return jsonify({"error": "Слишком часто"}), 429
+    st, data = tg_game.claim(to_int(d.get("tg_id")), str_field(d, "task_id"))
+    code = 200 if st == "ok" else 400 if st == "bad" else 409 if st in ("already", "cap") else 403 if st in ("not_linked", "too_new") else 404
+    return jsonify(dict(data, status=st)), code
+
+@app.route("/api/tg/state")
+def api_tg_state():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    return jsonify(tg_game.state(user["id"]))
+
+@app.route("/api/tg/link_code", methods=["POST"])
+def api_tg_link_code():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    if not check_rate_limit(f"tgcode_{user['id']}", 5, 600): return jsonify({"error": "Слишком часто. Подожди несколько минут."}), 429
+    code, err = tg_game.make_code(user["id"])
+    if err: return jsonify({"error": err}), 400
+    return jsonify({"code": code, "ttl": tg_game.CODE_TTL})
+
+@app.route("/api/admin/tg")
+def api_admin_tg():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    d = tg_game.admin_overview()
+    users = get_users_by_ids(list({r["user_id"] for r in d["links"]} | {r["user_id"] for r in d["claims"]}))
+    nm = lambda uid: (lambda u: (f"@{u['username']}" if u.get("username") else (u.get("first_name") or "без имени")) + f" (ID {uid})")(users.get(uid) or {})
+    for r in d["links"] + d["claims"]: r["user_name"] = nm(r["user_id"])
+    return jsonify(d)
+
+@app.route("/api/admin/tg/task", methods=["POST"])
+def api_admin_tg_task():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    d = json_body()
+    row, err = tg_game.save_task(str_field(d, "id"), d.get("title"), to_int(d.get("gold")), str_field(d, "kind"), d.get("active", True))
+    if err: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "task": row})
+
+@app.route("/api/admin/tg/task/delete", methods=["POST"])
+def api_admin_tg_task_delete():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    return jsonify({"ok": tg_game.delete_task(str_field(json_body(), "id"))})
+
+@app.route("/api/admin/tg/unlink", methods=["POST"])
+def api_admin_tg_unlink():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    uid = to_int(json_body().get("user_id"))
+    return jsonify({"ok": bool(uid) and tg_game.unlink(uid)})
 
 @app.route("/api/gaming/state")
 def api_gaming_state():
