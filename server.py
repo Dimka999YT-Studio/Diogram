@@ -22,7 +22,7 @@ import httpx
 
 from db import (
     get_archived, set_archived, MAX_ARCHIVED_PER_USER, set_reaction, get_reactions, set_channel_reaction,
-    email_exists, create_user, get_user_by_email,
+    email_exists, create_user, UserExists, get_user_by_email,
     get_user_by_id, get_user_by_username, search_users, get_collection_holder_user,
     update_user_profile, update_user_name, update_user_username,
     update_user_avatar, update_user_bio,
@@ -708,7 +708,8 @@ def api_verify():
     if not check_rate_limit(f"verify_{email}", 20, 3600): return jsonify({"error": "Слишком много попыток"}), 429
     if not verify_code(email, code): return jsonify({"error": "Неверный или истёкший код"}), 400
     if email_exists(email): return jsonify({"error": "Этот email уже зарегистрирован"}), 400
-    user = create_user(email=email, password=password)
+    try: user = create_user(email=email, password=password)
+    except UserExists: return jsonify({"error": "Этот email уже зарегистрирован"}), 400
     if not user: return jsonify({"error": "Ошибка создания аккаунта"}), 500
     subs_count = subscribe_new_user_to_secret_channels(user["id"])
     token = start_session(user["id"])
