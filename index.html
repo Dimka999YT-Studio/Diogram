@@ -173,7 +173,8 @@
   .audio-player { width: 100%; margin-top: 6px; }
 
   .input-area { display: flex; gap: 8px; padding: 10px 12px; background: #17212b; border-top: 1px solid #0e1621; flex-shrink: 0; padding-bottom: calc(10px + env(safe-area-inset-bottom)); align-items: center; }
-  .input-area input { flex: 1; background: #242f3d; border: none; outline: none; color: #fff; font-size: 15px; padding: 11px 16px; border-radius: 22px; font-family: inherit; }
+  .input-area input, .input-area textarea { flex: 1; background: #242f3d; border: none; outline: none; color: #fff; font-size: 15px; padding: 11px 16px; border-radius: 22px; font-family: inherit; }
+  .input-area textarea { resize: none; display: block; line-height: 1.35; max-height: 120px; overflow-y: auto; box-sizing: border-box; min-width: 0; }
   .input-btn { width: 40px; height: 40px; border-radius: 50%; background: transparent; border: none; color: #7e8b99; cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .input-btn:active { background: #242f3d; }
   .send-btn { width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #5b8bff, #4a7aff); border: none; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -481,7 +482,7 @@
     </div>
     <div class="input-area">
       <button class="input-btn" id="btn-attach-photo">📎</button>
-      <input id="msg-input" placeholder="Сообщение..." autocomplete="off">
+      <textarea id="msg-input" rows="1" placeholder="Сообщение..." autocomplete="off"></textarea>
       <button class="send-btn" id="send-btn">➤</button>
     </div>
     <input type="file" id="photo-file-input" accept="image/*" style="display:none;">
@@ -501,7 +502,7 @@
     <div class="input-area" id="channel-input-area" style="display:none;">
       <button class="input-btn" id="btn-channel-attach">📎</button>
       <button class="input-btn" id="btn-channel-poll" title="Опрос">📊</button>
-      <input id="channel-input" placeholder="Сообщение в канал..." autocomplete="off">
+      <textarea id="channel-input" rows="1" placeholder="Сообщение в канал..." autocomplete="off"></textarea>
       <button class="send-btn" id="channel-send-btn">➤</button>
     </div>
   </div>
@@ -514,7 +515,7 @@
     </div>
     <div class="messages" id="comments-messages"></div>
     <div class="input-area">
-      <input id="comments-input" placeholder="Комментарий..." autocomplete="off" maxlength="2000">
+      <textarea id="comments-input" rows="1" placeholder="Комментарий..." autocomplete="off" maxlength="2000"></textarea>
       <button class="send-btn" id="comments-send-btn">➤</button>
     </div>
   </div>
@@ -1057,9 +1058,10 @@ function bind(id, handler, event) {
 
 function linkify(text) {
   const escaped = escapeHtml(text || "");
-  return escaped.replace(/@([a-zA-Z][a-zA-Z0-9_]{0,31})/g, function(match, username) {
+  const html = escaped.replace(/@([a-zA-Z][a-zA-Z0-9_]{0,31})/g, function(match, username) {
     return '<span class="mention" data-username="' + username + '">' + match + '</span>';
   });
+  return '<span class="pre-line">' + html + '</span>';   // переносы строк в тексте сообщения сохраняются
 }
 
 async function openUserByUsername(username) {
@@ -1478,7 +1480,19 @@ function appendMessage(m) {
 function openPhotoViewer(url) { document.getElementById("photo-viewer-img").src = url; document.getElementById("photo-viewer").classList.add("active"); }
 function closePhotoViewer() { document.getElementById("photo-viewer").classList.remove("active"); }
 
-document.getElementById("msg-input").addEventListener("keypress", e => { if (e.key === "Enter") handleSend(); });
+// Поле ввода многострочное: Shift+Enter (на телефоне просто Enter) переносит строку, Enter на компьютере отправляет.
+function growInput(el) { el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 120) + "px"; }
+function resetInput(el) { el.value = ""; el.style.height = ""; }
+function bindComposer(id, send) {
+  const el = document.getElementById(id);
+  el.addEventListener("input", () => growInput(el));
+  el.addEventListener("keydown", e => {
+    if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+    if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) return;   // сенсорный экран: Enter это новая строка, отправка кнопкой ➤
+    e.preventDefault(); send();
+  });
+}
+bindComposer("msg-input", () => handleSend());
 document.getElementById("send-btn").onclick = handleSend;
 
 function handleSend() { if (pendingPhoto || pendingFile) return sendFile(); return sendMessage(); }
@@ -1489,7 +1503,7 @@ let sendingFile = false;
 function newClientId() { return (crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2))).slice(0, 40); }
 async function sendMessage() {
   const input = document.getElementById("msg-input"); const text = input.value.trim();
-  if (!text || !currentChat) return; input.value = "";
+  if (!text || !currentChat) return; resetInput(input);
   const chatId = currentChat.id; const clientId = newClientId();
   // Сразу показываем сообщение (серое), не дожидаясь сервера
   const pending = appendMessage({ sender_id: currentUser.id, text, created_at: new Date().toISOString(), type: "text" });
@@ -1500,7 +1514,7 @@ async function sendMessage() {
     if (currentChat && currentChat.id === chatId && data.message) appendMessage(data.message);
   } catch (e) {
     if (pending) pending.remove();
-    if (e.message !== "banned") { if (!input.value) input.value = text; alert("Ошибка: " + e.message); }
+    if (e.message !== "banned") { if (!input.value) { input.value = text; growInput(input); } alert("Ошибка: " + e.message); }
   }
 }
 
@@ -1515,7 +1529,7 @@ async function sendFile() {
   fd.append("chat_id", currentChat.id);
   if (isPhoto) fd.append("caption", caption);
   document.getElementById("photo-preview").classList.remove("active");
-  input.value = ""; const endpoint = isPhoto ? "/api/upload/photo" : "/api/upload/file"; pendingPhoto = null; pendingFile = null;
+  resetInput(input); const endpoint = isPhoto ? "/api/upload/photo" : "/api/upload/file"; pendingPhoto = null; pendingFile = null;
   try {
     const data = await api(endpoint, { method: "POST", body: fd });
     if (data.message) appendMessage(data.message);
@@ -1704,19 +1718,19 @@ async function openComments(channelId, msgId) {
   commentsInterval = setInterval(() => { loadComments(false).catch(() => {}); }, 3000);
 }
 async function sendComment() {
-  const input = document.getElementById("comments-input"); const text = input.value.trim(); if (!text || !currentComments) return; input.value = "";
-  try { await api("/api/channels/" + currentComments.channelId + "/messages/" + currentComments.msgId + "/comments", { method: "POST", body: JSON.stringify({ text }) }); await loadComments(true); } catch (e) { if (e.message !== "banned") { input.value = text; alert("Ошибка: " + e.message); } }
+  const input = document.getElementById("comments-input"); const text = input.value.trim(); if (!text || !currentComments) return; resetInput(input);
+  try { await api("/api/channels/" + currentComments.channelId + "/messages/" + currentComments.msgId + "/comments", { method: "POST", body: JSON.stringify({ text }) }); await loadComments(true); } catch (e) { if (e.message !== "banned") { input.value = text; growInput(input); alert("Ошибка: " + e.message); } }
 }
 document.getElementById("comments-send-btn").onclick = sendComment;
-document.getElementById("comments-input").addEventListener("keypress", e => { if (e.key === "Enter") sendComment(); });
+bindComposer("comments-input", () => sendComment());
 document.getElementById("btn-back-comments").onclick = () => { if (commentsInterval) clearInterval(commentsInterval); commentsInterval = null; currentComments = null; show("screen-channel"); };
 
 document.getElementById("channel-send-btn").onclick = sendChannelMessage;
-document.getElementById("channel-input").addEventListener("keypress", e => { if (e.key === "Enter") sendChannelMessage(); });
+bindComposer("channel-input", () => sendChannelMessage());
 
 async function sendChannelMessage() {
   const input = document.getElementById("channel-input"); const text = input.value.trim();
-  if (!text || !currentChannel) return; input.value = "";
+  if (!text || !currentChannel) return; resetInput(input);
   try { await api("/api/channels/" + currentChannel.id + "/send", { method: "POST", body: JSON.stringify({ text }) }); } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
 }
 
@@ -1968,6 +1982,7 @@ async function openSettings() {
     document.getElementById("who-can-msg-val").textContent = whoMap[currentUser.who_can_message] || "Все";
     
     const sess = await api("/api/sessions");
+    if (sess.token) { token = sess.token; localStorage.setItem("diogram_token", token); }   // старый токен без сессии заменён новым: «это устройство» теперь видно и не вылетает
     const box = document.getElementById("sessions-list"); box.innerHTML = "";
     if (!sess.sessions.length) box.innerHTML = '<div style="padding:16px;color:#7e8b99;font-size:13px;">Нет активных сессий</div>';
     for (const s of sess.sessions) {
@@ -1978,7 +1993,7 @@ async function openSettings() {
     if (sess.sessions.filter(s => !s.current).length > 0) {
       const all = document.createElement("div"); all.className = "settings-row";
       all.innerHTML = '<button class="admin-btn danger" id="btn-revoke-others">Завершить все остальные сессии</button>'; box.appendChild(all);
-      document.getElementById("btn-revoke-others").onclick = async () => { if (!confirm("Выйти на всех остальных устройствах?")) return; try { await api("/api/sessions/revoke_others", { method: "POST" }); openSettings(); } catch (e) { alert(e.message); } };
+      document.getElementById("btn-revoke-others").onclick = async () => { if (!confirm("Выйти на всех остальных устройствах?")) return; try { const r = await api("/api/sessions/revoke_others", { method: "POST" }); if (r.token) { token = r.token; localStorage.setItem("diogram_token", token); } openSettings(); } catch (e) { alert(e.message); } };
     }
   } catch (e) { if (e.message !== "banned") alert("Ошибка: " + e.message); }
 }
