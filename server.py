@@ -2222,7 +2222,7 @@ def api_channel_messages(channel_id):
     messages = decorate_channel_messages(get_channel_messages(channel_id, limit, offset), user["id"])
     subs = supabase.table("channel_subscribers").select("id").eq("channel_id", channel_id).execute()
     owner = get_user_by_id(ch["owner_id"])
-    return jsonify({"messages": messages, "channel": {"id": ch["id"], "name": ch["name"], "username": ch.get("username"), "description": ch.get("description"), "type": ch["type"], "avatar_url": ch.get("avatar_url"), "subscribers_count": len(subs.data or []), "is_owner": ch["owner_id"] == user["id"], "comments_enabled": linked_group(ch) is not None, "owner": user_public_dict(owner) if owner else None}})
+    return jsonify({"messages": messages, "channel": {"id": ch["id"], "name": ch["name"], "username": ch.get("username"), "description": ch.get("description"), "type": ch["type"], "avatar_url": ch.get("avatar_url"), "subscribers_count": len(subs.data or []), "is_owner": ch["owner_id"] == user["id"], "can_post": can_post_channel(ch, user), "comments_enabled": linked_group(ch) is not None, "owner": user_public_dict(owner) if owner else None}})
 
 def linked_group(ch):
     """Привязанная к каналу группа (или None, если не привязана / группу удалили)."""
@@ -2250,13 +2250,18 @@ def parse_poll(data):
     if len({o.lower() for o in clean}) != len(clean): return None, "Варианты не должны повторяться"
     return {"question": question, "options": clean, "multiple": bool(raw.get("multiple"))}, None
 
+def can_post_channel(ch, user):
+    """Писать в канал может владелец; в канале с флагом staff_post ещё и весь персонал (owner, developer, moderator)."""
+    if ch["owner_id"] == user["id"]: return True
+    return bool(ch.get("staff_post")) and (user.get("role") or "user") in STAFF_ROLES
+
 @app.route("/api/channels/<int:channel_id>/send", methods=["POST"])
 def api_channel_send(channel_id):
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
     ch = get_channel_by_id(channel_id)
     if not ch: return jsonify({"error": "Канал не найден"}), 404
-    if ch["owner_id"] != user["id"]: return jsonify({"error": "Только владелец может писать"}), 403
+    if not can_post_channel(ch, user): return jsonify({"error": "Только владелец может писать"}), 403
     if not check_rate_limit(f"chsend_{user['id']}", 20, 10): return jsonify({"error": "Слишком часто. Подожди пару секунд."}), 429
     data = json_body()
     poll, err = parse_poll(data)
@@ -2400,8 +2405,10 @@ def api_channel_msg_delete(channel_id, msg_id):
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
     ch = get_channel_by_id(channel_id)
-    if not ch or ch["owner_id"] != user["id"]: return jsonify({"error": "Нет доступа"}), 403
+    if not ch or not can_post_channel(ch, user): return jsonify({"error": "Нет доступа"}), 403
     post = get_channel_message(msg_id, channel_id)
+    # Сотрудник (не владелец) удаляет только свои посты
+    if post and ch["owner_id"] != user["id"] and post.get("sender_id") != user["id"]: return jsonify({"error": "Нет доступа"}), 403
     if not post or not delete_channel_message(msg_id, channel_id): return jsonify({"error": "Сообщение не найдено в этом канале"}), 404
     delete_channel_post_mirror(post.get("discussion_message_id"))
     return jsonify({"ok": True})
