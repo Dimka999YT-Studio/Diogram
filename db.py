@@ -1286,9 +1286,9 @@ def touch_session(session_id: int) -> None:
 
 
 def delete_other_sessions(user_id: int, keep_session_id) -> None:
-    q = supabase.table("user_sessions").delete().eq("user_id", user_id)
-    if keep_session_id is not None: q = q.neq("id", keep_session_id)
-    q.execute()
+    """Удаляет все сессии пользователя, кроме keep_session_id. Без keep удалились бы ВСЕ, включая текущую, поэтому это ошибка."""
+    if keep_session_id is None: raise ValueError("keep_session_id обязателен")
+    supabase.table("user_sessions").delete().eq("user_id", user_id).neq("id", keep_session_id).execute()
 
 
 # ============ FRIGDMANT И ИНВЕНТАРЬ ============

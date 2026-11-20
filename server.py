@@ -848,12 +848,26 @@ def api_privacy():
     update_privacy_settings(user["id"], hide, who)
     return jsonify({"ok": True})
 
+def ensure_current_session(user):
+    """(id сессии этого устройства, новый токен или None). Токен без sid выдан до появления сессий: у него нет строки в user_sessions,
+    поэтому «это устройство» не находилось, а «завершить все остальные» удаляло вообще все сессии аккаунта (keep=None).
+    Такому токену заводим сессию и отдаём новый токен, клиент его сохраняет."""
+    sid = g.get("_sid")
+    if sid is not None: return sid, None
+    try: sid = create_session(user["id"], device_label(request.headers.get("User-Agent", "")))
+    except Exception as e:
+        print(f"[session] не удалось создать сессию для старого токена: {e!r}"); return None, None
+    if sid is None: return None, None
+    return sid, make_token(user["id"], sid)
+
 @app.route("/api/sessions", methods=["GET"])
 def api_sessions_get():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    cur = g.get("_sid")
-    return jsonify({"sessions": [{"id": s["id"], "device": s.get("device"), "created_at": s.get("created_at"), "last_used": s.get("last_used"), "current": s["id"] == cur} for s in get_user_sessions(user["id"])]})
+    cur, new_token = ensure_current_session(user)
+    out = {"sessions": [{"id": s["id"], "device": s.get("device"), "created_at": s.get("created_at"), "last_used": s.get("last_used"), "current": cur is not None and s["id"] == cur} for s in get_user_sessions(user["id"])]}
+    if new_token: out["token"] = new_token
+    return jsonify(out)
 
 @app.route("/api/sessions/<int:sid>", methods=["DELETE"])
 def api_sessions_del(sid):
@@ -866,8 +880,13 @@ def api_sessions_del(sid):
 def api_sessions_revoke_others():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    delete_other_sessions(user["id"], g.get("_sid"))
-    return jsonify({"ok": True})
+    cur, new_token = ensure_current_session(user)
+    # Не знаем, какая сессия текущая: лучше отказать, чем удалить все (включая эту)
+    if cur is None: return jsonify({"error": "Не удалось определить текущую сессию. Попробуй ещё раз."}), 500
+    delete_other_sessions(user["id"], cur)
+    out = {"ok": True}
+    if new_token: out["token"] = new_token
+    return jsonify(out)
 
 @app.route("/api/logout", methods=["POST"])
 def api_logout():
