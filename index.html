@@ -1415,6 +1415,7 @@ document.getElementById("messages").addEventListener("click", async (ev) => {
   }
   if (!ev.target.closest || !ev.target.closest(".game-play-btn")) return;
   if (ev.target.closest(".gaming-btn")) { openGaming(); return; }
+  if (ev.target.closest(".arrow-btn")) { tgGame(); return; }
   openGame();
 });
 document.addEventListener("click", closeRxPicker);
@@ -1459,9 +1460,10 @@ function appendMessage(m) {
   if (body.startsWith("\u2063")) {   // пересланное сообщение: метку ставит только сервер, первая строка это заголовок
     const nl = body.indexOf("\n"); fwdHead = (nl < 0 ? body : body.slice(0, nl)).replace(/\u2063/g, ""); body = nl < 0 ? "" : body.slice(nl + 1);
   }
-  content += (m.type === "game_invite" || m.type === "gaming_invite" || m.type === "game_case_give" ? '<span class="pre-line">' + linkify(body) + '</span>' : linkify(body));
+  content += (m.type === "game_invite" || m.type === "gaming_invite" || m.type === "arrow_invite" || m.type === "game_case_give" ? '<span class="pre-line">' + linkify(body) + '</span>' : linkify(body));
   if (fwdHead) content = '<div class="fwd">' + escapeHtml(fwdHead) + '</div>' + content;
   if (m.type === "gaming_invite") content += '<button class="game-play-btn gaming-btn" type="button">🎰 Играть</button>';
+  if (m.type === "arrow_invite") content += '<button class="game-play-btn arrow-btn" type="button">🧩 Задания игры</button>';
   if (m.type === "game_invite") content += '<button class="game-play-btn" type="button">🎮 Играть</button>';
   if (m.type === "game_case_give") { const idm = /ID (\d{1,12})/.exec(m.text || ""); if (idm) content += '<div class="cg-form" data-uid="' + parseInt(idm[1], 10) + '"><select class="cg-case">' + GAME_CASES.map(c => '<option value="' + c.key + '">' + escapeHtml(c.title) + ' (' + c.price + ' Di)</option>').join("") + '</select><input class="cg-qty" type="number" min="1" max="100" value="1"><button class="game-play-btn cg-go" type="button">Выдать</button><div class="cg-out"></div></div>'; }
   

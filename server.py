@@ -502,7 +502,7 @@ def messaging_blocked(sender, recipient):
     """True, если sender не может писать recipient из-за настройки приватности «Никто».
     Сотрудники (STAFF_ROLES) исключение; себе и ИИ-боту писать можно всегда."""
     if not sender or not recipient or sender["id"] == recipient["id"]: return False
-    if recipient["id"] in (DIO_BOT_ID, GAME_BOT_ID, gaming.BOT_ID): return False
+    if recipient["id"] in (DIO_BOT_ID, GAME_BOT_ID, gaming.BOT_ID, tg_game.BOT_ID): return False
     if (sender.get("role") or "user") in STAFF_ROLES: return False
     return recipient.get("who_can_message") == "nobody"
 
@@ -1416,6 +1416,10 @@ def api_send():
             try:
                 if check_rate_limit(f"gamingbot_{user['id']}", 1, 300): save_message(chat_id, gaming.BOT_ID, gaming.INVITE_TEXT, "gaming_invite")
             except Exception as e: print(f"[gaming] {e!r}")
+        elif other_id == tg_game.BOT_ID and user["id"] != tg_game.BOT_ID:
+            try:
+                if check_rate_limit(f"arrowbot_{user['id']}", 1, 300): save_message(chat_id, tg_game.BOT_ID, tg_game.INVITE_TEXT, "arrow_invite")
+            except Exception as e: print(f"[arrow] {e!r}")
     sign_attachments([msg])
     return jsonify({"ok": True, "message": msg})
 

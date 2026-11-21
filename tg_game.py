@@ -15,6 +15,9 @@ MSK = timezone(timedelta(hours=3))
 DAILY_CAP = 10            # голды в сутки на Telegram-аккаунт (по МСК)
 MIN_ACCOUNT_DAYS = 3      # возраст аккаунта Diogram для наград
 CODE_TTL = 600            # секунд жизни кода привязки
+BOT_ID = gold.ARROW_BOT_ID   # аккаунт @ArrowPuzzle: сообщение ему в личке получает анонс с кнопкой «Задания игры»
+INVITE_TEXT = (f"🧩 Arrow Puzzle\n\nИграй в Arrow Puzzle в Telegram и получай бонусную голду за задания (до {DAILY_CAP} голды в сутки). "
+               "Нажми «Задания игры», получи код привязки и введи его в игре. Голда придёт на твой аккаунт Diogram и тратится на кейсы @Gaming.")
 _CODE_ALPHA = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 _TASK_ID = re.compile(r"^[a-z0-9_]{2,40}$")
 ONCE_DAY = "2000-01-01"
