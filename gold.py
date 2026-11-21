@@ -7,7 +7,8 @@ from datetime import datetime, timedelta, timezone
 from db import supabase, spend_balance, add_balance, get_or_create_chat, save_message
 
 GAMING_BOT_ID = 1000020
-BOT_IDS = [1000011, 1000014, GAMING_BOT_ID]       # Дио, @Play, @Gaming: разговоры с ботами не считаются «общением»
+ARROW_BOT_ID = 1000024     # @ArrowPuzzle
+BOT_IDS = [1000011, 1000014, GAMING_BOT_ID, ARROW_BOT_ID]       # Дио, @Play, @Gaming, @ArrowPuzzle: разговоры с ботами не считаются «общением»
 MSK = timezone(timedelta(hours=3))
 EXCHANGE_DAILY = 1000        # Di в сутки на человека
 WITHDRAW_MIN = 100           # минимум голды для вывода

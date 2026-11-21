@@ -774,6 +774,7 @@
       <button class="admin-tab" data-tab="captcha" id="admin-tab-captcha" style="display:none;">✍️ Капча</button>
       <button class="admin-tab" data-tab="gaming" id="admin-tab-gaming" style="display:none;">🎰 Кейсы @Gaming</button>
       <button class="admin-tab" data-tab="gold" id="admin-tab-gold" style="display:none;">🪙 Голда</button>
+      <button class="admin-tab" data-tab="tgame" id="admin-tab-tgame" style="display:none;">🎮 Игра</button>
       <button class="admin-tab" data-tab="game" id="admin-tab-game" style="display:none;">🍂 Призы турнира</button>
     </div>
     <div class="search-bar"><input type="text" id="admin-search" placeholder="Поиск по @username или email"></div>
@@ -1414,6 +1415,7 @@ document.getElementById("messages").addEventListener("click", async (ev) => {
   }
   if (!ev.target.closest || !ev.target.closest(".game-play-btn")) return;
   if (ev.target.closest(".gaming-btn")) { openGaming(); return; }
+  if (ev.target.closest(".arrow-btn")) { tgGame(); return; }
   openGame();
 });
 document.addEventListener("click", closeRxPicker);
@@ -1458,9 +1460,10 @@ function appendMessage(m) {
   if (body.startsWith("\u2063")) {   // пересланное сообщение: метку ставит только сервер, первая строка это заголовок
     const nl = body.indexOf("\n"); fwdHead = (nl < 0 ? body : body.slice(0, nl)).replace(/\u2063/g, ""); body = nl < 0 ? "" : body.slice(nl + 1);
   }
-  content += (m.type === "game_invite" || m.type === "gaming_invite" || m.type === "game_case_give" ? '<span class="pre-line">' + linkify(body) + '</span>' : linkify(body));
+  content += (m.type === "game_invite" || m.type === "gaming_invite" || m.type === "arrow_invite" || m.type === "game_case_give" ? '<span class="pre-line">' + linkify(body) + '</span>' : linkify(body));
   if (fwdHead) content = '<div class="fwd">' + escapeHtml(fwdHead) + '</div>' + content;
   if (m.type === "gaming_invite") content += '<button class="game-play-btn gaming-btn" type="button">🎰 Играть</button>';
+  if (m.type === "arrow_invite") content += '<button class="game-play-btn arrow-btn" type="button">🧩 Задания игры</button>';
   if (m.type === "game_invite") content += '<button class="game-play-btn" type="button">🎮 Играть</button>';
   if (m.type === "game_case_give") { const idm = /ID (\d{1,12})/.exec(m.text || ""); if (idm) content += '<div class="cg-form" data-uid="' + parseInt(idm[1], 10) + '"><select class="cg-case">' + GAME_CASES.map(c => '<option value="' + c.key + '">' + escapeHtml(c.title) + ' (' + c.price + ' Di)</option>').join("") + '</select><input class="cg-qty" type="number" min="1" max="100" value="1"><button class="game-play-btn cg-go" type="button">Выдать</button><div class="cg-out"></div></div>'; }
   
@@ -2471,6 +2474,7 @@ async function openAdmin() {
   } catch (e) { console.error("Ошибка загрузки статистики", e); }
   document.getElementById("admin-tab-reserved").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-gold").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
+  document.getElementById("admin-tab-tgame").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-gaming").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-game").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-captcha").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
@@ -2480,7 +2484,7 @@ async function openAdmin() {
 document.querySelectorAll(".admin-tab").forEach(tab => { tab.onclick = () => { document.querySelectorAll(".admin-tab").forEach(t => t.classList.remove("active")); tab.classList.add("active"); currentAdminTab = tab.dataset.tab; adminShowTab(); }; });
 function adminShowTab() {
   document.querySelector("#screen-admin > .search-bar").style.display = currentAdminTab === "users" ? "" : "none";
-  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else if (currentAdminTab === "game") loadAdminGame(); else if (currentAdminTab === "promo") loadAdminPromo(); else if (currentAdminTab === "captcha") loadAdminCaptcha(); else if (currentAdminTab === "gaming") loadAdminGaming(); else if (currentAdminTab === "gold") loadAdminGold(); else loadAdminReports();
+  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else if (currentAdminTab === "game") loadAdminGame(); else if (currentAdminTab === "promo") loadAdminPromo(); else if (currentAdminTab === "captcha") loadAdminCaptcha(); else if (currentAdminTab === "gaming") loadAdminGaming(); else if (currentAdminTab === "gold") loadAdminGold(); else if (currentAdminTab === "tgame") loadAdminTgame(); else loadAdminReports();
 }
 
 async function loadAdminUsers() {
@@ -2591,7 +2595,7 @@ async function gamingRender(st) {
     const wl = st.wallet || { gold: 0, bonus: 0, total: 0 };
     const top = document.createElement("div"); top.className = "game-note"; top.textContent = "🪙 Голда: " + (parseInt(wl.total, 10) || 0) + (wl.bonus ? " (в т. ч. бонус " + Math.floor(wl.bonus) + ")" : "") + " · Di: " + (parseFloat(st.balance) || 0).toFixed(1) + " · сегодня можно открыть ещё: " + (parseInt(st.left_today, 10) || 0); box.appendChild(top);
     const wb = document.createElement("div"); wb.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;padding:0 12px 8px;";
-    for (const [label, fn] of [["⇄ Обменять Di", goldExchange], ["📤 Вывести голду", goldWithdraw], ["🎁 Приглашения", goldRef]]) { const b = document.createElement("button"); b.className = "admin-btn primary"; b.textContent = label; b.onclick = () => fn(st); wb.appendChild(b); }
+    for (const [label, fn] of [["⇄ Обменять Di", goldExchange], ["📤 Вывести голду", goldWithdraw], ["🎁 Приглашения", goldRef], ["🎮 Задания игры", tgGame]]) { const b = document.createElement("button"); b.className = "admin-btn primary"; b.textContent = label; b.onclick = () => fn(st); wb.appendChild(b); }
     box.appendChild(wb);
     const h1 = document.createElement("div"); h1.className = "game-h"; h1.textContent = "🎁 Кейсы"; box.appendChild(h1);
     if (!st.cases.length) { const e = document.createElement("div"); e.className = "empty-state"; e.textContent = "Кейсов пока нет"; box.appendChild(e); }
@@ -2642,6 +2646,54 @@ function goldWithdraw(st) {
   go.onclick = async () => { go.disabled = true; try { const r = await api("/api/gold/withdraw", { method: "POST", body: JSON.stringify({ amount: parseInt(amt.value, 10), nick: nick.value }) }); m.setOk("Заявка отправлена. Владелец свяжется с тобой."); await gamingRender(r.state); } catch (e) { m.setErr(e.message); } go.disabled = false; };
   b.appendChild(go);
   api("/api/gold/withdrawals").then(d => { if (!d.items.length) return; b.appendChild(goldEl("div", "Твои заявки", "margin-top:14px;font-weight:600;")); for (const w of d.items) b.appendChild(goldEl("div", w.amount + " голды · " + (d.statuses[w.status] || w.status) + (w.admin_note ? " · " + w.admin_note : ""), "font-size:13px;color:#9fb0c0;margin-top:4px;")); }).catch(() => {});
+}
+// Задания Telegram-игры: привязка Telegram к аккаунту и список заданий с наградами (голда бонусная).
+function tgGame() {
+  const b = goldModal("🎮 Задания игры"); b.appendChild(goldEl("div", "Загрузка…", "color:#9fb0c0;"));
+  api("/api/tg/state").then(d => {
+    b.innerHTML = "";
+    b.appendChild(goldEl("div", "Выполняй задания в игре Arrow Puzzle в Telegram и получай бонусную голду (для кейсов). Сначала нужно привязать Telegram к этому аккаунту. Аккаунту Diogram должно быть не меньше " + d.min_days + " дней. В сутки можно получить до " + d.cap + " голды.", "font-size:13px;color:#9fb0c0;"));
+    if (!d.linked) {
+      b.appendChild(goldEl("div", "Telegram не привязан", "margin-top:12px;font-weight:600;"));
+      const out = goldEl("div", "", "margin-top:8px;"); b.appendChild(out);
+      const go = goldEl("button", "Получить код привязки"); go.className = "btn"; go.style.marginTop = "8px";
+      go.onclick = async () => { go.disabled = true; try { const r = await api("/api/tg/link_code", { method: "POST", body: "{}" }); out.innerHTML = ""; out.appendChild(goldEl("div", r.code, "font-size:28px;font-weight:700;letter-spacing:3px;cursor:pointer;")); out.appendChild(goldEl("div", "Код действует " + Math.round(r.ttl / 60) + " минут. Открой игру в Telegram и введи его в разделе привязки Diogram.", "font-size:12px;color:#7e8b99;")); out.firstChild.onclick = () => copyText(r.code); } catch (e) { out.appendChild(goldEl("div", e.message, "color:#ff6b6b;")); go.disabled = false; } };
+      b.appendChild(go);
+    } else b.appendChild(goldEl("div", "✅ Telegram привязан. Сегодня получено " + d.today + " из " + d.cap + " голды.", "margin-top:12px;font-weight:600;"));
+    b.appendChild(goldEl("div", "Задания", "margin-top:14px;font-weight:600;"));
+    if (!d.tasks.length) b.appendChild(goldEl("div", "Пока заданий нет", "font-size:13px;color:#7e8b99;"));
+    for (const t of d.tasks) b.appendChild(goldEl("div", (t.done ? "✅ " : "▫️ ") + t.title + " · +" + t.gold + " голды · " + (t.kind === "daily" ? "раз в сутки" : "один раз"), "font-size:13px;margin-top:4px;" + (t.done ? "opacity:.6;" : "")));
+  }).catch(e => { b.innerHTML = ""; b.appendChild(goldEl("div", "Ошибка: " + e.message, "color:#ff6b6b;")); });
+}
+async function loadAdminTgame() {
+  const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
+  try {
+    const d = await api("/api/admin/tg"); box.innerHTML = "";
+    const mk = (label, fn) => { const b = document.createElement("button"); b.className = "admin-btn"; b.style.marginRight = "6px"; b.textContent = label; b.onclick = fn; return b; };
+    const inp = (ph, type, w) => { const i = document.createElement("input"); i.type = type || "text"; i.placeholder = ph; if (w) i.style.width = w; i.style.marginTop = "4px"; return i; };
+    const top = document.createElement("div"); top.className = "report-card"; top.appendChild(goldEl("div", "Игра присылает выполненные задания на сервер по ключу TG_GAME_KEY. Лимит: " + d.cap + " голды в сутки на Telegram, аккаунту Diogram от " + d.min_days + " дней. Награда бонусная.", "font-size:13px;color:#9fb0c0;")); box.appendChild(top);
+    const nt = document.createElement("div"); nt.className = "report-card"; nt.appendChild(goldEl("div", "Задания", "font-weight:600;"));
+    for (const t of d.tasks) {
+      const row = goldEl("div", t.id + " · " + t.title + " · " + t.gold + " голды · " + (t.kind === "daily" ? "раз в сутки" : "один раз") + (t.active ? "" : " (выключено)") + " ", "font-size:13px;margin-top:6px;");
+      row.appendChild(mk(t.active ? "Выключить" : "Включить", async () => { try { await api("/api/admin/tg/task", { method: "POST", body: JSON.stringify({ id: t.id, title: t.title, gold: t.gold, kind: t.kind, active: !t.active }) }); loadAdminTgame(); } catch (e) { alert(e.message); } }));
+      row.appendChild(mk("Удалить", async () => { if (!confirm("Удалить задание?")) return; try { await api("/api/admin/tg/task/delete", { method: "POST", body: JSON.stringify({ id: t.id }) }); loadAdminTgame(); } catch (e) { alert(e.message); } }));
+      nt.appendChild(row);
+    }
+    const fid = inp("ID (a–z, 0–9, _)", "text", "28%"), ft = inp("Название", "text", "38%"), fg = inp("Голда", "number", "14%"), fk = document.createElement("select");
+    fid.maxLength = 40; ft.maxLength = 80; fg.min = 1; fk.style.cssText = "margin-top:4px;";
+    for (const [v, l] of [["once", "один раз"], ["daily", "раз в сутки"]]) { const o = document.createElement("option"); o.value = v; o.textContent = l; fk.appendChild(o); }
+    nt.appendChild(goldEl("div", "Новое задание", "margin-top:12px;font-weight:600;"));
+    for (const e of [fid, ft, fg, fk]) nt.appendChild(e);
+    nt.appendChild(mk("Добавить", async () => { try { await api("/api/admin/tg/task", { method: "POST", body: JSON.stringify({ id: fid.value.trim(), title: ft.value, gold: parseInt(fg.value, 10), kind: fk.value, active: true }) }); loadAdminTgame(); } catch (e) { alert(e.message); } }));
+    box.appendChild(nt);
+    const lk = document.createElement("div"); lk.className = "report-card"; lk.appendChild(goldEl("div", "Привязки (" + d.links.length + ")", "font-weight:600;"));
+    for (const l of d.links) { const row = goldEl("div", l.user_name + " ↔ Telegram " + l.tg_id + " ", "font-size:13px;margin-top:6px;"); row.appendChild(mk("Отвязать", async () => { if (!confirm("Отвязать? Уже полученные награды останутся, повторно они не выдадутся.")) return; try { await api("/api/admin/tg/unlink", { method: "POST", body: JSON.stringify({ user_id: l.user_id }) }); loadAdminTgame(); } catch (e) { alert(e.message); } })); lk.appendChild(row); }
+    box.appendChild(lk);
+    const cl = document.createElement("div"); cl.className = "report-card"; cl.appendChild(goldEl("div", "Последние выдачи", "font-weight:600;"));
+    if (!d.claims.length) cl.appendChild(goldEl("div", "Пока нет", "font-size:13px;color:#7e8b99;"));
+    for (const c of d.claims) cl.appendChild(goldEl("div", new Date(c.created_at).toLocaleString("ru-RU") + " · " + c.user_name + " · " + c.task_id + " · +" + c.gold, "font-size:12px;margin-top:4px;"));
+    box.appendChild(cl);
+  } catch (e) { box.innerHTML = ""; const er = document.createElement("div"); er.className = "empty-state"; er.textContent = e.message; box.appendChild(er); }
 }
 function refEnterForm(b, onDone) {
   b.appendChild(goldEl("div", "Есть код приглашения?", "margin-top:14px;font-weight:600;"));
