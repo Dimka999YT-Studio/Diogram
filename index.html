@@ -635,7 +635,9 @@
     <div class="ch-info-screen">
       <div class="ch-info-top">
         <div class="ch-info-avatar" id="ch-info-avatar">📢</div>
-        <div class="ch-info-name" id="ch-info-name">Канал</div>
+        <div class="ch-info-name"><span id="ch-info-name">Канал</span><span id="ch-info-orgs"></span></div>
+        <div class="org-note" id="ch-info-org-note"></div>
+        <div id="ch-info-org-actions" style="text-align:center;margin-top:6px;"></div>
         <div class="ch-info-username" id="ch-info-username">@username</div>
         <div class="ch-info-type" id="ch-info-type">📢 Публичный</div>
         <div class="ch-info-subs" id="ch-info-subs">0 подписчиков</div>
@@ -1278,7 +1280,7 @@ async function loadList() {
         else av.textContent = item.channel_type === "secret" ? "🌍" : "📢";
         el.innerHTML = ''; el.appendChild(av);
         const info = document.createElement("div"); info.className = "list-info";
-        info.innerHTML = '<div class="list-name">' + escapeHtml(item.name) + '</div><div class="list-last">' + (item.subscribers_count || 0) + ' подписчиков</div>';
+        info.innerHTML = '<div class="list-name">' + escapeHtml(item.name) + orgBadges(item.orgs) + '</div><div class="list-last">' + (item.subscribers_count || 0) + ' подписчиков</div>';
         el.appendChild(info);
         el.onclick = () => openChannel(item.channel_id);
       }
@@ -1652,7 +1654,7 @@ async function openChannel(channelId) {
   try {
     const data = await api("/api/channels/" + channelId + "/messages");
     const ch = data.channel; currentChannel = ch;
-    document.getElementById("channel-title").textContent = ch.name;
+    document.getElementById("channel-title").innerHTML = escapeHtml(ch.name) + orgBadges(ch.orgs);
     document.getElementById("channel-status").textContent = (ch.type === "secret" ? "🌍 " : "📢 ") + (ch.subscribers_count || 0) + " подписчиков";
     document.getElementById("channel-input-area").style.display = (ch.can_post || ch.is_owner) ? "flex" : "none";
     renderChannelMessages(data.messages);
@@ -1773,6 +1775,8 @@ async function openChannelInfo(channelId) {
     if (ch.avatar_url) av.innerHTML = avatarHtml(ch.avatar_url);
     else av.textContent = ch.type === "secret" ? "🌍" : "📢";
     document.getElementById("ch-info-name").textContent = ch.name;
+    document.getElementById("ch-info-orgs").innerHTML = orgBadges(ch.orgs); orgNote("ch-info-org-note", ch.orgs, "channel");
+    orgActions(document.getElementById("ch-info-org-actions"), { type: "channel", id: ch.id, orgs: ch.orgs, stillOpen: () => currentChInfo === ch, onChange: (o) => { ch.orgs = o; document.getElementById("ch-info-orgs").innerHTML = orgBadges(o); orgNote("ch-info-org-note", o, "channel"); if (currentChannel && currentChannel.id === ch.id) { currentChannel.orgs = o; document.getElementById("channel-title").innerHTML = escapeHtml(currentChannel.name) + orgBadges(o); } } });
     document.getElementById("ch-info-username").textContent = ch.username ? "@" + ch.username : (ch.type === "secret" ? "🌍 Глобальный канал" : "Без юзернейма");
     document.getElementById("ch-info-type").textContent = ch.type === "secret" ? "🌍 Глобальный" : "📢 Публичный";
     document.getElementById("ch-info-subs").textContent = (ch.subscribers_count || 0) + " подписчиков";
@@ -1847,7 +1851,7 @@ document.getElementById("btn-ch-save").onclick = async () => {
       try { await api("/api/channels/" + currentChInfo.id + "/avatar", { method: "POST", body: fd }); } catch (e) { alert("Аватар: " + e.message); }
     }
     closeModal("modal-ch-edit"); alert("Канал обновлён!"); newAvatarFile = null; openChannelInfo(currentChInfo.id);
-    if (currentChannel) { currentChannel.name = name; document.getElementById("channel-title").textContent = name; }
+    if (currentChannel) { currentChannel.name = name; document.getElementById("channel-title").innerHTML = escapeHtml(name) + orgBadges(currentChannel.orgs); }
   } catch (e) { setError("modal-ch-edit-error", e.message); }
 };
 
@@ -2149,7 +2153,7 @@ async function openProfile() {
   else av.innerHTML = initial(name) + '<div class="avatar-edit-hint">📷</div>';
   document.getElementById("profile-name").textContent = name;
   document.getElementById("profile-verified").innerHTML = verifiedMark(currentUser.verified, currentUser.orgs);
-  orgNote("profile-org-note", currentUser.orgs);
+  orgNote("profile-org-note", currentUser.orgs, currentUser.org_kind);
   document.getElementById("profile-username-show").textContent = currentUser.username ? "@" + currentUser.username : "—";
   document.getElementById("profile-id").textContent = currentUser.id;
   document.getElementById("profile-role").textContent = currentUser.role;
@@ -2233,21 +2237,33 @@ document.getElementById("btn-save-bio").onclick = async () => {
   try { const data = await api("/api/profile/bio", { method: "POST", body: JSON.stringify({ bio }) }); currentUser = data.user; closeModal("modal-bio"); openProfile(); } catch (e) { setError("modal-bio-error", e.message); }
 };
 
-function orgNote(id, orgs) {
+const ORG_KIND = { user: "Пользователь", bot: "Бот", channel: "Канал" };
+// Подпись «Бот верифицирован организацией «Название»» с серым значком организации в начале строки.
+function orgNote(id, orgs, kind) {
   const el = document.getElementById(id); if (!el) return; el.innerHTML = "";
-  for (const o of (orgs || [])) { const d = document.createElement("div"); d.appendChild(document.createTextNode("Верифицирован организацией «")); const b = document.createElement("b"); b.textContent = o.name; d.appendChild(b); d.appendChild(document.createTextNode("»")); el.appendChild(d); }
+  for (const o of (orgs || [])) {
+    const d = document.createElement("div"); d.style.cssText = "display:flex;align-items:center;justify-content:center;gap:6px;";
+    if (o.note_icon_url) { const im = document.createElement("img"); im.className = "org-badge"; im.style.cssText = "width:18px;height:18px;margin:0;"; im.src = o.note_icon_url; im.alt = ""; d.appendChild(im); }
+    const t = document.createElement("span"); t.appendChild(document.createTextNode((ORG_KIND[kind] || ORG_KIND.user) + " верифицирован организацией «"));
+    const b = document.createElement("b"); b.textContent = o.name; t.appendChild(b); t.appendChild(document.createTextNode("»")); d.appendChild(t); el.appendChild(d);
+  }
 }
-// Кнопки «Верифицировать от имени организации» в чужом профиле: только участникам организаций и владельцу Diogram.
-async function orgActions(u) {
-  const box = document.getElementById("user-org-actions"); if (!box) return; box.innerHTML = "";
+// Кнопки «Верифицировать от имени организации» (профиль пользователя/бота и информация о канале): только участникам организаций и owner Diogram.
+// target: { type: "user"|"channel", id, orgs, kind, stillOpen(), onChange(orgs) }
+async function orgActions(box, target) {
+  if (!box) return; box.innerHTML = "";
   let mine = [];
   try { mine = (await api("/api/orgs/my")).orgs || []; } catch (e) { return; }
-  if (document.getElementById("user-id").textContent != String(u.id)) return;
+  if (!target.stillOpen()) return;
   for (const o of mine) {
-    const has = (u.orgs || []).some(x => x.id === o.id);
+    const has = (target.orgs || []).some(x => x.id === o.id);
     const b = document.createElement("button"); b.className = "admin-btn"; b.style.margin = "2px";
     b.textContent = (has ? "Снять значок «" : "Верифицировать «") + o.name + "»";
-    b.onclick = async () => { b.disabled = true; try { const r = await api("/api/orgs/verify", { method: "POST", body: JSON.stringify({ org_id: o.id, user_id: u.id, on: !has }) }); u.orgs = r.orgs; document.getElementById("user-orgs").innerHTML = orgBadges(u.orgs); orgNote("user-org-note", u.orgs); orgActions(u); } catch (e) { alert(e.message); b.disabled = false; } };
+    b.onclick = async () => {
+      b.disabled = true;
+      const body = { org_id: o.id, target_type: target.type, on: !has }; body[target.type === "channel" ? "channel_id" : "user_id"] = target.id;
+      try { const r = await api("/api/orgs/verify", { method: "POST", body: JSON.stringify(body) }); target.orgs = r.orgs; target.onChange(r.orgs); orgActions(box, target); } catch (e) { alert(e.message); b.disabled = false; }
+    };
     box.appendChild(b);
   }
 }
@@ -2264,7 +2280,8 @@ async function openUserProfile(userId) {
     document.getElementById("user-name").textContent = name; 
     document.getElementById("user-verified").style.display = u.verified ? "inline" : "none";
     document.getElementById("user-orgs").innerHTML = orgBadges(u.orgs);
-    orgNote("user-org-note", u.orgs); orgActions(u);
+    orgNote("user-org-note", u.orgs, u.org_kind);
+    orgActions(document.getElementById("user-org-actions"), { type: "user", id: u.id, orgs: u.orgs, stillOpen: () => document.getElementById("user-id").textContent == String(u.id), onChange: (o) => { u.orgs = o; if (o.length && !u.org_kind) u.org_kind = "user"; document.getElementById("user-orgs").innerHTML = orgBadges(o); orgNote("user-org-note", o, u.org_kind); } });
     
     const statusEl = document.getElementById("user-status");
     if (u.banned) {
@@ -2712,10 +2729,12 @@ async function loadAdminOrgs() {
       const head = document.createElement("div"); head.style.cssText = "display:flex;align-items:center;gap:8px;font-weight:600;";
       if (o.icon_url) { const im = document.createElement("img"); im.className = "org-badge"; im.style.cssText = "width:28px;height:28px;margin:0;"; im.src = o.icon_url; head.appendChild(im); }
       head.appendChild(document.createTextNode(o.name + " · верифицировано: " + o.verified_count)); card.appendChild(head);
-      const file = document.createElement("input"); file.type = "file"; file.accept = "image/png,image/webp,image/jpeg,image/gif"; file.style.cssText = "margin-top:8px;display:block;";
-      card.appendChild(file);
-      card.appendChild(mk("Загрузить значок", async () => { if (!file.files[0]) return alert("Выбери картинку"); const fd = new FormData(); fd.append("org_id", o.id); fd.append("file", file.files[0]); try { await api("/api/admin/orgs/icon", { method: "POST", body: fd }); loadAdminOrgs(); } catch (e) { alert(e.message); } }));
-      card.lastChild.style.marginTop = "6px";
+      for (const [kind, label, cur] of [["main", "Значок у названия (синий)", o.icon_url], ["note", "Значок в подписи «верифицирован организацией» (серый)", o.note_icon_url]]) {
+        const row = goldEl("div", label + (cur ? " · загружен" : " · нет"), "margin-top:10px;font-size:13px;");
+        const file = document.createElement("input"); file.type = "file"; file.accept = "image/png,image/webp,image/jpeg,image/gif"; file.style.cssText = "display:block;margin-top:4px;"; row.appendChild(file);
+        row.appendChild(mk("Загрузить", async () => { if (!file.files[0]) return alert("Выбери картинку"); const fd = new FormData(); fd.append("org_id", o.id); fd.append("kind", kind); fd.append("file", file.files[0]); try { await api("/api/admin/orgs/icon", { method: "POST", body: fd }); loadAdminOrgs(); } catch (e) { alert(e.message); } }));
+        row.lastChild.style.marginTop = "4px"; card.appendChild(row);
+      }
       card.appendChild(goldEl("div", "Участники (могут верифицировать)", "margin-top:10px;font-size:13px;font-weight:600;"));
       if (!o.members.length) card.appendChild(goldEl("div", "Пока нет", "font-size:13px;color:#7e8b99;"));
       for (const m of o.members) {

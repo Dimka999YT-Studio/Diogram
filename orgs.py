@@ -1,5 +1,5 @@
 """Верификация организациями. SQL: supabase/migrations/20261124_organizations.sql.
-Организация (название + значок) верифицирует пользователей и ботов своим значком; он показывается рядом с обычной галочкой.
+Организация (название, значок у названия и серый значок для подписи) верифицирует пользователей, ботов и каналы; значок стоит рядом с обычной галочкой.
 Организации и их участников (владелец организации, сотрудники) ведёт owner Diogram. Верифицировать от имени организации
 могут owner Diogram и участники этой организации. Значки лежат в публичном бакете avatars (папка org/)."""
 import io
@@ -17,7 +17,8 @@ ROLES = ("owner", "staff")
 CACHE_TTL = 15
 
 _lock = threading.Lock()
-_cache = {"t": 0.0, "orgs": {}, "marks": {}}
+_cache = {"t": 0.0, "orgs": {}, "marks": {}, "cmarks": {}}
+TARGETS = ("user", "channel")
 
 
 def invalidate():
@@ -26,19 +27,19 @@ def invalidate():
 
 
 def _load():
-    """Организации и значки пользователей из базы (без таблиц: пусто, повтор через минуту)."""
+    """Организации и значки пользователей/каналов из базы (без таблиц: пусто, повтор через минуту)."""
     try:
-        orgs = {o["id"]: o for o in (supabase.table("organizations").select("id, name, icon_url").limit(MAX_ORGS + 50).execute().data or [])}
-        rows = supabase.table("organization_verified").select("org_id, user_id").limit(100000).execute().data or []
+        orgs = {o["id"]: o for o in (supabase.table("organizations").select("id, name, icon_url, note_icon_url").limit(MAX_ORGS + 50).execute().data or [])}
+        rows = supabase.table("organization_verified").select("org_id, target_type, target_id").limit(100000).execute().data or []
     except Exception as e:
         print(f"[orgs] {e!r}")
-        return {}, {}, 60
-    marks = {}
+        return {}, {}, {}, 60
+    marks, cmarks = {}, {}
     for r in rows:
         o = orgs.get(r["org_id"])
-        if o: marks.setdefault(r["user_id"], []).append({"id": o["id"], "name": o["name"], "icon_url": o.get("icon_url")})
-    for lst in marks.values(): lst.sort(key=lambda m: m["id"])
-    return orgs, marks, CACHE_TTL
+        if o: (cmarks if r["target_type"] == "channel" else marks).setdefault(r["target_id"], []).append({"id": o["id"], "name": o["name"], "icon_url": o.get("icon_url"), "note_icon_url": o.get("note_icon_url")})
+    for lst in list(marks.values()) + list(cmarks.values()): lst.sort(key=lambda m: m["id"])
+    return orgs, marks, cmarks, CACHE_TTL
 
 
 def _fresh():
@@ -46,21 +47,40 @@ def _fresh():
     if now - _cache["t"] < _cache.get("ttl", CACHE_TTL): return _cache
     with _lock:
         if now - _cache["t"] < _cache.get("ttl", CACHE_TTL): return _cache
-        orgs, marks, ttl = _load()
-        _cache.update(orgs=orgs, marks=marks, ttl=ttl, t=time.time())
+        orgs, marks, cmarks, ttl = _load()
+        _cache.update(orgs=orgs, marks=marks, cmarks=cmarks, ttl=ttl, t=time.time())
     return _cache
 
 
-def marks_for(uid):
-    return _fresh()["marks"].get(uid) or []
+def marks_for(uid, target_type="user"):
+    return _fresh()["cmarks" if target_type == "channel" else "marks"].get(uid) or []
+
+
+def _is_id(v):
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _bot_ids():
+    try:
+        from gold import BOT_IDS
+        return set(BOT_IDS)
+    except Exception:
+        return set()
 
 
 def annotate(obj, depth=0):
-    """Дописывает orgs каждому словарю-пользователю в ответе (есть id, role и verified). Меняет объект на месте."""
+    """Дописывает orgs (и org_kind: user / bot / channel, если значки есть) пользователям и каналам в ответе. Меняет объект на месте.
+    Пользователь: словарь с id, role и verified. Канал: type == "channel" с channel_id (список чатов) или type public/secret с subscribers_count и id."""
     if depth > 6: return obj
     if isinstance(obj, dict):
-        if "verified" in obj and "role" in obj and isinstance(obj.get("id"), int) and not isinstance(obj.get("id"), bool):
-            obj["orgs"] = marks_for(obj["id"])
+        if "verified" in obj and "role" in obj and _is_id(obj.get("id")):
+            m = marks_for(obj["id"]); obj["orgs"] = m
+            if m: obj["org_kind"] = "bot" if obj["id"] in _bot_ids() else "user"
+        else:
+            cid = obj.get("channel_id") if obj.get("type") == "channel" and _is_id(obj.get("channel_id")) else (obj["id"] if obj.get("type") in ("public", "secret") and "subscribers_count" in obj and _is_id(obj.get("id")) else None)
+            if cid is not None:
+                m = marks_for(cid, "channel"); obj["orgs"] = m
+                if m: obj["org_kind"] = "channel"
         for v in obj.values():
             if isinstance(v, (dict, list)): annotate(v, depth + 1)
     elif isinstance(obj, list):
@@ -76,7 +96,7 @@ def _clean_name(name):
 
 
 def process_icon(data):
-    """Значок: картинка до 2 МБ, проверка Pillow, 128 px, PNG с прозрачностью. Возвращает (байты, ошибка)."""
+    """Значок (у названия и для подписи): картинка до 2 МБ, проверка Pillow, 128 px, PNG с прозрачностью. Возвращает (байты, ошибка)."""
     if not data: return None, "Файл не передан"
     if len(data) > ICON_MAX_BYTES: return None, "Значок больше 2 МБ"
     try:
@@ -90,7 +110,7 @@ def process_icon(data):
 
 
 def list_admin():
-    orgs = supabase.table("organizations").select("id, name, icon_url, created_at").order("id").limit(MAX_ORGS + 50).execute().data or []
+    orgs = supabase.table("organizations").select("id, name, icon_url, note_icon_url, created_at").order("id").limit(MAX_ORGS + 50).execute().data or []
     members = supabase.table("organization_members").select("org_id, user_id, role").limit(20000).execute().data or []
     counts = {}
     for r in supabase.table("organization_verified").select("org_id").limit(100000).execute().data or []:
@@ -121,14 +141,16 @@ def save_org(org_id, name):
     return rows[0], None
 
 
-def set_icon(org_id, png_bytes):
-    """Кладёт значок в бакет avatars/org/ и записывает ссылку. Возвращает (url, ошибка)."""
+def set_icon(org_id, png_bytes, kind="main"):
+    """Кладёт значок в бакет avatars/org/ и записывает ссылку: main (у названия) или note (серый, для подписи). Возвращает (url, ошибка)."""
+    if kind not in ("main", "note"): return None, "kind: main или note"
+    col = "icon_url" if kind == "main" else "note_icon_url"
     try:
         if not (supabase.table("organizations").select("id").eq("id", org_id).limit(1).execute().data or []): return None, "Организация не найдена"
-        path = f"org/{org_id}_{int(time.time())}.png"
+        path = f"org/{org_id}_{kind}_{int(time.time())}.png"
         supabase.storage.from_("avatars").upload(path, png_bytes, file_options={"content-type": "image/png"})
         url = supabase.storage.from_("avatars").get_public_url(path)
-        supabase.table("organizations").update({"icon_url": url}).eq("id", org_id).execute()
+        supabase.table("organizations").update({col: url}).eq("id", org_id).execute()
     except Exception as e:
         print(f"[orgs] icon {e!r}"); return None, "Не удалось загрузить значок"
     invalidate()
@@ -164,7 +186,7 @@ def my_orgs(uid):
     try:
         mem = supabase.table("organization_members").select("org_id, role").eq("user_id", uid).execute().data or []
         if not mem: return []
-        orgs = {o["id"]: o for o in (supabase.table("organizations").select("id, name, icon_url").in_("id", [m["org_id"] for m in mem]).execute().data or [])}
+        orgs = {o["id"]: o for o in (supabase.table("organizations").select("id, name, icon_url, note_icon_url").in_("id", [m["org_id"] for m in mem]).execute().data or [])}
     except Exception as e:
         print(f"[orgs] my {e!r}"); return []
     return [dict(orgs[m["org_id"]], role=m["role"]) for m in mem if m["org_id"] in orgs]
@@ -181,11 +203,12 @@ def can_verify(user, org_id):
         print(f"[orgs] can {e!r}"); return False
 
 
-def set_verified(org_id, target_id, on, by_user_id):
+def set_verified(org_id, target_type, target_id, on, by_user_id):
+    if target_type not in TARGETS: return False
     try:
         q = supabase.table("organization_verified")
-        if on: q.upsert({"org_id": org_id, "user_id": target_id, "by_user_id": by_user_id}).execute()
-        else: q.delete().eq("org_id", org_id).eq("user_id", target_id).execute()
+        if on: q.upsert({"org_id": org_id, "target_type": target_type, "target_id": target_id, "by_user_id": by_user_id}).execute()
+        else: q.delete().eq("org_id", org_id).eq("target_type", target_type).eq("target_id", target_id).execute()
     except Exception as e:
         print(f"[orgs] verify {e!r}"); return False
     invalidate()

@@ -1598,7 +1598,7 @@ def api_orgs_my():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
     if user.get("role") == "owner":
-        return jsonify({"orgs": [{"id": o["id"], "name": o["name"], "icon_url": o.get("icon_url")} for o in orgs._fresh()["orgs"].values()]})
+        return jsonify({"orgs": [{"id": o["id"], "name": o["name"], "icon_url": o.get("icon_url"), "note_icon_url": o.get("note_icon_url")} for o in orgs._fresh()["orgs"].values()]})
     return jsonify({"orgs": orgs.my_orgs(user["id"])})
 
 @app.route("/api/orgs/verify", methods=["POST"])
@@ -1606,12 +1606,17 @@ def api_orgs_verify():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
     if not check_rate_limit(f"orgverify_{user['id']}", 60, 60): return jsonify({"error": "Слишком часто. Подожди минуту."}), 429
-    d = json_body(); org_id = to_int(d.get("org_id")); target_id = to_int(d.get("user_id"))
-    if not org_id or not target_id: return jsonify({"error": "Нужны org_id и user_id"}), 400
+    d = json_body(); org_id = to_int(d.get("org_id"))
+    ttype = d.get("target_type", "user")
+    if ttype not in orgs.TARGETS: return jsonify({"error": "target_type: user или channel"}), 400
+    target_id = to_int(d.get("channel_id" if ttype == "channel" else "user_id"))
+    if not org_id or not target_id: return jsonify({"error": "Нужны org_id и " + ("channel_id" if ttype == "channel" else "user_id")}), 400
     if not orgs.can_verify(user, org_id): return jsonify({"error": "Нет доступа"}), 403
-    if not get_user_by_id(target_id): return jsonify({"error": "Юзер не найден"}), 404
-    if not orgs.set_verified(org_id, target_id, bool(d.get("on")), user["id"]): return jsonify({"error": "Не удалось сохранить"}), 500
-    return jsonify({"ok": True, "orgs": orgs.marks_for(target_id)})
+    if ttype == "channel":
+        if not get_channel_by_id(target_id): return jsonify({"error": "Канал не найден"}), 404
+    elif not get_user_by_id(target_id): return jsonify({"error": "Юзер не найден"}), 404
+    if not orgs.set_verified(org_id, ttype, target_id, bool(d.get("on")), user["id"]): return jsonify({"error": "Не удалось сохранить"}), 500
+    return jsonify({"ok": True, "orgs": orgs.marks_for(target_id, ttype)})
 
 @app.route("/api/admin/orgs")
 def api_admin_orgs():
@@ -1642,7 +1647,7 @@ def api_admin_orgs_icon():
     if not f or not f.filename: return jsonify({"error": "Файл не передан"}), 400
     png, err = orgs.process_icon(f.read(orgs.ICON_MAX_BYTES + 1))
     if err: return jsonify({"error": err}), 400
-    url, err = orgs.set_icon(org_id, png)
+    url, err = orgs.set_icon(org_id, png, request.form.get("kind") or "main")
     if err: return jsonify({"error": err}), 400
     return jsonify({"ok": True, "icon_url": url})
 
