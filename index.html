@@ -69,6 +69,9 @@
   .list-time { font-size: 11px; color: #7e8b99; }
   .badge-unread { background: #5b8bff; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; min-width: 20px; text-align: center; }
   .verified { color: #5b8bff; font-size: 14px; }
+  .org-badge { width: 16px; height: 16px; vertical-align: -3px; margin-left: 3px; border-radius: 4px; object-fit: contain; }
+  .org-note { font-size: 13px; color: #7e8b99; margin-top: 6px; text-align: center; }
+  .org-note b { color: inherit; font-weight: 600; }
   .role-icon { font-size: 13px; }
   .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #4a5568; text-align: center; padding: 40px; font-size: 14px; line-height: 1.6; }
 
@@ -530,7 +533,8 @@
     <div class="profile-screen">
       <div class="profile-top">
         <div class="profile-big-avatar" id="profile-avatar">D</div>
-        <div class="profile-name"><span id="profile-name">Имя</span></div>
+        <div class="profile-name"><span id="profile-name">Имя</span><span id="profile-verified"></span></div>
+        <div class="org-note" id="profile-org-note"></div>
         <div class="profile-status" id="profile-status">@username</div>
       </div>
       
@@ -596,7 +600,9 @@
     <div class="profile-screen">
       <div class="profile-top">
         <div class="profile-big-avatar" id="user-avatar">D</div>
-        <div class="profile-name"><span id="user-name">Имя</span><span id="user-verified" style="display:none;color:#5b8bff;font-size:20px;">✓</span></div>
+        <div class="profile-name"><span id="user-name">Имя</span><span id="user-verified" style="display:none;color:#5b8bff;font-size:20px;">✓</span><span id="user-orgs"></span></div>
+        <div class="org-note" id="user-org-note"></div>
+        <div id="user-org-actions" style="text-align:center;margin-top:8px;"></div>
         <div class="profile-status" id="user-status">@username</div>
       </div>
       
@@ -629,7 +635,9 @@
     <div class="ch-info-screen">
       <div class="ch-info-top">
         <div class="ch-info-avatar" id="ch-info-avatar">📢</div>
-        <div class="ch-info-name" id="ch-info-name">Канал</div>
+        <div class="ch-info-name"><span id="ch-info-name">Канал</span><span id="ch-info-orgs"></span></div>
+        <div class="org-note" id="ch-info-org-note"></div>
+        <div id="ch-info-org-actions" style="text-align:center;margin-top:6px;"></div>
         <div class="ch-info-username" id="ch-info-username">@username</div>
         <div class="ch-info-type" id="ch-info-type">📢 Публичный</div>
         <div class="ch-info-subs" id="ch-info-subs">0 подписчиков</div>
@@ -775,6 +783,7 @@
       <button class="admin-tab" data-tab="gaming" id="admin-tab-gaming" style="display:none;">🎰 Кейсы @Gaming</button>
       <button class="admin-tab" data-tab="gold" id="admin-tab-gold" style="display:none;">🪙 Голда</button>
       <button class="admin-tab" data-tab="tgame" id="admin-tab-tgame" style="display:none;">🎮 Игра</button>
+      <button class="admin-tab" data-tab="orgs" id="admin-tab-orgs" style="display:none;">🏢 Организации</button>
       <button class="admin-tab" data-tab="game" id="admin-tab-game" style="display:none;">🍂 Призы турнира</button>
     </div>
     <div class="search-bar"><input type="text" id="admin-search" placeholder="Поиск по @username или email"></div>
@@ -1043,7 +1052,8 @@ function adminLookupName(userId) {
 }
 function initial(name) { return (name && name[0] ? name[0] : "?").toUpperCase(); }
 function roleIcon(role) { return role === "owner" ? '<span class="role-icon">👑</span>' : role === "developer" ? '<span class="role-icon">⚡</span>' : role === "moderator" ? '<span class="role-icon">🛡️</span>' : ""; }
-function verifiedMark(v) { return v ? '<span class="verified">✓</span>' : ""; }
+function orgBadges(orgs) { return (orgs || []).map(o => o.icon_url ? '<img class="org-badge" src="' + escapeAttr(o.icon_url) + '" title="Верифицирован организацией «' + escapeAttr(o.name) + '»" alt="">' : "").join(""); }
+function verifiedMark(v, orgs) { return (v ? '<span class="verified">✓</span>' : "") + orgBadges(orgs); }
 function fmtTime(iso) { if (!iso) return ""; const d = new Date(iso); const diff = (Date.now() - d) / 1000; if (diff < 60) return "сейчас"; if (diff < 3600) return Math.floor(diff / 60) + " мин"; return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }); }
 function statusText(u) { if (!u) return "—"; if (u.is_online) return "онлайн"; if (u.last_seen) { const d = new Date(u.last_seen); const diff = (Date.now() - d) / 1000; if (diff < 60) return "был(а) только что"; if (diff < 3600) return "был(а) " + Math.floor(diff / 60) + " мин назад"; if (diff < 86400) return "был(а) " + Math.floor(diff / 3600) + " ч назад"; return "был(а) " + d.toLocaleDateString("ru-RU"); } return "не в сети"; }
 function fmtSize(bytes) { if (bytes < 1024) return bytes + " Б"; if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " КБ"; return (bytes / 1048576).toFixed(2) + " МБ"; }
@@ -1222,7 +1232,7 @@ async function loadList() {
     const shown = data.items.filter(i => !!i.archived === (listView === "archive"));
     // Список опрашивается каждые 8 с. Если на экране ничего не изменилось, не перерисовываем: иначе видео-аватарки
     // создаются заново, моргают синим фоном и начинают проигрываться с начала.
-    const sig = listView + "|" + JSON.stringify(data.items.map(i => { const u = i.other_user || {}; return [i.type, i.chat_id, i.id, i.name, i.avatar_url, u.id, u.first_name, u.username, u.avatar_url, u.is_online, u.role, u.verified, i.last_message, i.last_message_type, i.last_message_at, i.unread_count, i.subscribers_count, i.channel_type, !!i.archived]; }));
+    const sig = listView + "|" + JSON.stringify(data.items.map(i => { const u = i.other_user || {}; return [i.type, i.chat_id, i.id, i.name, i.avatar_url, u.id, u.first_name, u.username, u.avatar_url, u.is_online, u.role, u.verified, (u.orgs || []).map(o => o.id + o.icon_url).join(), i.last_message, i.last_message_type, i.last_message_at, i.unread_count, i.subscribers_count, i.channel_type, !!i.archived]; }));
     if (sig === lastListSig && box.childElementCount > 0) return;
     lastListSig = sig;
     box.innerHTML = "";
@@ -1256,7 +1266,7 @@ async function loadList() {
         const last = item.last_message_type === "photo" ? "📷 Фото" : item.last_message_type === "file" ? "📎 Файл" : (lastText || "Нет сообщений");
         el.innerHTML = ''; el.appendChild(av);
         const info = document.createElement("div"); info.className = "list-info";
-        info.innerHTML = '<div class="list-name">' + escapeHtml(name) + roleIcon(u.role) + verifiedMark(u.verified) + '</div><div class="list-last">' + escapeHtml(last) + '</div>';
+        info.innerHTML = '<div class="list-name">' + escapeHtml(name) + roleIcon(u.role) + verifiedMark(u.verified, u.orgs) + '</div><div class="list-last">' + escapeHtml(last) + '</div>';
         el.appendChild(info);
         const meta = document.createElement("div"); meta.className = "list-meta";
         meta.innerHTML = '<div class="list-time">' + fmtTime(item.last_message_at) + '</div>' + (item.unread_count > 0 ? '<div class="badge-unread">' + item.unread_count + '</div>' : '');
@@ -1270,7 +1280,7 @@ async function loadList() {
         else av.textContent = item.channel_type === "secret" ? "🌍" : "📢";
         el.innerHTML = ''; el.appendChild(av);
         const info = document.createElement("div"); info.className = "list-info";
-        info.innerHTML = '<div class="list-name">' + escapeHtml(item.name) + '</div><div class="list-last">' + (item.subscribers_count || 0) + ' подписчиков</div>';
+        info.innerHTML = '<div class="list-name">' + escapeHtml(item.name) + orgBadges(item.orgs) + '</div><div class="list-last">' + (item.subscribers_count || 0) + ' подписчиков</div>';
         el.appendChild(info);
         el.onclick = () => openChannel(item.channel_id);
       }
@@ -1286,7 +1296,7 @@ async function openChat(chatId, otherUser) {
   document.getElementById("typing").style.display = "none";   // «печатает…» от прошлого чата не должно переезжать в новый
   lastMessageTime = "1970-01-01T00:00:00+00:00";
   const name = otherUser.name || otherUser.first_name || otherUser.username || "Чат";
-  document.getElementById("chat-title").innerHTML = escapeHtml(name) + (otherUser.is_group ? "" : roleIcon(otherUser.role) + verifiedMark(otherUser.verified));
+  document.getElementById("chat-title").innerHTML = escapeHtml(name) + (otherUser.is_group ? "" : roleIcon(otherUser.role) + verifiedMark(otherUser.verified, otherUser.orgs));
   document.getElementById("chat-status").textContent = otherUser.is_group ? "группа" : statusText(otherUser);
   document.getElementById("messages").innerHTML = '<div class="spinner"></div>';
   show("screen-chat");
@@ -1644,7 +1654,7 @@ async function openChannel(channelId) {
   try {
     const data = await api("/api/channels/" + channelId + "/messages");
     const ch = data.channel; currentChannel = ch;
-    document.getElementById("channel-title").textContent = ch.name;
+    document.getElementById("channel-title").innerHTML = escapeHtml(ch.name) + orgBadges(ch.orgs);
     document.getElementById("channel-status").textContent = (ch.type === "secret" ? "🌍 " : "📢 ") + (ch.subscribers_count || 0) + " подписчиков";
     document.getElementById("channel-input-area").style.display = (ch.can_post || ch.is_owner) ? "flex" : "none";
     renderChannelMessages(data.messages);
@@ -1765,6 +1775,8 @@ async function openChannelInfo(channelId) {
     if (ch.avatar_url) av.innerHTML = avatarHtml(ch.avatar_url);
     else av.textContent = ch.type === "secret" ? "🌍" : "📢";
     document.getElementById("ch-info-name").textContent = ch.name;
+    document.getElementById("ch-info-orgs").innerHTML = orgBadges(ch.orgs); orgNote("ch-info-org-note", ch.orgs, "channel");
+    orgActions(document.getElementById("ch-info-org-actions"), { type: "channel", id: ch.id, orgs: ch.orgs, stillOpen: () => currentChInfo === ch, onChange: (o) => { ch.orgs = o; document.getElementById("ch-info-orgs").innerHTML = orgBadges(o); orgNote("ch-info-org-note", o, "channel"); if (currentChannel && currentChannel.id === ch.id) { currentChannel.orgs = o; document.getElementById("channel-title").innerHTML = escapeHtml(currentChannel.name) + orgBadges(o); } } });
     document.getElementById("ch-info-username").textContent = ch.username ? "@" + ch.username : (ch.type === "secret" ? "🌍 Глобальный канал" : "Без юзернейма");
     document.getElementById("ch-info-type").textContent = ch.type === "secret" ? "🌍 Глобальный" : "📢 Публичный";
     document.getElementById("ch-info-subs").textContent = (ch.subscribers_count || 0) + " подписчиков";
@@ -1839,7 +1851,7 @@ document.getElementById("btn-ch-save").onclick = async () => {
       try { await api("/api/channels/" + currentChInfo.id + "/avatar", { method: "POST", body: fd }); } catch (e) { alert("Аватар: " + e.message); }
     }
     closeModal("modal-ch-edit"); alert("Канал обновлён!"); newAvatarFile = null; openChannelInfo(currentChInfo.id);
-    if (currentChannel) { currentChannel.name = name; document.getElementById("channel-title").textContent = name; }
+    if (currentChannel) { currentChannel.name = name; document.getElementById("channel-title").innerHTML = escapeHtml(name) + orgBadges(currentChannel.orgs); }
   } catch (e) { setError("modal-ch-edit-error", e.message); }
 };
 
@@ -2140,6 +2152,8 @@ async function openProfile() {
   if (currentUser.avatar_url) av.innerHTML = avatarHtml(currentUser.avatar_url) + '<div class="avatar-edit-hint">📷</div>';
   else av.innerHTML = initial(name) + '<div class="avatar-edit-hint">📷</div>';
   document.getElementById("profile-name").textContent = name;
+  document.getElementById("profile-verified").innerHTML = verifiedMark(currentUser.verified, currentUser.orgs);
+  orgNote("profile-org-note", currentUser.orgs, currentUser.org_kind);
   document.getElementById("profile-username-show").textContent = currentUser.username ? "@" + currentUser.username : "—";
   document.getElementById("profile-id").textContent = currentUser.id;
   document.getElementById("profile-role").textContent = currentUser.role;
@@ -2223,6 +2237,36 @@ document.getElementById("btn-save-bio").onclick = async () => {
   try { const data = await api("/api/profile/bio", { method: "POST", body: JSON.stringify({ bio }) }); currentUser = data.user; closeModal("modal-bio"); openProfile(); } catch (e) { setError("modal-bio-error", e.message); }
 };
 
+const ORG_KIND = { user: "Пользователь", bot: "Бот", channel: "Канал" };
+// Подпись «Бот верифицирован организацией «Название»» с серым значком организации в начале строки.
+function orgNote(id, orgs, kind) {
+  const el = document.getElementById(id); if (!el) return; el.innerHTML = "";
+  for (const o of (orgs || [])) {
+    const d = document.createElement("div"); d.style.cssText = "display:flex;align-items:center;justify-content:center;gap:6px;";
+    if (o.note_icon_url) { const im = document.createElement("img"); im.className = "org-badge"; im.style.cssText = "width:18px;height:18px;margin:0;"; im.src = o.note_icon_url; im.alt = ""; d.appendChild(im); }
+    const t = document.createElement("span"); t.appendChild(document.createTextNode((ORG_KIND[kind] || ORG_KIND.user) + " верифицирован организацией «"));
+    const b = document.createElement("b"); b.textContent = o.name; t.appendChild(b); t.appendChild(document.createTextNode("»")); d.appendChild(t); el.appendChild(d);
+  }
+}
+// Кнопки «Верифицировать от имени организации» (профиль пользователя/бота и информация о канале): только участникам организаций и owner Diogram.
+// target: { type: "user"|"channel", id, orgs, kind, stillOpen(), onChange(orgs) }
+async function orgActions(box, target) {
+  if (!box) return; box.innerHTML = "";
+  let mine = [];
+  try { mine = (await api("/api/orgs/my")).orgs || []; } catch (e) { return; }
+  if (!target.stillOpen()) return;
+  for (const o of mine) {
+    const has = (target.orgs || []).some(x => x.id === o.id);
+    const b = document.createElement("button"); b.className = "admin-btn"; b.style.margin = "2px";
+    b.textContent = (has ? "Снять значок «" : "Верифицировать «") + o.name + "»";
+    b.onclick = async () => {
+      b.disabled = true;
+      const body = { org_id: o.id, target_type: target.type, on: !has }; body[target.type === "channel" ? "channel_id" : "user_id"] = target.id;
+      try { const r = await api("/api/orgs/verify", { method: "POST", body: JSON.stringify(body) }); target.orgs = r.orgs; target.onChange(r.orgs); orgActions(box, target); } catch (e) { alert(e.message); b.disabled = false; }
+    };
+    box.appendChild(b);
+  }
+}
 async function openUserProfile(userId) {
   try {
     const data = await api("/api/users/" + userId);
@@ -2235,6 +2279,9 @@ async function openUserProfile(userId) {
     
     document.getElementById("user-name").textContent = name; 
     document.getElementById("user-verified").style.display = u.verified ? "inline" : "none";
+    document.getElementById("user-orgs").innerHTML = orgBadges(u.orgs);
+    orgNote("user-org-note", u.orgs, u.org_kind);
+    orgActions(document.getElementById("user-org-actions"), { type: "user", id: u.id, orgs: u.orgs, stillOpen: () => document.getElementById("user-id").textContent == String(u.id), onChange: (o) => { u.orgs = o; if (o.length && !u.org_kind) u.org_kind = "user"; document.getElementById("user-orgs").innerHTML = orgBadges(o); orgNote("user-org-note", o, u.org_kind); } });
     
     const statusEl = document.getElementById("user-status");
     if (u.banned) {
@@ -2475,6 +2522,7 @@ async function openAdmin() {
   document.getElementById("admin-tab-reserved").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-gold").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-tgame").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
+document.getElementById("admin-tab-orgs").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-gaming").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-game").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-captcha").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
@@ -2484,7 +2532,7 @@ async function openAdmin() {
 document.querySelectorAll(".admin-tab").forEach(tab => { tab.onclick = () => { document.querySelectorAll(".admin-tab").forEach(t => t.classList.remove("active")); tab.classList.add("active"); currentAdminTab = tab.dataset.tab; adminShowTab(); }; });
 function adminShowTab() {
   document.querySelector("#screen-admin > .search-bar").style.display = currentAdminTab === "users" ? "" : "none";
-  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else if (currentAdminTab === "game") loadAdminGame(); else if (currentAdminTab === "promo") loadAdminPromo(); else if (currentAdminTab === "captcha") loadAdminCaptcha(); else if (currentAdminTab === "gaming") loadAdminGaming(); else if (currentAdminTab === "gold") loadAdminGold(); else if (currentAdminTab === "tgame") loadAdminTgame(); else loadAdminReports();
+  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else if (currentAdminTab === "game") loadAdminGame(); else if (currentAdminTab === "promo") loadAdminPromo(); else if (currentAdminTab === "captcha") loadAdminCaptcha(); else if (currentAdminTab === "gaming") loadAdminGaming(); else if (currentAdminTab === "gold") loadAdminGold(); else if (currentAdminTab === "tgame") loadAdminTgame(); else if (currentAdminTab === "orgs") loadAdminOrgs(); else loadAdminReports();
 }
 
 async function loadAdminUsers() {
@@ -2513,7 +2561,7 @@ function renderAdminUsers(me, users) {
     } else if (me.role === "developer" && u.role !== "owner" && u.role !== "developer") {
       actions = (u.banned ? '<button class="admin-btn success" onclick="adminUnban(' + Number(u.id) + ')">Разбан</button>' : '<button class="admin-btn danger" onclick="adminOpenBan(' + Number(u.id) + ')">Бан</button>');
     }
-    el.innerHTML = '<div class="admin-info"><div class="admin-name">' + escapeHtml(name) + ' ' + roleTag + pdgTag + fpTag + bannedTag + verifiedMark(u.verified) + '</div><div class="admin-sub">ID ' + u.id + ' · @' + escapeHtml(u.username || "—") + ' · ' + parseFloat(u.balance || 0).toFixed(2) + ' Di<br>' + escapeHtml(u.email || "") + '</div></div><div class="admin-actions">' + actions + '</div>';
+    el.innerHTML = '<div class="admin-info"><div class="admin-name">' + escapeHtml(name) + ' ' + roleTag + pdgTag + fpTag + bannedTag + verifiedMark(u.verified, u.orgs) + '</div><div class="admin-sub">ID ' + u.id + ' · @' + escapeHtml(u.username || "—") + ' · ' + parseFloat(u.balance || 0).toFixed(2) + ' Di<br>' + escapeHtml(u.email || "") + '</div></div><div class="admin-actions">' + actions + '</div>';
     box.appendChild(el);
   }
 }
@@ -2664,6 +2712,45 @@ function tgGame() {
     if (!d.tasks.length) b.appendChild(goldEl("div", "Пока заданий нет", "font-size:13px;color:#7e8b99;"));
     for (const t of d.tasks) b.appendChild(goldEl("div", (t.done ? "✅ " : "▫️ ") + t.title + " · +" + t.gold + " голды · " + (t.kind === "daily" ? "раз в сутки" : "один раз"), "font-size:13px;margin-top:4px;" + (t.done ? "opacity:.6;" : "")));
   }).catch(e => { b.innerHTML = ""; b.appendChild(goldEl("div", "Ошибка: " + e.message, "color:#ff6b6b;")); });
+}
+async function loadAdminOrgs() {
+  const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
+  const mk = (label, fn) => { const b = document.createElement("button"); b.className = "admin-btn"; b.style.marginRight = "6px"; b.textContent = label; b.onclick = fn; return b; };
+  const post = async (path, body) => { try { await api(path, { method: "POST", body: JSON.stringify(body) }); loadAdminOrgs(); } catch (e) { alert(e.message); } };
+  try {
+    const d = await api("/api/admin/orgs"); box.innerHTML = "";
+    const top = document.createElement("div"); top.className = "report-card";
+    top.appendChild(goldEl("div", "Организация верифицирует пользователей и ботов своим значком (рядом с обычной галочкой). Верифицировать могут владелец организации и её сотрудники, а также ты.", "font-size:13px;color:#7e8b99;"));
+    const nn = goldInput("Название новой организации", "text", 60); top.appendChild(nn);
+    top.appendChild(mk("Создать", () => post("/api/admin/orgs/save", { name: nn.value })));
+    top.lastChild.style.marginTop = "8px"; box.appendChild(top);
+    for (const o of d.orgs) {
+      const card = document.createElement("div"); card.className = "report-card";
+      const head = document.createElement("div"); head.style.cssText = "display:flex;align-items:center;gap:8px;font-weight:600;";
+      if (o.icon_url) { const im = document.createElement("img"); im.className = "org-badge"; im.style.cssText = "width:28px;height:28px;margin:0;"; im.src = o.icon_url; head.appendChild(im); }
+      head.appendChild(document.createTextNode(o.name + " · верифицировано: " + o.verified_count)); card.appendChild(head);
+      for (const [kind, label, cur] of [["main", "Значок у названия (синий)", o.icon_url], ["note", "Значок в подписи «верифицирован организацией» (серый)", o.note_icon_url]]) {
+        const row = goldEl("div", label + (cur ? " · загружен" : " · нет"), "margin-top:10px;font-size:13px;");
+        const file = document.createElement("input"); file.type = "file"; file.accept = "image/png,image/webp,image/jpeg,image/gif"; file.style.cssText = "display:block;margin-top:4px;"; row.appendChild(file);
+        row.appendChild(mk("Загрузить", async () => { if (!file.files[0]) return alert("Выбери картинку"); const fd = new FormData(); fd.append("org_id", o.id); fd.append("kind", kind); fd.append("file", file.files[0]); try { await api("/api/admin/orgs/icon", { method: "POST", body: fd }); loadAdminOrgs(); } catch (e) { alert(e.message); } }));
+        row.lastChild.style.marginTop = "4px"; card.appendChild(row);
+      }
+      card.appendChild(goldEl("div", "Участники (могут верифицировать)", "margin-top:10px;font-size:13px;font-weight:600;"));
+      if (!o.members.length) card.appendChild(goldEl("div", "Пока нет", "font-size:13px;color:#7e8b99;"));
+      for (const m of o.members) {
+        const row = goldEl("div", m.user_name + " · " + (m.role === "owner" ? "владелец организации" : "сотрудник") + " ", "font-size:13px;margin-top:4px;");
+        row.appendChild(mk("Убрать", () => post("/api/admin/orgs/member", { org_id: o.id, user_id: m.user_id, role: null }))); card.appendChild(row);
+      }
+      const uid = goldInput("ID пользователя", "number"); uid.style.width = "40%"; const rs = document.createElement("select"); rs.style.marginLeft = "6px";
+      for (const [v, l] of [["staff", "сотрудник"], ["owner", "владелец организации"]]) { const op = document.createElement("option"); op.value = v; op.textContent = l; rs.appendChild(op); }
+      card.appendChild(uid); card.appendChild(rs);
+      const addb = mk("Добавить", () => { const id = parseInt(uid.value, 10); if (!id) return alert("Укажи ID"); post("/api/admin/orgs/member", { org_id: o.id, user_id: id, role: rs.value }); }); addb.style.marginLeft = "6px"; card.appendChild(addb);
+      const ren = goldInput("Новое название", "text", 60); ren.value = o.name; card.appendChild(ren);
+      card.appendChild(mk("Переименовать", () => post("/api/admin/orgs/save", { id: o.id, name: ren.value }))); card.lastChild.style.marginTop = "6px";
+      card.appendChild(mk("Удалить организацию", () => { if (confirm("Удалить «" + o.name + "»? Значок пропадёт у всех, кого она верифицировала.")) post("/api/admin/orgs/delete", { id: o.id }); })); card.lastChild.style.marginTop = "6px";
+      box.appendChild(card);
+    }
+  } catch (e) { box.innerHTML = ""; const er = document.createElement("div"); er.className = "empty-state"; er.textContent = e.message; box.appendChild(er); }
 }
 async function loadAdminTgame() {
   const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';

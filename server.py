@@ -68,6 +68,16 @@ import game_world
 import gaming
 import gold
 import tg_game
+import orgs
+
+_flask_jsonify = jsonify
+def jsonify(*args, **kwargs):
+    """Как flask.jsonify, но каждому пользователю в ответе дописывает orgs (значки организаций, orgs.annotate)."""
+    try:
+        if len(args) == 1 and not kwargs: orgs.annotate(args[0])
+        elif kwargs and not args: orgs.annotate(kwargs)
+    except Exception as e: print(f"[orgs] annotate {e!r}")
+    return _flask_jsonify(*args, **kwargs)
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "").strip()
 JWT_ALGO = "HS256"
@@ -1581,6 +1591,83 @@ def api_admin_tg_unlink():
     if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
     uid = to_int(json_body().get("user_id"))
     return jsonify({"ok": bool(uid) and tg_game.unlink(uid)})
+
+@app.route("/api/orgs/my")
+def api_orgs_my():
+    """Организации, от имени которых текущий пользователь может верифицировать (owner Diogram: все)."""
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    if user.get("role") == "owner":
+        return jsonify({"orgs": [{"id": o["id"], "name": o["name"], "icon_url": o.get("icon_url"), "note_icon_url": o.get("note_icon_url")} for o in orgs._fresh()["orgs"].values()]})
+    return jsonify({"orgs": orgs.my_orgs(user["id"])})
+
+@app.route("/api/orgs/verify", methods=["POST"])
+def api_orgs_verify():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    if not check_rate_limit(f"orgverify_{user['id']}", 60, 60): return jsonify({"error": "Слишком часто. Подожди минуту."}), 429
+    d = json_body(); org_id = to_int(d.get("org_id"))
+    ttype = d.get("target_type", "user")
+    if ttype not in orgs.TARGETS: return jsonify({"error": "target_type: user или channel"}), 400
+    target_id = to_int(d.get("channel_id" if ttype == "channel" else "user_id"))
+    if not org_id or not target_id: return jsonify({"error": "Нужны org_id и " + ("channel_id" if ttype == "channel" else "user_id")}), 400
+    if not orgs.can_verify(user, org_id): return jsonify({"error": "Нет доступа"}), 403
+    if ttype == "channel":
+        if not get_channel_by_id(target_id): return jsonify({"error": "Канал не найден"}), 404
+    elif not get_user_by_id(target_id): return jsonify({"error": "Юзер не найден"}), 404
+    if not orgs.set_verified(org_id, ttype, target_id, bool(d.get("on")), user["id"]): return jsonify({"error": "Не удалось сохранить"}), 500
+    return jsonify({"ok": True, "orgs": orgs.marks_for(target_id, ttype)})
+
+@app.route("/api/admin/orgs")
+def api_admin_orgs():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    try: lst = orgs.list_admin()
+    except Exception as e:
+        print(f"[orgs] admin {e!r}"); return jsonify({"error": "Не удалось загрузить организации (применена ли миграция?)"}), 500
+    users = get_users_by_ids(list({m["user_id"] for o in lst for m in o["members"]}))
+    nm = lambda uid: (lambda u: (f"@{u['username']}" if u.get("username") else (u.get("first_name") or "без имени")) + f" (ID {uid})")(users.get(uid) or {})
+    for o in lst:
+        for m in o["members"]: m["user_name"] = nm(m["user_id"])
+    return jsonify({"orgs": lst})
+
+@app.route("/api/admin/orgs/save", methods=["POST"])
+def api_admin_orgs_save():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    d = json_body()
+    row, err = orgs.save_org(to_int(d.get("id")), d.get("name"))
+    if err: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "org": row})
+
+@app.route("/api/admin/orgs/icon", methods=["POST"])
+def api_admin_orgs_icon():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    org_id = to_int(request.form.get("org_id"))
+    if not org_id: return jsonify({"error": "org_id обязателен"}), 400
+    f = request.files.get("file")
+    if not f or not f.filename: return jsonify({"error": "Файл не передан"}), 400
+    png, err = orgs.process_icon(f.read(orgs.ICON_MAX_BYTES + 1))
+    if err: return jsonify({"error": err}), 400
+    url, err = orgs.set_icon(org_id, png, request.form.get("kind") or "main")
+    if err: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "icon_url": url})
+
+@app.route("/api/admin/orgs/delete", methods=["POST"])
+def api_admin_orgs_delete():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    org_id = to_int(json_body().get("id"))
+    return jsonify({"ok": bool(org_id) and orgs.delete_org(org_id)})
+
+@app.route("/api/admin/orgs/member", methods=["POST"])
+def api_admin_orgs_member():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    d = json_body(); org_id = to_int(d.get("org_id")); uid = to_int(d.get("user_id"))
+    if not org_id or not uid: return jsonify({"error": "Нужны org_id и user_id"}), 400
+    role = d.get("role")
+    if role is not None and not isinstance(role, str): return jsonify({"error": "Неверная роль"}), 400
+    if role is not None and not get_user_by_id(uid): return jsonify({"error": "Юзер не найден"}), 404
+    err = orgs.set_member(org_id, uid, role)
+    if err: return jsonify({"error": err}), 400
+    return jsonify({"ok": True})
 
 @app.route("/api/gaming/state")
 def api_gaming_state():
