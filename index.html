@@ -72,6 +72,9 @@
   .org-badge { width: 16px; height: 16px; vertical-align: -3px; margin-left: 3px; border-radius: 4px; object-fit: contain; }
   .org-note { font-size: 13px; color: #7e8b99; margin-top: 6px; text-align: center; }
   .org-note b { color: inherit; font-weight: 600; }
+  .org-banner { display: none; flex-direction: column; gap: 4px; align-items: center; padding: 8px 12px; background: #0e1621; }
+  .org-banner > div { display: flex; align-items: center; gap: 6px; max-width: 100%; padding: 6px 14px; border-radius: 16px; background: #17212b; color: #8fa0b3; font-size: 13px; }
+  .org-banner b { color: #c5d0dc; font-weight: 600; }
   .role-icon { font-size: 13px; }
   .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #4a5568; text-align: center; padding: 40px; font-size: 14px; line-height: 1.6; }
 
@@ -476,6 +479,7 @@
       </div>
       <button class="header-icon" id="btn-chat-report">⚠️</button>
     </div>
+    <div class="org-banner" id="chat-org-banner"></div>
     <div class="messages" id="messages"></div>
     <div class="typing-indicator" id="typing" style="display:none;">печатает...</div>
     <div class="photo-preview" id="photo-preview">
@@ -501,6 +505,7 @@
       </div>
       <button class="header-icon" id="btn-channel-report">⚠️</button>
     </div>
+    <div class="org-banner" id="channel-org-banner"></div>
     <div class="messages" id="channel-messages"></div>
     <div class="input-area" id="channel-input-area" style="display:none;">
       <button class="input-btn" id="btn-channel-attach">📎</button>
@@ -1299,12 +1304,13 @@ async function openChat(chatId, otherUser) {
   document.getElementById("chat-title").innerHTML = escapeHtml(name) + (otherUser.is_group ? "" : roleIcon(otherUser.role) + verifiedMark(otherUser.verified, otherUser.orgs));
   document.getElementById("chat-status").textContent = otherUser.is_group ? "группа" : statusText(otherUser);
   document.getElementById("messages").innerHTML = '<div class="spinner"></div>';
+  orgBanner("chat-org-banner", otherUser.is_group ? [] : otherUser.orgs, otherUser.org_kind);
   show("screen-chat");
   try {
     const data = await api("/api/chats/" + chatId + "/messages");
     setReactions(data.reactions, data.rv);
     renderMessages(data.messages);
-    if (data.other_user) { currentChat.other = data.other_user; document.getElementById("chat-status").textContent = data.other_user.is_group ? "группа" : statusText(data.other_user); }
+    if (data.other_user) { currentChat.other = data.other_user; if (!data.other_user.is_group) { document.getElementById("chat-title").innerHTML = escapeHtml(name) + roleIcon(data.other_user.role) + verifiedMark(data.other_user.verified, data.other_user.orgs); orgBanner("chat-org-banner", data.other_user.orgs, data.other_user.org_kind); } document.getElementById("chat-status").textContent = data.other_user.is_group ? "группа" : statusText(data.other_user); }
     if (data.messages.length) lastMessageTime = data.messages[data.messages.length - 1].created_at;
     startChatPolling();
   } catch (e) { if (e.message !== "banned") document.getElementById("messages").innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
@@ -1650,11 +1656,11 @@ document.getElementById("btn-chat-report").onclick = () => { if (!currentChat) r
 async function openChannel(channelId) {
   currentChannel = { id: channelId };
   lastChannelMessageTime = "1970-01-01T00:00:00+00:00";
-  document.getElementById("channel-messages").innerHTML = '<div class="spinner"></div>'; show("screen-channel");
+  document.getElementById("channel-messages").innerHTML = '<div class="spinner"></div>'; orgBanner("channel-org-banner", []); show("screen-channel");
   try {
     const data = await api("/api/channels/" + channelId + "/messages");
     const ch = data.channel; currentChannel = ch;
-    document.getElementById("channel-title").innerHTML = escapeHtml(ch.name) + orgBadges(ch.orgs);
+    document.getElementById("channel-title").innerHTML = escapeHtml(ch.name) + orgBadges(ch.orgs); orgBanner("channel-org-banner", ch.orgs, "channel");
     document.getElementById("channel-status").textContent = (ch.type === "secret" ? "🌍 " : "📢 ") + (ch.subscribers_count || 0) + " подписчиков";
     document.getElementById("channel-input-area").style.display = (ch.can_post || ch.is_owner) ? "flex" : "none";
     renderChannelMessages(data.messages);
@@ -1776,7 +1782,7 @@ async function openChannelInfo(channelId) {
     else av.textContent = ch.type === "secret" ? "🌍" : "📢";
     document.getElementById("ch-info-name").textContent = ch.name;
     document.getElementById("ch-info-orgs").innerHTML = orgBadges(ch.orgs); orgNote("ch-info-org-note", ch.orgs, "channel");
-    orgActions(document.getElementById("ch-info-org-actions"), { type: "channel", id: ch.id, orgs: ch.orgs, stillOpen: () => currentChInfo === ch, onChange: (o) => { ch.orgs = o; document.getElementById("ch-info-orgs").innerHTML = orgBadges(o); orgNote("ch-info-org-note", o, "channel"); if (currentChannel && currentChannel.id === ch.id) { currentChannel.orgs = o; document.getElementById("channel-title").innerHTML = escapeHtml(currentChannel.name) + orgBadges(o); } } });
+    orgActions(document.getElementById("ch-info-org-actions"), { type: "channel", id: ch.id, orgs: ch.orgs, stillOpen: () => currentChInfo === ch, onChange: (o) => { ch.orgs = o; document.getElementById("ch-info-orgs").innerHTML = orgBadges(o); orgNote("ch-info-org-note", o, "channel"); if (currentChannel && currentChannel.id === ch.id) { currentChannel.orgs = o; document.getElementById("channel-title").innerHTML = escapeHtml(currentChannel.name) + orgBadges(o); orgBanner("channel-org-banner", o, "channel"); } } });
     document.getElementById("ch-info-username").textContent = ch.username ? "@" + ch.username : (ch.type === "secret" ? "🌍 Глобальный канал" : "Без юзернейма");
     document.getElementById("ch-info-type").textContent = ch.type === "secret" ? "🌍 Глобальный" : "📢 Публичный";
     document.getElementById("ch-info-subs").textContent = (ch.subscribers_count || 0) + " подписчиков";
@@ -2246,6 +2252,18 @@ function orgNote(id, orgs, kind) {
     if (o.note_icon_url) { const im = document.createElement("img"); im.className = "org-badge"; im.style.cssText = "width:18px;height:18px;margin:0;"; im.src = o.note_icon_url; im.alt = ""; d.appendChild(im); }
     const t = document.createElement("span"); t.appendChild(document.createTextNode((ORG_KIND[kind] || ORG_KIND.user) + " верифицирован организацией «"));
     const b = document.createElement("b"); b.textContent = o.name; t.appendChild(b); t.appendChild(document.createTextNode("»")); d.appendChild(t); el.appendChild(d);
+  }
+}
+// Плашка под шапкой чата или канала, как в Telegram: «Аккаунт верифицирован организацией «Название».» — чтобы было видно, с кем общаешься.
+const ORG_BANNER_KIND = { user: "Аккаунт", bot: "Бот", channel: "Канал" };
+function orgBanner(id, orgs, kind) {
+  const el = document.getElementById(id); if (!el) return; el.innerHTML = "";
+  el.style.display = (orgs && orgs.length) ? "flex" : "none";
+  for (const o of (orgs || [])) {
+    const d = document.createElement("div");
+    if (o.note_icon_url) { const im = document.createElement("img"); im.className = "org-badge"; im.style.cssText = "width:18px;height:18px;margin:0;flex:none;"; im.src = o.note_icon_url; im.alt = ""; d.appendChild(im); }
+    const t = document.createElement("span"); t.appendChild(document.createTextNode((ORG_BANNER_KIND[kind] || ORG_BANNER_KIND.user) + " верифицирован организацией «"));
+    const b = document.createElement("b"); b.textContent = o.name; t.appendChild(b); t.appendChild(document.createTextNode("».")); d.appendChild(t); el.appendChild(d);
   }
 }
 // Кнопки «Верифицировать от имени организации» (профиль пользователя/бота и информация о канале): только участникам организаций и owner Diogram.
