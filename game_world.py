@@ -225,16 +225,17 @@ class Hub:
             if p and lb.state != "ended": lb.event(f"{p.name} вышел")
 
     def chat(self, uid, text):
-        """Сообщение в чат своего лобби. Возвращает (ok, ошибка)."""
+        """Сообщение в чат своего лобби. Возвращает (ok, ошибка, (лобби, имя, роль, текст))."""
         lb = self.lobby_of(uid)
-        if not lb: return False, "Ты не в лобби"
+        if not lb: return False, "Ты не в лобби", None
         text = " ".join(str(text or "").replace("\u2063", "").split())[:CHAT_MAX_LEN]
-        if not text: return False, "Пустое сообщение"
+        if not text: return False, "Пустое сообщение", None
         with lb.lock:
             p = lb.players.get(uid)
-            if not p: return False, "Ты не в лобби"
+            if not p: return False, "Ты не в лобби", None
             lb.say(p, text)
-        return True, None
+            rec = (lb.num, p.name, p.role, text)
+        return True, None, rec
 
     def lobby_of(self, uid):
         with self.lock:
