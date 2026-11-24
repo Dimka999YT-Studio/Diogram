@@ -143,6 +143,12 @@
   .gp-hud .gp-chip { background: rgba(14,22,33,0.72); border-radius: 10px; padding: 5px 9px; font-weight: 700; }
   .gp-hud .gp-spacer { flex: 1; }
   .gp-btn { pointer-events: auto; border: 0; border-radius: 10px; padding: 6px 10px; background: rgba(14,22,33,0.8); color: #fff; font-weight: 700; cursor: pointer; }
+  .gp-chat { position: absolute; left: 10px; right: 10px; bottom: 150px; max-width: 360px; pointer-events: none; font-size: 13px; color: #fff; text-shadow: 0 1px 2px #000; line-height: 1.35; }
+  .gp-chat div { background: rgba(14,22,33,0.6); border-radius: 8px; padding: 3px 8px; margin-top: 3px; width: fit-content; max-width: 100%; word-break: break-word; transition: opacity .6s; }
+  .gp-chat b { color: #8fd0ff; } .gp-chat b.sk { color: #ffb36b; } .gp-chat b.gh { color: #b9b9c9; }
+  .gp-chatbar { position: absolute; left: 10px; right: 10px; top: 72px; z-index: 5; display: none; gap: 6px; max-width: 420px; }
+  .gp-chatbar input { flex: 1; min-width: 0; border: 0; border-radius: 10px; padding: 10px 12px; font-size: 16px; background: rgba(14,22,33,0.92); color: #fff; outline: none; }
+  .gp-chatbar button { flex: none; }
   .gp-log { position: absolute; left: 10px; top: 80px; font-size: 12px; color: #fff; text-shadow: 0 1px 2px #000; pointer-events: none; max-width: 70%; line-height: 1.4; }
   .gp-act { position: absolute; right: 16px; bottom: 24px; padding: 16px 18px; border: 0; border-radius: 50%; background: #ff9f43; color: #1a1206; font-weight: 800; font-size: 14px; display: none; cursor: pointer; }
   .gp-center { position: absolute; left: 16px; right: 16px; top: 25%; background: rgba(14,22,33,0.9); border-radius: 16px; padding: 16px; text-align: center; color: #fff; display: none; }
@@ -738,9 +744,12 @@
       <span class="gp-chip" id="gp-time"></span>
       <span class="gp-spacer"></span>
       <span class="gp-chip" id="gp-clouds"></span>
+      <button class="gp-btn" id="gp-chat-btn" title="Чат лобби">💬</button>
     </div>
     <div class="gp-hud" style="top:36px;"><span class="gp-chip" id="gp-role"></span><span class="gp-chip" id="gp-hp" style="display:none;"></span><span class="gp-chip" id="gp-boxes" style="display:none;"></span></div>
     <div class="gp-log" id="gp-log"></div>
+    <div class="gp-chat" id="gp-chat"></div>
+    <form class="gp-chatbar" id="gp-chatbar" autocomplete="off"><input id="gp-chat-input" maxlength="100" placeholder="Сообщение лобби…" enterkeyhint="send"><button class="gp-btn" type="submit">➤</button></form>
     <button class="gp-act" id="gp-act">🔨<br>Ломать</button>
     <div class="gp-center" id="gp-center"></div>
   </div>
@@ -3041,7 +3050,7 @@ window.addEventListener("resize", () => { if (GR.on) grResize(); });
 async function gameRunStart() {
   show("screen-gameplay"); grResize();
   GR.map = GR.map || await api("/api/game/map");
-  GR.on = true; GR.st = null; GR.others.clear(); GR.keys = {}; GR.joy = null; GR.brk = 0; GR.me = null; const id = ++GR.loopId;
+  GRC.seen = 0; document.getElementById("gp-chat").textContent = ""; grChatClose(); GR.on = true; GR.st = null; GR.others.clear(); GR.keys = {}; GR.joy = null; GR.brk = 0; GR.me = null; const id = ++GR.loopId;
   document.getElementById("gp-center").style.display = "none"; document.getElementById("gp-log").textContent = "";
   grLoop(id); cancelAnimationFrame(GR.raf); GR.raf = requestAnimationFrame(grDraw);
 }
@@ -3063,6 +3072,28 @@ async function grLoop(id) {
     await new Promise(r => setTimeout(r, Math.max(30, 280 - (Date.now() - t0))));
   }
 }
+const GRC = { seen: 0, shown: [], open: false };
+function grChatRender(list) {
+  const box = document.getElementById("gp-chat"); if (!box) return;
+  const fresh = list.filter(m => m.id > GRC.seen);
+  if (!fresh.length) { const now = Date.now(); for (const d of [...box.children]) if (now - Number(d.dataset.t) > 12000 && !GRC.open) d.style.opacity = "0"; return; }
+  for (const m of fresh) {
+    GRC.seen = Math.max(GRC.seen, m.id);
+    const d = document.createElement("div"); d.dataset.t = String(Date.now());
+    const b = document.createElement("b"); b.className = m.role === "seeker" ? "sk" : (m.caught ? "gh" : ""); b.textContent = (m.role === "seeker" ? "🔦 " : "") + m.name + ": ";
+    d.appendChild(b); d.appendChild(document.createTextNode(m.text)); box.appendChild(d);
+  }
+  while (box.children.length > 5) box.removeChild(box.firstChild);
+}
+function grChatOpen() { GRC.open = true; const bar = document.getElementById("gp-chatbar"); bar.style.display = "flex"; document.getElementById("gp-chat-input").focus(); for (const d of document.getElementById("gp-chat").children) d.style.opacity = "1"; }
+function grChatClose() { GRC.open = false; const bar = document.getElementById("gp-chatbar"); bar.style.display = "none"; const i = document.getElementById("gp-chat-input"); i.blur(); GR.keys = {}; }
+document.getElementById("gp-chat-btn").addEventListener("click", () => { GRC.open ? grChatClose() : grChatOpen(); });
+document.getElementById("gp-chatbar").addEventListener("submit", async (e) => {
+  e.preventDefault(); const i = document.getElementById("gp-chat-input"); const text = i.value.trim(); if (!text) { grChatClose(); return; }
+  i.value = "";
+  try { await api("/api/game/chat", { method: "POST", body: JSON.stringify({ text }) }); } catch (er) { showToast(er.message || "Не отправилось"); }
+  grChatClose();
+});
 function grInput() {
   let x = 0, y = 0; const k = GR.keys;
   if (k.ArrowLeft || k.KeyA) x -= 1; if (k.ArrowRight || k.KeyD) x += 1; if (k.ArrowUp || k.KeyW) y -= 1; if (k.ArrowDown || k.KeyS) y += 1;
@@ -3079,6 +3110,7 @@ function grApply(st) {
     GR.others.set(o.id, { id: o.id, name: o.name, role: o.role, caught: o.caught, vx: o.vx || 0, vy: o.vy || 0, tx: o.x, ty: o.y, x: prev ? prev.x : o.x, y: prev ? prev.y : o.y, t: performance.now() });
   }
   for (const id of [...GR.others.keys()]) if (!seen.has(id)) GR.others.delete(id);
+  grChatRender(st.chat || []);
   grHud(st);
 }
 function grHud(st) {
@@ -3122,7 +3154,7 @@ async function grBackToLobbies(msg) {
   gameView = "menu"; show("screen-game"); gameRender();
 }
 document.getElementById("gp-exit").onclick = () => { if (GR.st && GR.st.lobby.state === "playing" && !confirm("Выйти из раунда? Облачки раунда пропадут.")) return; grBackToLobbies(); };
-window.addEventListener("keydown", (e) => { if (!GR.on) return; if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space"].includes(e.code)) e.preventDefault(); GR.keys[e.code] = true; if (e.code === "KeyE" || e.code === "Space") grTryBreak(); });
+window.addEventListener("keydown", (e) => { if (!GR.on) return; if (e.target && e.target.id === "gp-chat-input") { if (e.code === "Escape") grChatClose(); return; } if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space"].includes(e.code)) e.preventDefault(); GR.keys[e.code] = true; if (e.code === "KeyE" || e.code === "Space") grTryBreak(); });
 window.addEventListener("keyup", (e) => { GR.keys[e.code] = false; });
 function grNearBox() {
   if (!GR.st || !GR.me || GR.st.lobby.state !== "playing" || GR.st.me.role !== "hider" || GR.st.me.caught) return null;

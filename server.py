@@ -381,7 +381,7 @@ def get_current_user():
     return user
 
 # Частые безопасные запросы не должны сбрасывать кэш, всё остальное, что что-то меняет (профиль, бан, группы, покупки), — сбрасывает.
-CACHE_KEEP_PATHS = ("/api/send", "/api/typing", "/api/poll", "/api/game/tick")
+CACHE_KEEP_PATHS = ("/api/send", "/api/typing", "/api/poll", "/api/game/tick", "/api/game/chat")
 @app.after_request
 def invalidate_caches_on_write(resp):
     if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.path.startswith("/api/") \
@@ -1906,6 +1906,17 @@ def api_game_tick():
     if st is None: return jsonify({"in_lobby": False})
     st["in_lobby"] = True
     return jsonify(st)
+
+@app.route("/api/game/chat", methods=["POST"])
+def api_game_chat():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    uid = user["id"]
+    if not check_rate_limit(f"gamechat_burst_{uid}", 3, 4) or not check_rate_limit(f"gamechat_min_{uid}", 20, 60):
+        return jsonify({"error": "Слишком часто, подожди секунду"}), 429
+    ok, err = GAME_HUB.chat(uid, str_field(json_body(), "text")[:400])
+    if not ok: return jsonify({"error": err}), 400
+    return jsonify({"ok": True})
 
 @app.route("/api/game/leave", methods=["POST"])
 def api_game_leave():

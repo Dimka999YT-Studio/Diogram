@@ -31,6 +31,9 @@ IDLE_KICK = 15           # нет запросов дольше этого: иг
 ENDED_KEEP = 45          # сколько лобби с итогами живёт после конца раунда
 CLOUDS_ON_MAP = 9
 MAX_CLOUDS_PER_GAME = 10
+CHAT_MAX_LEN = 100       # символов в сообщении чата лобби
+CHAT_KEEP = 30           # сколько сообщений помнит лобби
+CHAT_SEND = 12           # сколько последних сообщений уходит игроку в каждом ответе
 WIN_BONUS = 1
 
 
@@ -121,10 +124,17 @@ class Lobby:
         self.ended_at = None
         self.events = []
         self.ev_id = 0
+        self.chat = []
+        self.chat_id = 0
         self.lock = threading.Lock()
 
     def event(self, text):
         self.ev_id += 1; self.events.append({"id": self.ev_id, "text": text}); self.events = self.events[-8:]
+
+    def say(self, p, text):
+        self.chat_id += 1
+        self.chat.append({"id": self.chat_id, "uid": p.uid, "name": p.name, "role": p.role, "caught": p.caught, "text": text})
+        self.chat = self.chat[-CHAT_KEEP:]
 
     def seekers(self): return [p for p in self.players.values() if p.role == "seeker"]
     def hiders(self): return [p for p in self.players.values() if p.role == "hider"]
@@ -213,6 +223,18 @@ class Hub:
         with lb.lock:
             p = lb.players.pop(uid, None)
             if p and lb.state != "ended": lb.event(f"{p.name} вышел")
+
+    def chat(self, uid, text):
+        """Сообщение в чат своего лобби. Возвращает (ok, ошибка)."""
+        lb = self.lobby_of(uid)
+        if not lb: return False, "Ты не в лобби"
+        text = " ".join(str(text or "").replace("\u2063", "").split())[:CHAT_MAX_LEN]
+        if not text: return False, "Пустое сообщение"
+        with lb.lock:
+            p = lb.players.get(uid)
+            if not p: return False, "Ты не в лобби"
+            lb.say(p, text)
+        return True, None
 
     def lobby_of(self, uid):
         with self.lock:
@@ -384,7 +406,7 @@ class Hub:
                          "max": MAX_PLAYERS, "start_in": round(max(0.0, lb.start_at - now), 1) if lb.start_at else None,
                          "has_seeker": bool(lb.seekers())},
                "me": {"id": me.uid, "role": me.role, "x": round(me.x, 1), "y": round(me.y, 1), "caught": me.caught, "clouds": me.clouds},
-               "others": ents, "events": lb.events[-6:]}
+               "others": ents, "events": lb.events[-6:], "chat": lb.chat[-CHAT_SEND:]}
         if lb.state == "playing":
             out["time_left"] = round(max(0.0, lb.round_end - now), 1)
             out["freeze_left"] = round(max(0.0, lb.round_start + FREEZE_SEC - now), 1)
