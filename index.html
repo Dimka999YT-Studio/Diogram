@@ -146,6 +146,28 @@
   .gp-chat { position: absolute; left: 10px; right: 10px; bottom: 150px; max-width: 360px; pointer-events: none; font-size: 13px; color: #fff; text-shadow: 0 1px 2px #000; line-height: 1.35; }
   .gp-chat div { background: rgba(14,22,33,0.6); border-radius: 8px; padding: 3px 8px; margin-top: 3px; width: fit-content; max-width: 100%; word-break: break-word; transition: opacity .6s; }
   .gp-chat b { color: #8fd0ff; } .gp-chat b.sk { color: #ffb36b; } .gp-chat b.gh { color: #b9b9c9; }
+  .rb-ico { display: inline-block; vertical-align: -0.2em; }
+  .rb-chip { flex: none; align-self: center; font-size: 13px; font-weight: 700; color: #fff; background: rgba(14,22,33,0.92); border-radius: 10px; padding: 9px 10px; white-space: nowrap; }
+  .rb-chip.low { color: #ff8f8f; }
+  .rb-shop { position: relative; margin: 0 16px 16px; padding: 16px 14px; border-radius: 18px; overflow: hidden; color: #fff; background: linear-gradient(120deg, #ff5f6d, #ffc371, #f9f871, #4ade80, #38bdf8, #a78bfa, #f472b6, #ff5f6d); background-size: 400% 400%; animation: rbShift 9s ease-in-out infinite; }
+  .rb-shop::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 20% 15%, rgba(255,255,255,.55) 0 2px, transparent 3px), radial-gradient(circle at 70% 30%, rgba(255,255,255,.7) 0 1.5px, transparent 2.5px), radial-gradient(circle at 40% 70%, rgba(255,255,255,.6) 0 2px, transparent 3px), radial-gradient(circle at 85% 80%, rgba(255,255,255,.7) 0 1.5px, transparent 2.5px), radial-gradient(circle at 10% 85%, rgba(255,255,255,.5) 0 1.5px, transparent 2.5px), radial-gradient(circle at 58% 12%, rgba(255,255,255,.6) 0 1.5px, transparent 2.5px); background-size: 160px 160px; animation: rbTwinkle 2.4s ease-in-out infinite alternate; pointer-events: none; }
+  .rb-shop::after { content: ""; position: absolute; top: -40%; bottom: -40%; width: 40%; left: -60%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.38), transparent); transform: skewX(-18deg); animation: rbSweep 5s ease-in-out infinite; pointer-events: none; }
+  .rb-shop > * { position: relative; z-index: 1; }
+  .rb-head { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 800; text-shadow: 0 1px 6px rgba(0,0,0,.45); }
+  .rb-have { margin: 4px 0 12px; font-size: 14px; text-shadow: 0 1px 4px rgba(0,0,0,.5); }
+  .rb-pack { display: flex; align-items: center; gap: 10px; background: rgba(12,16,32,.72); border: 1px solid rgba(255,255,255,.28); border-radius: 14px; padding: 10px 12px; margin-top: 8px; backdrop-filter: blur(3px); }
+  .rb-pack .rb-n { font-weight: 800; font-size: 16px; }
+  .rb-pack .rb-sub { font-size: 12px; opacity: .85; }
+  .rb-pack .rb-grow { flex: 1; min-width: 0; }
+  .rb-tag { display: inline-block; font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 8px; margin-left: 6px; background: #ff9f43; color: #1a1206; vertical-align: 1px; }
+  .rb-tag.mega { background: linear-gradient(90deg, #ff5f6d, #a78bfa); color: #fff; }
+  .rb-pack button { flex: none; border: 0; border-radius: 12px; padding: 10px 12px; font-weight: 800; font-size: 14px; background: #fff; color: #231a3a; cursor: pointer; }
+  .rb-pack button:disabled { opacity: .55; }
+  .rb-note { margin-top: 12px; font-size: 12px; opacity: .9; text-shadow: 0 1px 4px rgba(0,0,0,.5); }
+  @keyframes rbShift { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+  @keyframes rbTwinkle { from { opacity: .35; } to { opacity: 1; } }
+  @keyframes rbSweep { 0%, 55% { left: -60%; } 100% { left: 130%; } }
+  @media (prefers-reduced-motion: reduce) { .rb-shop, .rb-shop::before, .rb-shop::after { animation: none; } }
   .gp-chatbar { position: absolute; left: 10px; right: 10px; top: 72px; z-index: 5; display: none; gap: 6px; max-width: 420px; }
   .gp-chatbar input { flex: 1; min-width: 0; border: 0; border-radius: 10px; padding: 10px 12px; font-size: 16px; background: rgba(14,22,33,0.92); color: #fff; outline: none; }
   .gp-chatbar button { flex: none; }
@@ -749,7 +771,7 @@
     <div class="gp-hud" style="top:36px;"><span class="gp-chip" id="gp-role"></span><span class="gp-chip" id="gp-hp" style="display:none;"></span><span class="gp-chip" id="gp-boxes" style="display:none;"></span></div>
     <div class="gp-log" id="gp-log"></div>
     <div class="gp-chat" id="gp-chat"></div>
-    <form class="gp-chatbar" id="gp-chatbar" autocomplete="off"><input id="gp-chat-input" maxlength="100" placeholder="Сообщение лобби…" enterkeyhint="send"><button class="gp-btn" type="submit">➤</button></form>
+    <form class="gp-chatbar" id="gp-chatbar" autocomplete="off"><span class="rb-chip" id="gp-chat-rb" title="Сообщение стоит 1 радужный круг"></span><input id="gp-chat-input" maxlength="100" placeholder="Сообщение лобби…" enterkeyhint="send"><button class="gp-btn" type="submit">➤</button></form>
     <button class="gp-act" id="gp-act">🔨<br>Ломать</button>
     <div class="gp-center" id="gp-center"></div>
   </div>
@@ -826,7 +848,7 @@
     <div class="header"><button class="header-icon" id="btn-privacy-back">←</button><h1>📄 Политика</h1></div>
     <div class="doc-screen">
       <div class="doc-title">Политика конфиденциальности</div>
-      <div class="doc-date">Дата последнего обновления: 15.11.2026</div>
+      <div class="doc-date">Дата последнего обновления: 24.11.2026</div>
       <div class="doc-section"><h3>1. О чём это</h3><p>Эта политика объясняет, какие данные Diogram собирает, зачем, где хранит и как защищает.</p></div>
       <div class="doc-section"><h3>2. Какие данные собираем</h3><p><b>При регистрации:</b> email, пароль (зашифрован).</p><p><b>В профиле:</b> имя, фамилия, @username, bio, аватарка.</p><p><b>В процессе:</b> сообщения, фото, дата входа.</p><p><b>НЕ собираем:</b> IP, устройство, геолокацию, контакты.</p></div>
       <div class="doc-section"><h3>3. Зачем</h3><ul><li>Email — для входа</li><li>Профиль — чтобы тебя нашли</li><li>Сообщения — чтобы работал мессенджер</li><li>Дата входа — "был(а) недавно"</li></ul></div>
@@ -838,7 +860,8 @@
       <div class="doc-section"><h3>9. Контакты</h3><div class="doc-contact">📱 Telegram: <a href="https://t.me/Dipxex" target="_blank">@Dipxex</a><br>📧 Email: <a href="mailto:diogramer@mail.ru">diogramer@mail.ru</a></div></div>
       <div class="doc-section"><h3>10. Возраст</h3><p>Diogram с 12 лет. Младше — нужно согласие родителей.</p></div>
       <div class="doc-section"><h3>11. Проверка «ты человек» (капча)</h3><p>При подозрительной активности (много неудачных входов, всплеск регистраций с одного адреса, спам-отправки) мы просим нарисовать круг. Мы сохраняем сам рисунок: точки линии, время и тип устройства (сенсорный экран или мышь). <b>Мы не связываем рисунок с аккаунтом, email или IP-адресом.</b> Рисунки могут храниться бессрочно и передаваться третьим лицам, в том числе для обучения нейросетей. Камера и микрофон не используются. Если не согласен, не проходи проверку; удалить рисунок по запросу мы не сможем, так как не знаем, чей он.</p></div>
-      <div class="doc-section"><h3>12. Изменения</h3><p>Можем обновлять политику. О серьёзных изменениях сообщим в мессенджере.</p></div>
+      <div class="doc-section"><h3>12. Чат в играх</h3><p>Сообщения из чата лобби в игре «Прятки» видят игроки лобби. Для модерации мы сохраняем их на 30 дней вместе с твоим именем, ID, ролью в раунде и временем, затем удаляем. Доступ к ним есть только у владельца. Личные чаты это не затрагивает.</p></div>
+      <div class="doc-section"><h3>13. Изменения</h3><p>Можем обновлять политику. О серьёзных изменениях сообщим в мессенджере.</p></div>
     </div>
   </div>
 
@@ -2896,6 +2919,7 @@ async function gameRender() {
     else if (gameView === "top") await gameTop(box);
     else if (gameView === "general") await gameGeneral(box);
     else if (gameView === "play") await gamePlay(box);
+    else if (gameView === "rainbow") await gameRainbow(box);
   } catch (e) { if (e.message !== "banned") box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
 }
 function gameEndsText(iso) { return new Date(iso).toLocaleString("ru-RU", { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }); }
@@ -2904,8 +2928,48 @@ async function gameMenu(box) {
   document.getElementById("game-title").textContent = "🍂 " + st.title;
   const rank = st.in_top ? (st.rank ? "#" + st.rank : "—") : "вне топа";
   box.innerHTML = '<div class="game-stats"><div class="game-stat"><b>☁ ' + (parseInt(st.clouds, 10) || 0) + '</b><span>облачка</span></div><div class="game-stat"><b>' + (parseInt(st.games_left, 10) || 0) + '</b><span>игр сегодня</span></div><div class="game-stat"><b>' + escapeHtml(rank) + '</b><span>место</span></div></div>' +
-    '<div class="game-menu"><button class="primary" data-g="play">🎮 Играть</button><button data-g="top">🏆 Топ 3</button><button data-g="general">🎁 Общее</button><button data-g="exit" style="grid-column:1/-1;">🚪 Выход</button></div>' +
+    '<div class="game-menu"><button class="primary" data-g="play">🎮 Играть</button><button data-g="top">🏆 Топ 3</button><button data-g="general">🎁 Общее</button><button data-g="rainbow" style="grid-column:1/-1;">🌈 Радужные круги</button><button data-g="exit" style="grid-column:1/-1;">🚪 Выход</button></div>' +
     '<div class="game-note">' + (st.active ? 'Сезон идёт до ' + escapeHtml(gameEndsText(st.ends_at)) + ' (МСК). Призы получают трое лучших по облачкам.' : 'Сезон закончился. Призы скоро будут выданы.') + '</div>';
+}
+function rbIcon(px) {
+  px = px || 22; const id = "rbg" + Math.floor(Math.random() * 1e6);
+  return '<svg class="rb-ico" width="' + px + '" height="' + px + '" viewBox="0 0 32 32" aria-hidden="true"><defs>' +
+    '<linearGradient id="' + id + 'a" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff4d6d"/><stop offset=".2" stop-color="#ff9f43"/><stop offset=".4" stop-color="#ffe14d"/><stop offset=".6" stop-color="#3ddc84"/><stop offset=".8" stop-color="#38bdf8"/><stop offset="1" stop-color="#a855f7"/></linearGradient>' +
+    '<radialGradient id="' + id + 'b" cx=".32" cy=".28" r=".7"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset=".35" stop-color="#fff" stop-opacity=".08"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>' +
+    '<circle cx="16" cy="16" r="14" fill="url(#' + id + 'a)" stroke="#fff" stroke-opacity=".85" stroke-width="1.6"/>' +
+    '<circle cx="16" cy="16" r="9.2" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="1.6"/><circle cx="16" cy="16" r="4.4" fill="#fff" fill-opacity=".18"/>' +
+    '<circle cx="16" cy="16" r="14" fill="url(#' + id + 'b)"/>' +
+    '<path d="M25.5 4.5l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9z" fill="#fff"/><path d="M6 21l.6 1.6 1.6.6-1.6.6L6 25.4l-.6-1.6-1.6-.6 1.6-.6z" fill="#fff" fill-opacity=".9"/></svg>';
+}
+function rbFmt(n) { n = Number(n) || 0; return (Math.round(n * 100) / 100).toFixed(2).replace(/\.00$/, "").replace(".", ","); }
+let RB = { packs: [], circles: 0, balance: 0, staff: false };
+function rbPackHtml(p) {
+  const title = p.qty === 1 ? "1 круг" : p.qty + " кругов";
+  const tag = p.tag === "hit" ? '<span class="rb-tag">ХИТ −' + p.discount + '%</span>' : p.tag === "save" ? '<span class="rb-tag">ВЫГОДА −' + p.discount + '%</span>' : p.tag === "mega" ? '<span class="rb-tag mega">МЕГА −' + p.discount + '%</span>' : "";
+  const sub = p.free ? "Первый круг бесплатно, один раз" : p.qty === 1 ? "Дальше 0,99 Di за штуку" : "≈ " + rbFmt(p.price / p.qty) + " Di за штуку";
+  const price = p.free ? "Бесплатно" : rbFmt(p.price) + " Di";
+  return '<div class="rb-pack">' + rbIcon(30) + '<div class="rb-grow"><div class="rb-n">' + escapeHtml(title) + tag + '</div><div class="rb-sub">' + escapeHtml(sub) + '</div></div><button data-rb="' + escapeAttr(p.key) + '">' + escapeHtml(price) + '</button></div>';
+}
+async function gameRainbow(box) {
+  const d = await api("/api/rainbow/me"); RB = { packs: d.packs, circles: d.circles, balance: d.balance, staff: d.staff };
+  box.innerHTML = '<div class="rb-shop"><div class="rb-head">' + rbIcon(30) + ' Радужные круги</div><div class="rb-have" id="rb-have"></div><div id="rb-packs"></div>' +
+    '<div class="rb-note">1 радужный круг = 1 сообщение в чате игры. Круги покупаются за Di и не сгорают.</div></div>';
+  rbRender();
+}
+function rbRender() {
+  const h = document.getElementById("rb-have"), pk = document.getElementById("rb-packs"); if (!h || !pk) return;
+  h.innerHTML = RB.staff ? 'Ты сотрудник: пишешь в чат бесплатно.' : 'У тебя: <b>' + (parseInt(RB.circles, 10) || 0) + '</b> ' + rbIcon(16) + ' · Баланс: <b>' + rbFmt(RB.balance) + ' Di</b>';
+  pk.innerHTML = RB.packs.map(rbPackHtml).join("");
+}
+async function rbBuy(btn) {
+  const key = btn.getAttribute("data-rb"), p = RB.packs.find(x => x.key === key); if (!p || btn.disabled) return;
+  const price = p.free ? "бесплатно" : rbFmt(p.price) + " Di";
+  if (!confirm("Купить " + (p.qty === 1 ? "1 круг" : p.qty + " кругов") + " за " + price + "?")) return;
+  btn.disabled = true;
+  try {
+    const r = await api("/api/rainbow/buy", { method: "POST", body: JSON.stringify({ pack: key }) });
+    RB.packs = r.packs; RB.circles = r.circles; RB.balance = r.balance; if (currentUser) currentUser.balance = r.balance; rbRender(); showToast("🌈 Теперь у тебя " + r.circles);
+  } catch (e) { if (e.message !== "banned") alert(e.message); btn.disabled = false; }
 }
 async function gameTop(box) {
   const data = await api("/api/game/top");
@@ -3018,6 +3082,7 @@ function gameShowPrize(res) {
   openModal("modal-game-prize");
 }
 document.getElementById("game-body").addEventListener("click", async (e) => {
+  const rbb = e.target.closest("[data-rb]"); if (rbb) { await rbBuy(rbb); return; }
   const g = e.target.closest("[data-g]"); const cb = e.target.closest("[data-case]"); const lbtn = e.target.closest("[data-lobby]");
   try {
     if (lbtn && !lbtn.disabled) {
@@ -3085,13 +3150,25 @@ function grChatRender(list) {
   }
   while (box.children.length > 5) box.removeChild(box.firstChild);
 }
-function grChatOpen() { GRC.open = true; const bar = document.getElementById("gp-chatbar"); bar.style.display = "flex"; document.getElementById("gp-chat-input").focus(); for (const d of document.getElementById("gp-chat").children) d.style.opacity = "1"; }
+async function grChatRb() {
+  const c = document.getElementById("gp-chat-rb"); if (!c) return;
+  try { const d = await api("/api/rainbow/me"); GRC.rb = d.staff ? null : (parseInt(d.circles, 10) || 0); GRC.staff = !!d.staff; } catch (e) { return; }
+  grChatRbShow();
+}
+function grChatRbShow() {
+  const c = document.getElementById("gp-chat-rb"); if (!c) return;
+  c.innerHTML = GRC.staff ? "🌈 ∞" : rbIcon(16) + " " + (GRC.rb === undefined ? "…" : GRC.rb); c.classList.toggle("low", !GRC.staff && GRC.rb === 0);
+}
+function grChatOpen() { GRC.open = true; grChatRb(); const bar = document.getElementById("gp-chatbar"); bar.style.display = "flex"; document.getElementById("gp-chat-input").focus(); for (const d of document.getElementById("gp-chat").children) d.style.opacity = "1"; }
 function grChatClose() { GRC.open = false; const bar = document.getElementById("gp-chatbar"); bar.style.display = "none"; const i = document.getElementById("gp-chat-input"); i.blur(); GR.keys = {}; }
 document.getElementById("gp-chat-btn").addEventListener("click", () => { GRC.open ? grChatClose() : grChatOpen(); });
 document.getElementById("gp-chatbar").addEventListener("submit", async (e) => {
   e.preventDefault(); const i = document.getElementById("gp-chat-input"); const text = i.value.trim(); if (!text) { grChatClose(); return; }
   i.value = "";
-  try { await api("/api/game/chat", { method: "POST", body: JSON.stringify({ text }) }); } catch (er) { showToast(er.message || "Не отправилось"); }
+  try {
+    const r = await api("/api/game/chat", { method: "POST", body: JSON.stringify({ text }) });
+    if (!GRC.staff && r && typeof r.circles === "number") { GRC.rb = r.circles; grChatRbShow(); }
+  } catch (er) { if (er.message !== "banned") showToast(/радужн/i.test(er.message || "") ? "Нет радужных кругов. Купить: меню игры → 🌈" : (er.message || "Не отправилось")); if (/радужн/i.test(er.message || "")) { GRC.rb = 0; grChatRbShow(); } }
   grChatClose();
 });
 function grInput() {

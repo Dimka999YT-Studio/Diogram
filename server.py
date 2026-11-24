@@ -66,6 +66,7 @@ import promo
 import captcha
 import game_world
 import game_chatlog
+import rainbow
 import gaming
 import gold
 import tg_game
@@ -1915,10 +1916,40 @@ def api_game_chat():
     uid = user["id"]
     if not check_rate_limit(f"gamechat_burst_{uid}", 3, 4) or not check_rate_limit(f"gamechat_min_{uid}", 20, 60):
         return jsonify({"error": "Слишком часто, подожди секунду"}), 429
-    ok, err, rec = GAME_HUB.chat(uid, str_field(json_body(), "text")[:400])
-    if not ok: return jsonify({"error": err}), 400
+    if not GAME_HUB.lobby_of(uid): return jsonify({"error": "Ты не в лобби"}), 400
+    text = str_field(json_body(), "text")[:400]
+    if not " ".join(text.replace("\u2063", "").split()): return jsonify({"error": "Пустое сообщение"}), 400
+    staff = user.get("role") in STAFF_ROLES
+    left = None
+    if not staff:
+        left = rainbow.spend(uid)
+        if left is None: return jsonify({"error": "Нужен радужный круг: сообщение стоит 1 🌈", "need_circles": True}), 402
+    ok, err, rec = GAME_HUB.chat(uid, text)
+    if not ok:
+        if not staff and left is not None and left >= 0: rainbow.refund(uid)
+        return jsonify({"error": err}), 400
     game_chatlog.save(game.SEASON, rec[0], uid, rec[1], rec[2], rec[3])
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "circles": None if staff or left < 0 else left, "free": staff})
+
+@app.route("/api/rainbow/me")
+def api_rainbow_me():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    try: w = rainbow.wallet(user["id"])
+    except Exception as e:
+        print(f"[rainbow] кошелёк: {e!r}"); return jsonify({"error": "Магазин кругов пока недоступен"}), 503
+    return jsonify({"circles": w["circles"], "packs": rainbow.public_packs(w["free_used"]), "balance": float(user.get("balance") or 0), "staff": user.get("role") in STAFF_ROLES})
+
+@app.route("/api/rainbow/buy", methods=["POST"])
+def api_rainbow_buy():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    if not check_rate_limit(f"rainbowbuy_{user['id']}", 10, 60): return jsonify({"error": "Слишком часто, подожди минуту"}), 429
+    try: ok, err, w, bal = rainbow.buy(user["id"], str_field(json_body(), "pack"))
+    except Exception as e:
+        print(f"[rainbow] покупка: {e!r}"); return jsonify({"error": "Покупка сейчас недоступна"}), 503
+    if not ok: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "circles": w["circles"], "balance": bal, "packs": rainbow.public_packs(w["free_used"])})
 
 @app.route("/api/admin/game/chat")
 def api_admin_game_chat():
