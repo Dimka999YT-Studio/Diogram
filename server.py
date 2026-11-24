@@ -1938,18 +1938,24 @@ def api_rainbow_me():
     try: w = rainbow.wallet(user["id"])
     except Exception as e:
         print(f"[rainbow] кошелёк: {e!r}"); return jsonify({"error": "Магазин кругов пока недоступен"}), 503
-    return jsonify({"circles": w["circles"], "packs": rainbow.public_packs(w["free_used"]), "balance": float(user.get("balance") or 0), "staff": user.get("role") in STAFF_ROLES})
+    return jsonify({"circles": w["circles"], "packs": rainbow.public_packs(w["free_used"]), "balance": float(user.get("balance") or 0), "staff": user.get("role") in STAFF_ROLES, "username": user.get("username")})
 
 @app.route("/api/rainbow/buy", methods=["POST"])
 def api_rainbow_buy():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
     if not check_rate_limit(f"rainbowbuy_{user['id']}", 10, 60): return jsonify({"error": "Слишком часто, подожди минуту"}), 429
-    try: ok, err, w, bal = rainbow.buy(user["id"], str_field(json_body(), "pack"))
+    d = json_body()
+    name = str_field(d, "username").lstrip("@").strip()
+    if not name: return jsonify({"error": "Укажи юзернейм, кому зачислить круги"}), 400
+    target = get_user_by_username(name) or get_collection_holder_user(name)   # обычный ник или коллекционный
+    if not target or target.get("banned"): return jsonify({"error": f"Пользователь @{name[:32]} не найден"}), 404
+    try: ok, err, w, bal = rainbow.buy(user["id"], target["id"], str_field(d, "pack"))
     except Exception as e:
         print(f"[rainbow] покупка: {e!r}"); return jsonify({"error": "Покупка сейчас недоступна"}), 503
     if not ok: return jsonify({"error": err}), 400
-    return jsonify({"ok": True, "circles": w["circles"], "balance": bal, "packs": rainbow.public_packs(w["free_used"])})
+    mine = target["id"] == user["id"]
+    return jsonify({"ok": True, "circles": w["circles"], "balance": bal, "packs": rainbow.public_packs(w["free_used"]), "to": {"id": target["id"], "username": target.get("username") or name, "me": mine}})
 
 @app.route("/api/admin/game/chat")
 def api_admin_game_chat():

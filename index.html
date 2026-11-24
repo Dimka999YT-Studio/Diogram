@@ -163,6 +163,10 @@
   .rb-tag.mega { background: linear-gradient(90deg, #ff5f6d, #a78bfa); color: #fff; }
   .rb-pack button { flex: none; border: 0; border-radius: 12px; padding: 10px 12px; font-weight: 800; font-size: 14px; background: #fff; color: #231a3a; cursor: pointer; }
   .rb-pack button:disabled { opacity: .55; }
+  .rb-to { margin: 0 0 4px; } .rb-to label { display: block; font-size: 13px; font-weight: 700; text-shadow: 0 1px 4px rgba(0,0,0,.5); margin-bottom: 4px; }
+  .rb-to-row { display: flex; gap: 6px; } .rb-to-row input { flex: 1; min-width: 0; border: 2px solid transparent; border-radius: 12px; padding: 10px 12px; font-size: 16px; background: rgba(12,16,32,.78); color: #fff; outline: none; }
+  .rb-to-row input.bad { border-color: #ff6b6b; } .rb-to-row button { flex: none; border: 0; border-radius: 12px; padding: 0 14px; font-weight: 800; background: rgba(255,255,255,.9); color: #231a3a; cursor: pointer; }
+  .rb-hint { font-size: 11px; opacity: .9; margin-top: 4px; text-shadow: 0 1px 4px rgba(0,0,0,.5); }
   .rb-note { margin-top: 12px; font-size: 12px; opacity: .9; text-shadow: 0 1px 4px rgba(0,0,0,.5); }
   @keyframes rbShift { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
   @keyframes rbTwinkle { from { opacity: .35; } to { opacity: 1; } }
@@ -2942,19 +2946,20 @@ function rbIcon(px) {
     '<path d="M25.5 4.5l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9z" fill="#fff"/><path d="M6 21l.6 1.6 1.6.6-1.6.6L6 25.4l-.6-1.6-1.6-.6 1.6-.6z" fill="#fff" fill-opacity=".9"/></svg>';
 }
 function rbFmt(n) { n = Number(n) || 0; return (Math.round(n * 100) / 100).toFixed(2).replace(/\.00$/, "").replace(".", ","); }
-let RB = { packs: [], circles: 0, balance: 0, staff: false };
+let RB = { packs: [], circles: 0, balance: 0, staff: false, username: "" };
 function rbPackHtml(p) {
   const title = p.qty === 1 ? "1 круг" : p.qty + " кругов";
   const tag = p.tag === "hit" ? '<span class="rb-tag">ХИТ −' + p.discount + '%</span>' : p.tag === "save" ? '<span class="rb-tag">ВЫГОДА −' + p.discount + '%</span>' : p.tag === "mega" ? '<span class="rb-tag mega">МЕГА −' + p.discount + '%</span>' : "";
-  const sub = p.free ? "Первый круг бесплатно, один раз" : p.qty === 1 ? "Дальше 0,99 Di за штуку" : "≈ " + rbFmt(p.price / p.qty) + " Di за штуку";
+  const sub = p.free ? "Первый круг бесплатно (можно подарить другу)" : p.qty === 1 ? "Дальше 0,99 Di за штуку" : "≈ " + rbFmt(p.price / p.qty) + " Di за штуку";
   const price = p.free ? "Бесплатно" : rbFmt(p.price) + " Di";
   return '<div class="rb-pack">' + rbIcon(30) + '<div class="rb-grow"><div class="rb-n">' + escapeHtml(title) + tag + '</div><div class="rb-sub">' + escapeHtml(sub) + '</div></div><button data-rb="' + escapeAttr(p.key) + '">' + escapeHtml(price) + '</button></div>';
 }
 async function gameRainbow(box) {
-  const d = await api("/api/rainbow/me"); RB = { packs: d.packs, circles: d.circles, balance: d.balance, staff: d.staff };
-  box.innerHTML = '<div class="rb-shop"><div class="rb-head">' + rbIcon(30) + ' Радужные круги</div><div class="rb-have" id="rb-have"></div><div id="rb-packs"></div>' +
+  const d = await api("/api/rainbow/me"); RB = { packs: d.packs, circles: d.circles, balance: d.balance, staff: d.staff, username: d.username || "" };
+  box.innerHTML = '<div class="rb-shop"><div class="rb-head">' + rbIcon(30) + ' Радужные круги</div><div class="rb-have" id="rb-have"></div><div class="rb-to"><label for="rb-user">Кому зачислить (юзернейм, обязательно)</label><div class="rb-to-row"><input id="rb-user" maxlength="40" placeholder="@username" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" id="rb-self">Себе</button></div><div class="rb-hint">Подойдёт обычный или коллекционный юзернейм. Можно купить другу.</div></div><div id="rb-packs"></div>' +
     '<div class="rb-note">1 радужный круг = 1 сообщение в чате игры. Круги покупаются за Di и не сгорают.</div></div>';
   rbRender();
+  const self = document.getElementById("rb-self"); if (self) self.onclick = () => { const i = document.getElementById("rb-user"); i.value = RB.username ? "@" + RB.username : ""; i.classList.remove("bad"); };
 }
 function rbRender() {
   const h = document.getElementById("rb-have"), pk = document.getElementById("rb-packs"); if (!h || !pk) return;
@@ -2963,12 +2968,16 @@ function rbRender() {
 }
 async function rbBuy(btn) {
   const key = btn.getAttribute("data-rb"), p = RB.packs.find(x => x.key === key); if (!p || btn.disabled) return;
+  const inp = document.getElementById("rb-user"); const uname = (inp ? inp.value : "").trim().replace(/^@+/, "");
+  if (!uname) { if (inp) { inp.classList.add("bad"); inp.focus(); } showToast("Сначала введи юзернейм"); return; }
+  if (inp) inp.classList.remove("bad");
   const price = p.free ? "бесплатно" : rbFmt(p.price) + " Di";
-  if (!confirm("Купить " + (p.qty === 1 ? "1 круг" : p.qty + " кругов") + " за " + price + "?")) return;
+  if (!confirm("Купить " + (p.qty === 1 ? "1 круг" : p.qty + " кругов") + " для @" + uname + " за " + price + "?")) return;
   btn.disabled = true;
   try {
-    const r = await api("/api/rainbow/buy", { method: "POST", body: JSON.stringify({ pack: key }) });
-    RB.packs = r.packs; RB.circles = r.circles; RB.balance = r.balance; if (currentUser) currentUser.balance = r.balance; rbRender(); showToast("🌈 Теперь у тебя " + r.circles);
+    const r = await api("/api/rainbow/buy", { method: "POST", body: JSON.stringify({ pack: key, username: uname }) });
+    RB.packs = r.packs; RB.circles = r.circles; RB.balance = r.balance; if (currentUser) currentUser.balance = r.balance; rbRender();
+    showToast(r.to && r.to.me ? "🌈 Теперь у тебя " + r.circles : "🌈 Отправлено @" + (r.to ? r.to.username : uname));
   } catch (e) { if (e.message !== "banned") alert(e.message); btn.disabled = false; }
 }
 async function gameTop(box) {

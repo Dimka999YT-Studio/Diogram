@@ -33,20 +33,21 @@ def public_packs(free_used):
     return out
 
 
-def buy(user_id, key):
-    """Возвращает (ok, error, wallet, balance)."""
+def buy(buyer_id, target_id, key):
+    """Покупка для себя или друга (target_id). Бесплатный одиночный круг принадлежит покупателю: его можно подарить.
+    Возвращает (ok, error, кошелёк покупателя, баланс Di покупателя)."""
     if key not in PACKS: return False, "Такого набора нет", None, None
     qty, price, _ = PACKS[key]
-    w = wallet(user_id)
+    w = wallet(buyer_id)
     free = key == "one" and not w["free_used"]
-    r = supabase.rpc("rainbow_buy", {"p_user": user_id, "p_qty": qty, "p_price": 0 if free else price, "p_free": free}).execute().data
+    r = supabase.rpc("rainbow_buy", {"p_buyer": buyer_id, "p_target": target_id, "p_qty": qty, "p_price": 0 if free else price, "p_free": free}).execute().data
     row = r[0] if r else None
     if not row: return False, "Не получилось купить", None, None
     if not row["ok"]:
         if row["err"] == "no_money": return False, "Не хватает Di", None, float(row["balance"] or 0)
         if row["err"] == "free_used": return False, "Бесплатный круг уже получен", None, None
         return False, "Не получилось купить", None, None
-    return True, None, {"circles": int(row["circles"]), "free_used": w["free_used"] or free}, float(row["balance"] or 0)
+    return True, None, {"circles": int(row["buyer_circles"]), "free_used": w["free_used"] or free}, float(row["balance"] or 0)
 
 
 def spend(user_id, qty=CHAT_COST):
