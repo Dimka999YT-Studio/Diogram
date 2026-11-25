@@ -3235,6 +3235,22 @@ async function loadAdminGame() {
   const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
   try {
     const d = await api("/api/admin/game"); box.innerHTML = "";
+    const chatCard = document.createElement("div"); chatCard.className = "report-card";
+    chatCard.innerHTML = '<div class="report-reason">💬 Чат игры (журнал)</div><div class="report-body">Сообщения лобби хранятся 30 дней. Выгрузка в txt за выбранный срок.</div>';
+    const chatRow = document.createElement("div"); chatRow.style.marginTop = "8px";
+    for (const [days, label] of [[1, "За сутки"], [7, "За 7 дней"], [30, "За 30 дней"]]) {
+      const b = document.createElement("button"); b.className = "admin-btn"; b.style.marginRight = "6px"; b.textContent = "⬇ " + label;
+      b.onclick = async () => {
+        try {
+          const r = await api("/api/admin/game/chat?days=" + days);
+          const blob = new Blob([r.text], { type: "text/plain;charset=utf-8" }), a = document.createElement("a");
+          a.href = URL.createObjectURL(blob); a.download = "game-chat-" + new Date().toISOString().slice(0, 10) + "-" + days + "d.txt"; document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(a.href), 4000); showToast("Сообщений: " + parseInt(r.count, 10));
+        } catch (e) { alert(e.message); }
+      };
+      chatRow.appendChild(b);
+    }
+    chatCard.appendChild(chatRow); box.appendChild(chatCard);
     const freeAcc = d.accounts.filter(a => !a.given_to).length, freeCase = d.usernames.filter(u => !u.given_to && u.pool === "case").length;
     const sum = document.createElement("div"); sum.className = "report-card";
     sum.innerHTML = '<div class="report-reason">Склад призов</div><div class="report-body">Секреток свободно: <b>' + freeAcc + '</b> из ' + d.accounts.length + '<br>Юзернеймов для кейса свободно: <b>' + freeCase + '</b>. Выпадают строго по порядку списка.</div>';

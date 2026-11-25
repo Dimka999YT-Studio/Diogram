@@ -65,6 +65,7 @@ import game
 import promo
 import captcha
 import game_world
+import game_chatlog
 import gaming
 import gold
 import tg_game
@@ -1914,9 +1915,19 @@ def api_game_chat():
     uid = user["id"]
     if not check_rate_limit(f"gamechat_burst_{uid}", 3, 4) or not check_rate_limit(f"gamechat_min_{uid}", 20, 60):
         return jsonify({"error": "Слишком часто, подожди секунду"}), 429
-    ok, err = GAME_HUB.chat(uid, str_field(json_body(), "text")[:400])
+    ok, err, rec = GAME_HUB.chat(uid, str_field(json_body(), "text")[:400])
     if not ok: return jsonify({"error": err}), 400
+    game_chatlog.save(game.SEASON, rec[0], uid, rec[1], rec[2], rec[3])
     return jsonify({"ok": True})
+
+@app.route("/api/admin/game/chat")
+def api_admin_game_chat():
+    owner = require_owner()
+    if not owner: return jsonify({"error": "Нет доступа"}), 403
+    try: text, n = game_chatlog.export_txt(int_arg("days", 1), 5000)
+    except Exception as e:
+        print(f"[game_chatlog] выгрузка: {e!r}"); return jsonify({"error": "Журнал недоступен (применена ли миграция 20261125?)"}), 500
+    return jsonify({"text": text, "count": n})
 
 @app.route("/api/game/leave", methods=["POST"])
 def api_game_leave():
