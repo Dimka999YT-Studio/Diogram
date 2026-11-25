@@ -3193,7 +3193,7 @@ function grApply(st) {
   for (const o of st.others) {
     seen.add(o.id); if (o.x === undefined) continue;
     const prev = GR.others.get(o.id);
-    GR.others.set(o.id, { id: o.id, name: o.name, role: o.role, caught: o.caught, vx: o.vx || 0, vy: o.vy || 0, tx: o.x, ty: o.y, x: prev ? prev.x : o.x, y: prev ? prev.y : o.y, t: performance.now() });
+    GR.others.set(o.id, { id: o.id, name: o.name, role: o.role, caught: o.caught, near: !!o.near, vx: o.vx || 0, vy: o.vy || 0, tx: o.x, ty: o.y, x: prev ? prev.x : o.x, y: prev ? prev.y : o.y, t: performance.now() });
   }
   for (const id of [...GR.others.keys()]) if (!seen.has(id)) GR.others.delete(id);
   grChatRender(st.chat || []);
@@ -3294,6 +3294,7 @@ function grDraw(ts) {
   for (const o of GR.others.values()) { const k = Math.min(1, dt * 8), age = Math.min(0.35, (performance.now() - o.t) / 1000); const px = o.tx + o.vx * age, py = o.ty + o.vy * age; o.x += (px - o.x) * k; o.y += (py - o.y) * k; people.push(o); }
   people.push({ id: me.id, name: "ты", role: me.role, caught: me.caught, x: GR.me.x, y: GR.me.y, me: true });
   for (const p of people) {
+    if (p.near && !p.me) { const hue = (ts / 6) % 360; ctx.save(); ctx.shadowColor = "hsl(" + hue + ",100%,60%)"; ctx.shadowBlur = 28; ctx.lineWidth = 5; ctx.strokeStyle = "hsl(" + hue + ",100%,62%)"; ctx.beginPath(); ctx.arc(p.x, p.y, M.player_r + 6 + Math.sin(ts / 120) * 2, 0, 6.3); ctx.stroke(); ctx.shadowBlur = 16; ctx.lineWidth = 3; ctx.strokeStyle = "hsl(" + (hue + 120) % 360 + ",100%,65%)"; ctx.beginPath(); ctx.arc(p.x, p.y, M.player_r + 13, 0, 6.3); ctx.stroke(); ctx.restore(); }
     ctx.globalAlpha = p.caught ? 0.4 : 1; ctx.fillStyle = p.role === "seeker" ? "#e8503a" : (p.me ? "#ffd166" : "#7fc4ff"); ctx.beginPath(); ctx.arc(p.x, p.y, M.player_r, 0, 6.3); ctx.fill();
     ctx.lineWidth = 3; ctx.strokeStyle = p.me ? "#fff" : "rgba(0,0,0,0.5)"; ctx.stroke(); ctx.globalAlpha = 1;
     ctx.fillStyle = "#fff"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center"; ctx.shadowColor = "#000"; ctx.shadowBlur = 3; ctx.fillText((p.role === "seeker" ? "🔦 " : "") + (p.name || ""), p.x, p.y - M.player_r - 6); ctx.shadowBlur = 0;
