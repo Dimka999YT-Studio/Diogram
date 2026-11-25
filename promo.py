@@ -1,17 +1,18 @@
 """Промокоды: создание (owner/developer), активация, награды.
 Типы: timed (до даты, без лимита активаций) и limited (лимит активаций 1..∞, без даты).
-Награды (rewards): di, gold (бонусная голда @Gaming), pdg_days, clouds, cases {ключ: шт}, username (bool, имена в promo_usernames).
+Награды (rewards): di, gold (бонусная голда @Gaming), pdg_days, clouds, rainbow (радужные круги чата), cases {ключ: шт}, username (bool, имена в promo_usernames).
 Одна активация на человека. Атомарность — SQL-функции promo_claim / promo_release."""
 import re
 from datetime import datetime, timezone
 
 import game
 import gold
+import rainbow
 from db import supabase, add_balance, activate_premium
 
 CODE_RE = re.compile(r"[A-Za-z0-9_\-]{3,32}")
 USERNAME_RE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_]{0,31}")
-MAX_DI, MAX_PDG, MAX_CLOUDS, MAX_CASES, MAX_GOLD = 1_000_000, 3650, 1000, 100, 100_000
+MAX_DI, MAX_PDG, MAX_CLOUDS, MAX_CASES, MAX_GOLD, MAX_RAINBOW = 1_000_000, 3650, 1000, 100, 100_000, 10_000
 
 CLAIM_ERRORS = {
     "not_found": "Такого промокода нет",
@@ -49,6 +50,10 @@ def clean_rewards(raw):
         v = _int(raw["clouds"], 1, MAX_CLOUDS)
         if v is None: return None, f"Облачка: от 1 до {MAX_CLOUDS}"
         out["clouds"] = v
+    if raw.get("rainbow") not in (None, 0, ""):
+        v = _int(raw["rainbow"], 1, MAX_RAINBOW)
+        if v is None: return None, f"Радужные круги: от 1 до {MAX_RAINBOW}"
+        out["rainbow"] = v
     cases = raw.get("cases")
     if cases:
         if not isinstance(cases, dict): return None, "Кейсы: неверный формат"
@@ -168,6 +173,9 @@ def claim(user_id, code):
         if rw.get("clouds"):
             game.credit_map_clouds(user_id, int(rw["clouds"]))
             got["clouds"] = int(rw["clouds"])
+        if rw.get("rainbow"):
+            rainbow.grant(user_id, int(rw["rainbow"]), "promo")
+            got["rainbow"] = int(rw["rainbow"])
         for k, q in (rw.get("cases") or {}).items():
             now, err = game.grant_cases(admin_of(row["code_id"], user_id), user_id, k, int(q))
             if err: raise RuntimeError(f"case {err}")

@@ -63,3 +63,10 @@ def spend(user_id, qty=CHAT_COST):
 def refund(user_id, qty=CHAT_COST):
     try: supabase.rpc("rainbow_refund", {"p_user": user_id, "p_qty": qty}).execute()
     except Exception as e: print(f"[rainbow] возврат не удался: {e!r}")
+
+
+def grant(user_id, qty, kind="promo"):
+    """Начислить круги бесплатно (промокод). Бросает исключение при сбое, чтобы вызывающий откатил выдачу."""
+    left = supabase.rpc("rainbow_grant", {"p_user": user_id, "p_qty": int(qty), "p_kind": kind}).execute().data
+    if not isinstance(left, int) or left < 0: raise RuntimeError("rainbow_grant")
+    return left
