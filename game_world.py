@@ -16,6 +16,7 @@ SEEKER_SPEED = 140.0
 VIS_R = 260.0            # туман: дальше этого радиуса игрок других не видит
 BUSH_REVEAL = 70.0       # спрятавшегося в кусте видно только вплотную
 CATCH_DIST = 30.0        # касание искателем
+NEON_DIST = 100.0        # искатель ближе этого (около 5 шагов): у прячущегося он светится радужным неоном
 CLOUD_PICK = 28.0
 BOX_RANGE = 70.0
 BOX_TIME = 10.0          # клик по коробке и ждать 10 секунд
@@ -71,7 +72,7 @@ def _build_map():
     snow = [(rnd.randint(0, W), rnd.randint(0, H), rnd.randint(18, 60)) for _ in range(26)]
     return {"w": W, "h": H, "trees": solid, "bushes": bushes, "boxes": boxes, "spawns": spawns, "snow": snow,
             "start": (W / 2, H / 2), "vis_r": VIS_R, "box_time": BOX_TIME, "box_range": BOX_RANGE,
-            "player_r": PLAYER_R, "hider_speed": HIDER_SPEED, "seeker_speed": SEEKER_SPEED}
+            "player_r": PLAYER_R, "neon_dist": NEON_DIST, "hider_speed": HIDER_SPEED, "seeker_speed": SEEKER_SPEED}
 
 MAP = _build_map()
 
@@ -400,7 +401,8 @@ class Hub:
                     if o.role == "hider" and not o.caught and _in_bush(o.x, o.y) and d > BUSH_REVEAL: continue
                 sp = (SEEKER_SPEED if o.role == "seeker" else HIDER_SPEED)
                 ents.append({"id": o.uid, "name": o.name, "role": o.role, "x": round(o.x, 1), "y": round(o.y, 1),
-                             "vx": 0 if o.caught else round(o.dx * sp, 1), "vy": 0 if o.caught else round(o.dy * sp, 1), "caught": o.caught})
+                             "vx": 0 if o.caught else round(o.dx * sp, 1), "vy": 0 if o.caught else round(o.dy * sp, 1), "caught": o.caught,
+                             "near": bool(o.role == "seeker" and me.role == "hider" and not me.caught and math.hypot(me.x - o.x, me.y - o.y) <= NEON_DIST)})
             else:
                 ents.append({"id": o.uid, "name": o.name, "role": o.role})
         out = {"lobby": {"num": lb.num, "state": lb.state, "players": [{"name": o.name, "role": o.role, "me": o.uid == me.uid} for o in lb.players.values()],
