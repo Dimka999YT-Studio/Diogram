@@ -3444,6 +3444,7 @@ function promoRewardText(r) {
   if (r.gold) out.push("🪙 " + r.gold + " голды");
   if (r.pdg_days) out.push("⭐ PDG на " + r.pdg_days + " дн.");
   if (r.clouds) out.push("☁️ " + r.clouds + " облачк.");
+  if (r.rainbow) out.push("🌈 " + r.rainbow + " радужн. кругов");
   for (const k in (r.cases || {})) out.push("🎁 кейс «" + k + "» × " + r.cases[k]);
   if (r.username) out.push("@" + r.username.name + " (№" + r.username.no + ", это 1 из " + r.username.total + ")");
   return out;
@@ -3473,7 +3474,7 @@ async function loadAdminPromo() {
       '<div id="pc-limit-box"><input type="number" id="pc-max" min="1" placeholder="Активаций (пусто = бесконечно)"></div>' +
       '<div id="pc-date-box" style="display:none;"><input type="datetime-local" id="pc-date"></div>' +
       '<div class="report-body" style="margin-top:6px;">Награды (заполни нужные):</div>' +
-      '<input type="number" id="pc-di" min="0" placeholder="Di"><input type="number" id="pc-gold" min="0" placeholder="Голда (бонусная, для кейсов)"><input type="number" id="pc-pdg" min="0" placeholder="Дни PDG"><input type="number" id="pc-clouds" min="0" placeholder="Облачка для игры">' +
+      '<input type="number" id="pc-di" min="0" placeholder="Di"><input type="number" id="pc-gold" min="0" placeholder="Голда (бонусная, для кейсов)"><input type="number" id="pc-pdg" min="0" placeholder="Дни PDG"><input type="number" id="pc-clouds" min="0" placeholder="Облачка для игры"><input type="number" id="pc-rb" min="0" placeholder="Радужные круги (чат игры)">' +
       caseRows +
       '<label style="display:block;margin-top:4px;"><input type="checkbox" id="pc-uname"> Юзернейм</label>' +
       '<textarea id="pc-names" placeholder="Юзернеймы: по одному на строку (выдаются по порядку, один на активацию)" style="display:none;"></textarea>' +
@@ -3487,7 +3488,7 @@ async function loadAdminPromo() {
       const cases = {}; document.querySelectorAll(".pc-case").forEach(i => { const v = parseInt(i.value, 10); if (v > 0) cases[i.dataset.case] = v; });
       const num = id => parseInt(document.getElementById(id).value, 10) || 0;
       const body = { code: document.getElementById("pc-code").value.trim(), kind, note: document.getElementById("pc-note").value,
-        rewards: { di: num("pc-di"), gold: num("pc-gold"), pdg_days: num("pc-pdg"), clouds: num("pc-clouds"), cases, username: document.getElementById("pc-uname").checked },
+        rewards: { di: num("pc-di"), gold: num("pc-gold"), pdg_days: num("pc-pdg"), clouds: num("pc-clouds"), rainbow: num("pc-rb"), cases, username: document.getElementById("pc-uname").checked },
         usernames: document.getElementById("pc-names").value };
       if (kind === "timed") { const v = document.getElementById("pc-date").value; body.expires_at = v ? new Date(v).toISOString() : ""; }
       else { body.max_activations = num("pc-max") || null; }
@@ -3499,7 +3500,7 @@ async function loadAdminPromo() {
     for (const c of d.codes) {
       const el = document.createElement("div"); el.className = "report-card";
       const rw = c.rewards || {}, parts = [];
-      if (rw.di) parts.push(rw.di + " Di"); if (rw.gold) parts.push("🪙 " + rw.gold); if (rw.pdg_days) parts.push("PDG " + rw.pdg_days + " дн."); if (rw.clouds) parts.push("☁️ " + rw.clouds);
+      if (rw.di) parts.push(rw.di + " Di"); if (rw.gold) parts.push("🪙 " + rw.gold); if (rw.pdg_days) parts.push("PDG " + rw.pdg_days + " дн."); if (rw.clouds) parts.push("☁️ " + rw.clouds); if (rw.rainbow) parts.push("🌈 " + rw.rainbow);
       for (const k in (rw.cases || {})) parts.push((d.cases[k] || k) + " × " + rw.cases[k]);
       if (rw.username) parts.push("юзернейм (выдано " + c.usernames_given + "/" + c.usernames_total + ", перепродаж " + c.resales + ")");
       const expired = c.kind === "timed" && new Date(c.expires_at) <= new Date();
