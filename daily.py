@@ -36,8 +36,10 @@ def list_tasks(user):
     now = datetime.now(timezone.utc).isoformat()
     tasks = supabase.table("daily_tasks").select("*").eq("active", True).lte("starts_at", now).order("starts_at").order("id").execute().data or []
     mine = {int(r["task_id"]) for r in (supabase.table("daily_claims").select("task_id").eq("user_id", user["id"]).execute().data or [])}
+    full = {int(t["id"]): int(t["completions"]) >= int(t["max_completions"]) for t in (supabase.table("daily_tasks").select("id,completions,max_completions").execute().data or [])}
     out = []
     for t in tasks:
+        if t.get("requires_task") and not full.get(int(t["requires_task"]), False): continue   # откроется, когда закончатся выполнения предыдущего
         left = max(0, int(t["max_completions"]) - int(t["completions"]))
         done = int(t["id"]) in mine
         pr = _progress(t, user) if not done and left > 0 else {"ok": False, "parts": []}
@@ -47,7 +49,7 @@ def list_tasks(user):
     return out
 
 
-ERRORS = {"not_found": "Такого задания нет", "inactive": "Задание отключено", "not_started": "Задание ещё не началось",
+ERRORS = {"not_found": "Такого задания нет", "inactive": "Задание отключено", "not_started": "Задание ещё не началось", "locked": "Откроется, когда закончатся выполнения предыдущего задания",
           "exhausted": "Опоздал: все места уже заняли", "used": "Ты уже выполнил это задание"}
 
 
