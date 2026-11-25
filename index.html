@@ -102,6 +102,14 @@
   .game-top-row { display: flex; align-items: center; gap: 12px; background: #17212b; border-radius: 14px; margin: 0 16px 8px; padding: 10px 12px; }
   .game-top-row .place { font-size: 24px; width: 32px; text-align: center; }
   .game-top-row .avatar { width: 40px; height: 40px; font-size: 16px; flex-shrink: 0; }
+  .dl-wrap { padding: 4px 16px 16px; } .dl-head { font-size: 18px; font-weight: 700; margin: 8px 0 12px; }
+  .dl-card { background: #17212b; border: 1px solid #243242; border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
+  .dl-card.dl-off { opacity: .6; } .dl-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .dl-title { font-weight: 700; } .dl-left { font-size: 12px; color: #ffd166; white-space: nowrap; }
+  .dl-desc { font-size: 13px; color: #9aa7b5; margin: 6px 0 8px; line-height: 1.45; }
+  .dl-part { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; color: #cbd5df; }
+  .dl-prize { margin: 8px 0; font-size: 14px; font-weight: 600; } .dl-claim { width: 100%; }
+  .dl-state { text-align: center; padding: 8px; border-radius: 8px; font-size: 14px; } .dl-state.ok { color: #3ddc84; } .dl-state.off { color: #7e8b99; }
   .game-note { margin: 0 16px 12px; font-size: 13px; color: #7e8b99; line-height: 1.5; }
   .game-h { margin: 16px 16px 8px; font-size: 15px; font-weight: 700; }
   .lobby-row { display: flex; align-items: center; gap: 10px; background: #17212b; border-radius: 14px; margin: 0 16px 8px; padding: 12px; }
@@ -2924,6 +2932,7 @@ async function gameRender() {
     else if (gameView === "general") await gameGeneral(box);
     else if (gameView === "play") await gamePlay(box);
     else if (gameView === "rainbow") await gameRainbow(box);
+    else if (gameView === "daily") await gameDaily(box);
   } catch (e) { if (e.message !== "banned") box.innerHTML = '<div class="empty-state">Ошибка: ' + escapeHtml(e.message) + '</div>'; }
 }
 function gameEndsText(iso) { return new Date(iso).toLocaleString("ru-RU", { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }); }
@@ -2932,8 +2941,36 @@ async function gameMenu(box) {
   document.getElementById("game-title").textContent = "🍂 " + st.title;
   const rank = st.in_top ? (st.rank ? "#" + st.rank : "—") : "вне топа";
   box.innerHTML = '<div class="game-stats"><div class="game-stat"><b>☁ ' + (parseInt(st.clouds, 10) || 0) + '</b><span>облачка</span></div><div class="game-stat"><b>' + (parseInt(st.games_left, 10) || 0) + '</b><span>игр сегодня</span></div><div class="game-stat"><b>' + escapeHtml(rank) + '</b><span>место</span></div></div>' +
-    '<div class="game-menu"><button class="primary" data-g="play">🎮 Играть</button><button data-g="top">🏆 Топ 3</button><button data-g="general">🎁 Общее</button><button data-g="rainbow" style="grid-column:1/-1;">🌈 Радужные круги</button><button data-g="exit" style="grid-column:1/-1;">🚪 Выход</button></div>' +
+    '<div class="game-menu"><button class="primary" data-g="play">🎮 Играть</button><button data-g="top">🏆 Топ 3</button><button data-g="general">🎁 Общее</button><button data-g="daily" style="grid-column:1/-1;">⏳ Ежедневный лимитированный бонус</button><button data-g="rainbow" style="grid-column:1/-1;">🌈 Радужные круги</button><button data-g="exit" style="grid-column:1/-1;">🚪 Выход</button></div>' +
     '<div class="game-note">' + (st.active ? 'Сезон идёт до ' + escapeHtml(gameEndsText(st.ends_at)) + ' (МСК). Призы получают трое лучших по облачкам.' : 'Сезон закончился. Призы скоро будут выданы.') + '</div>';
+}
+function dailyRewardText(t) {
+  const r = []; if (t.reward_rainbow) r.push("🌈 " + t.reward_rainbow + " радужн. кругов"); if (t.reward_clouds) r.push("☁ " + t.reward_clouds + " облачков"); return r.join(" + ");
+}
+function dailyCardHtml(t) {
+  const parts = (t.parts || []).map(p => '<div class="dl-part"><span>' + escapeHtml(p.label) + '</span><b>' + (parseInt(p.have, 10) || 0) + ' / ' + (parseInt(p.need, 10) || 0) + '</b></div>').join("");
+  let st;
+  if (t.done) st = '<div class="dl-state ok">✅ Выполнено</div>';
+  else if (t.exhausted) st = '<div class="dl-state off">Все места разобраны</div>';
+  else st = '<button class="primary dl-claim" data-dl="' + (parseInt(t.id, 10) || 0) + '"' + (t.can_claim ? "" : " disabled") + '>' + (t.can_claim ? "Забрать награду" : "Условие не выполнено") + '</button>';
+  return '<div class="dl-card' + (t.done || t.exhausted ? " dl-off" : "") + '"><div class="dl-top"><div class="dl-title">' + escapeHtml(t.title) + '</div><div class="dl-left">Осталось ' + (parseInt(t.left, 10) || 0) + ' из ' + (parseInt(t.max, 10) || 0) + '</div></div>' +
+    '<div class="dl-desc">' + escapeHtml(t.descr) + '</div>' + parts + '<div class="dl-prize">Приз: ' + escapeHtml(dailyRewardText(t)) + '</div>' + st + '</div>';
+}
+function dailyPaint(box, d) {
+  box.innerHTML = '<div class="dl-wrap"><div class="dl-head">⏳ Ежедневный лимитированный бонус</div>' +
+    (d.tasks.length ? d.tasks.map(dailyCardHtml).join("") : '<div class="empty-state">Заданий пока нет. Загляни завтра.</div>') +
+    '<div class="game-note">Выполнить задание могут только первые игроки: места на каждое задание ограничены. Новые задания появляются по дням.' + (d.can_play ? "" : " Сотрудники задания не выполняют.") + '</div></div>';
+}
+async function gameDaily(box) { const d = await api("/api/game/daily"); dailyPaint(box, d); }
+let dailyBusy = false;
+async function dailyClaim(btn) {
+  if (dailyBusy) return; dailyBusy = true; btn.disabled = true;
+  try {
+    const r = await api("/api/game/daily/claim", { method: "POST", body: JSON.stringify({ task_id: parseInt(btn.getAttribute("data-dl"), 10) }) });
+    const g = r.got || {}; showToast("🎉 Награда: " + (g.rainbow ? "🌈 " + g.rainbow + " " : "") + (g.clouds ? "☁ " + g.clouds : ""));
+    const box = gameBody(); const d = await api("/api/game/daily"); dailyPaint(box, d);
+  } catch (e) { if (e.message !== "banned") alert(e.message); try { const d = await api("/api/game/daily"); dailyPaint(gameBody(), d); } catch (e2) {} }
+  dailyBusy = false;
 }
 function rbIcon(px) {
   px = px || 22; const id = "rbg" + Math.floor(Math.random() * 1e6);
@@ -3092,6 +3129,7 @@ function gameShowPrize(res) {
 }
 document.getElementById("game-body").addEventListener("click", async (e) => {
   const rbb = e.target.closest("[data-rb]"); if (rbb) { await rbBuy(rbb); return; }
+  const dlb = e.target.closest("[data-dl]"); if (dlb) { await dailyClaim(dlb); return; }
   const g = e.target.closest("[data-g]"); const cb = e.target.closest("[data-case]"); const lbtn = e.target.closest("[data-lobby]");
   try {
     if (lbtn && !lbtn.disabled) {

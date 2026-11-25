@@ -67,6 +67,7 @@ import captcha
 import game_world
 import game_chatlog
 import rainbow
+import daily
 import gaming
 import gold
 import tg_game
@@ -1930,6 +1931,28 @@ def api_game_chat():
         return jsonify({"error": err}), 400
     game_chatlog.save(game.SEASON, rec[0], uid, rec[1], rec[2], rec[3])
     return jsonify({"ok": True, "circles": None if staff or left < 0 else left, "free": staff})
+
+@app.route("/api/game/daily")
+def api_game_daily():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    try: tasks = daily.list_tasks(user)
+    except Exception as e:
+        print(f"[daily] список: {e!r}"); return jsonify({"error": "Бонусы пока недоступны"}), 503
+    return jsonify({"tasks": tasks, "active": game_active(), "can_play": user.get("role") == "user"})
+
+@app.route("/api/game/daily/claim", methods=["POST"])
+def api_game_daily_claim():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    if not check_rate_limit(f"dailyclaim_{user['id']}", 20, 60): return jsonify({"error": "Слишком часто, подожди минуту"}), 429
+    tid = to_int(json_body().get("task_id"))
+    if not tid: return jsonify({"error": "Нет задания"}), 400
+    try: got, err = daily.claim(user, tid, game_active())
+    except Exception as e:
+        print(f"[daily] claim: {e!r}"); return jsonify({"error": "Не удалось забрать, попробуй ещё раз"}), 503
+    if err: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "got": got, "tasks": daily.list_tasks(user)})
 
 @app.route("/api/rainbow/me")
 def api_rainbow_me():
