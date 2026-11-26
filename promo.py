@@ -10,7 +10,7 @@ import gold
 import rainbow
 from db import supabase, add_balance, activate_premium
 
-CODE_RE = re.compile(r"[A-Za-z0-9_\-]{3,32}")
+CODE_RE = re.compile(r"[A-Za-z0-9_\-]{3,40}")
 USERNAME_RE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_]{0,31}")
 MAX_DI, MAX_PDG, MAX_CLOUDS, MAX_CASES, MAX_GOLD, MAX_RAINBOW = 1_000_000, 3650, 1000, 100, 100_000, 10_000
 
@@ -71,7 +71,7 @@ def clean_rewards(raw):
 
 def create_code(admin_id, code, kind, rewards, expires_at=None, max_activations=None, note=None):
     """Создать код. rewards уже проверены clean_rewards. Возвращает (строка, ошибка)."""
-    if not isinstance(code, str) or not CODE_RE.fullmatch(code.strip()): return None, "Код: 3–32 символа, латиница, цифры, _ и -"
+    if not isinstance(code, str) or not CODE_RE.fullmatch(code.strip()): return None, "Код: 3–40 символов, латиница, цифры, _ и -"
     code = code.strip()
     if kind not in ("timed", "limited"): return None, "Тип: timed или limited"
     row = {"code": code, "kind": kind, "rewards": rewards, "created_by": admin_id, "note": (note or "")[:200] or None}
