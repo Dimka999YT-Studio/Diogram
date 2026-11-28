@@ -438,13 +438,14 @@
       <div class="form" id="auth-form">
         <div class="error" id="auth-error"></div>
         <div id="login-fields">
-          <input type="email" id="login-email" placeholder="Email" autocomplete="email">
+          <input type="text" id="login-email" placeholder="Email или номер +999…" autocomplete="username" autocapitalize="off" spellcheck="false">
           <input type="password" id="login-password" placeholder="Пароль" autocomplete="current-password">
           <button class="btn" id="btn-login">Войти</button>
           <button class="btn btn-link" id="to-register">Нет аккаунта? Зарегистрироваться</button>
         </div>
         <div id="register-fields" style="display:none;">
           <input type="email" id="reg-email" placeholder="Email (gmail, yandex, mail.ru, outlook)" autocomplete="email">
+          <button class="btn btn-link" type="button" id="reg-by-number">📞 Зарегистрироваться по номеру</button>
           <input type="password" id="reg-password" placeholder="Пароль (мин. 6 символов)" autocomplete="new-password">
           <label class="agree-row">
             <input type="checkbox" id="agree-checkbox">
@@ -625,6 +626,7 @@
       <div class="profile-block">
         <div class="profile-row"><div class="profile-row-icon">🆔</div><div class="profile-row-content"><div class="profile-row-label">ID</div><div class="profile-row-value" id="profile-id">—</div></div></div>
         <div class="profile-row"><div class="profile-row-icon">🎭</div><div class="profile-row-content"><div class="profile-row-label">Роль</div><div class="profile-row-value" id="profile-role">—</div></div></div>
+        <div class="profile-row" id="open-vnum" style="cursor:pointer;"><div class="profile-row-icon">📞</div><div class="profile-row-content"><div class="profile-row-label">Мой номер</div><div class="profile-row-value" id="profile-vnum-show">—</div></div></div>
         <div class="profile-row" id="open-frig-my" style="cursor:pointer;"><div class="profile-row-icon">🏷️</div><div class="profile-row-content"><div class="profile-row-value">Мои лоты на Frigdmant</div></div></div>
       </div>
 
@@ -832,6 +834,7 @@
       <button class="admin-tab" data-tab="gold" id="admin-tab-gold" style="display:none;">🪙 Голда</button>
       <button class="admin-tab" data-tab="tgame" id="admin-tab-tgame" style="display:none;">🎮 Игра</button>
       <button class="admin-tab" data-tab="tgbot" id="admin-tab-tgbot" style="display:none;">🤖 Бот TG</button>
+      <button class="admin-tab" data-tab="vnum" id="admin-tab-vnum" style="display:none;">📞 Номера</button>
       <button class="admin-tab" data-tab="orgs" id="admin-tab-orgs" style="display:none;">🏢 Организации</button>
       <button class="admin-tab" data-tab="game" id="admin-tab-game" style="display:none;">🍂 Призы турнира</button>
     </div>
@@ -2208,6 +2211,7 @@ async function openProfile() {
   orgNote("profile-org-note", currentUser.orgs, currentUser.org_kind);
   document.getElementById("profile-username-show").textContent = currentUser.username ? "@" + currentUser.username : "—";
   document.getElementById("profile-id").textContent = currentUser.id;
+  document.getElementById("profile-vnum-show").textContent = currentUser.vnumber || "Получить номер +999";
   document.getElementById("profile-role").textContent = currentUser.role;
 
   const nameInline = document.getElementById("profile-name-inline");
@@ -2587,6 +2591,7 @@ async function openAdmin() {
   document.getElementById("admin-tab-gold").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-tgame").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-tgbot").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
+  document.getElementById("admin-tab-vnum").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
 document.getElementById("admin-tab-orgs").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-gaming").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-game").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
@@ -2597,7 +2602,7 @@ document.getElementById("admin-tab-orgs").style.display = currentUser && current
 document.querySelectorAll(".admin-tab").forEach(tab => { tab.onclick = () => { document.querySelectorAll(".admin-tab").forEach(t => t.classList.remove("active")); tab.classList.add("active"); currentAdminTab = tab.dataset.tab; adminShowTab(); }; });
 function adminShowTab() {
   document.querySelector("#screen-admin > .search-bar").style.display = currentAdminTab === "users" ? "" : "none";
-  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else if (currentAdminTab === "game") loadAdminGame(); else if (currentAdminTab === "promo") loadAdminPromo(); else if (currentAdminTab === "captcha") loadAdminCaptcha(); else if (currentAdminTab === "gaming") loadAdminGaming(); else if (currentAdminTab === "gold") loadAdminGold(); else if (currentAdminTab === "tgame") loadAdminTgame(); else if (currentAdminTab === "tgbot") loadAdminTgbot(); else if (currentAdminTab === "orgs") loadAdminOrgs(); else loadAdminReports();
+  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else if (currentAdminTab === "game") loadAdminGame(); else if (currentAdminTab === "promo") loadAdminPromo(); else if (currentAdminTab === "captcha") loadAdminCaptcha(); else if (currentAdminTab === "gaming") loadAdminGaming(); else if (currentAdminTab === "gold") loadAdminGold(); else if (currentAdminTab === "tgame") loadAdminTgame(); else if (currentAdminTab === "tgbot") loadAdminTgbot(); else if (currentAdminTab === "vnum") loadAdminVnumbers(); else if (currentAdminTab === "orgs") loadAdminOrgs(); else loadAdminReports();
 }
 
 async function loadAdminUsers() {
@@ -2815,6 +2820,58 @@ async function loadAdminOrgs() {
       card.appendChild(mk("Удалить организацию", () => { if (confirm("Удалить «" + o.name + "»? Значок пропадёт у всех, кого она верифицировала.")) post("/api/admin/orgs/delete", { id: o.id }); })); card.lastChild.style.marginTop = "6px";
       box.appendChild(card);
     }
+  } catch (e) { box.innerHTML = ""; const er = document.createElement("div"); er.className = "empty-state"; er.textContent = e.message; box.appendChild(er); }
+}
+// ===== Виртуальные номера +999 =====
+const VN_TIER_COLOR = { common: "#9aa7b5", rare: "#4da3ff", epic: "#b16bff", legend: "#ffc83d" };
+document.getElementById("reg-by-number").onclick = () => alert("Регистрация по номеру пока недоступна: операторы берут большую плату за доставку СМС.\n\nЗарегистрируйся по почте, а потом получи коллекционный номер +999 в профиле. По нему можно входить в Diogram.\n\nКоллекционные номера продаются в Telegram-боте @DiogramRobot.");
+document.getElementById("open-vnum").onclick = () => openVnumber();
+async function openVnumber() {
+  const b = goldModal("📞 Мой номер"); b.appendChild(goldEl("div", "Загрузка…", "color:#7e8b99;"));
+  let d; try { d = await api("/api/vnumber/me"); } catch (e) { b.innerHTML = ""; b.appendChild(goldEl("div", e.message, "color:#ff6b6b;")); return; }
+  b.innerHTML = "";
+  const refresh = async () => { try { const me = await api("/api/me"); currentUser = me.user; document.getElementById("profile-vnum-show").textContent = currentUser.vnumber || "Получить номер +999"; } catch (e) {} openVnumber(); };
+  b.appendChild(goldEl("div", "Коллекционный номер +999 XXXX XXXX. По нему можно войти в Diogram вместо почты (пароль тот же).", "font-size:13px;color:#9fb0c0;"));
+  if (!d.numbers.length) b.appendChild(goldEl("div", "У тебя пока нет номера.", "margin-top:10px;"));
+  for (const n of d.numbers) {
+    const row = goldEl("div", "", "margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;");
+    row.appendChild(goldEl("b", n.text, "color:" + (VN_TIER_COLOR[n.tier] || "#fff") + ";"));
+    row.appendChild(goldEl("span", n.tier_name, "font-size:12px;color:#7e8b99;"));
+    if (n.is_main) row.appendChild(goldEl("span", "✓ основной", "font-size:12px;color:#5ecb7a;"));
+    else { const bt = goldEl("button", "Сделать основным"); bt.className = "admin-btn"; bt.onclick = async () => { try { await api("/api/vnumber/main", { method: "POST", body: JSON.stringify({ number: n.number }) }); refresh(); } catch (e) { alert(e.message); } }; row.appendChild(bt); }
+    b.appendChild(row);
+  }
+  if (d.numbers.length < d.max) {
+    b.appendChild(goldEl("div", "Номера продаются за звёзды Telegram ⭐ в боте @DiogramRobot: случайный от " + d.stars_random + " ⭐, красивые на выбор от " + d.stars.rare + " ⭐. Сначала привяжи аккаунт в боте («Интеграция с Diogram»).", "font-size:13px;color:#9fb0c0;margin-top:14px;"));
+    const go = goldEl("a", "⭐ Купить номер в боте"); go.className = "btn"; go.href = "https://t.me/DiogramRobot"; go.target = "_blank"; go.rel = "noopener noreferrer"; go.style.cssText = "display:block;text-align:center;text-decoration:none;margin-top:8px;"; b.appendChild(go);
+  } else b.appendChild(goldEl("div", "Максимум номеров на аккаунт: " + d.max + ".", "margin-top:12px;font-size:13px;color:#9fb0c0;"));
+}
+async function loadAdminVnumbers() {
+  const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
+  try {
+    const d = await api("/api/admin/vnumbers"); box.innerHTML = "";
+    const mk = (label, fn) => { const x = document.createElement("button"); x.className = "admin-btn"; x.style.marginRight = "6px"; x.textContent = label; x.onclick = fn; return x; };
+    const card = document.createElement("div"); card.className = "report-card";
+    card.appendChild(goldEl("div", "Выдать номер бесплатно", "font-weight:600;"));
+    card.appendChild(goldEl("div", "ID пользователя и номер (8 цифр). Пустой номер = случайный обычный.", "font-size:12px;margin-top:4px;color:#7e8b99;"));
+    const uid = goldInput("ID пользователя", "number"), num = goldInput("Номер, например 00000999 (можно пусто)", "text", 16); card.appendChild(uid); card.appendChild(num);
+    const m = goldMsg(); card.appendChild(m);
+    card.appendChild(mk("Выдать", async () => { try { const r = await api("/api/admin/vnumbers/give", { method: "POST", body: JSON.stringify({ user_id: parseInt(uid.value, 10), number: num.value }) }); m.setOk("Выдан " + r.number); loadAdminVnumbers(); } catch (e) { m.setErr(e.message); } }));
+    box.appendChild(card);
+    const rc = document.createElement("div"); rc.className = "report-card";
+    rc.appendChild(goldEl("div", "Резерв (купить нельзя)", "font-weight:600;"));
+    const ta = document.createElement("textarea"); ta.placeholder = "Номера, по одному в строке"; ta.rows = 3; ta.style.cssText = "width:100%;margin-top:8px;box-sizing:border-box;"; rc.appendChild(ta);
+    const m2 = goldMsg(); rc.appendChild(m2);
+    rc.appendChild(mk("В резерв", async () => { try { const r = await api("/api/admin/vnumbers/reserve", { method: "POST", body: JSON.stringify({ numbers: ta.value.split("\n").map(x => x.trim()).filter(Boolean) }) }); if (r.skipped.length) alert("Добавлено: " + r.added + "\nПропущено:\n" + r.skipped.map(x => x.number + ": " + x.why).join("\n")); loadAdminVnumbers(); } catch (e) { m2.setErr(e.message); } }));
+    box.appendChild(rc);
+    const lc = document.createElement("div"); lc.className = "report-card";
+    lc.appendChild(goldEl("div", "Номера (" + d.items.length + ", последние)", "font-weight:600;"));
+    for (const it of d.items) {
+      const row = goldEl("div", it.text + " · " + (it.source === "reserve" ? "резерв" : "ID " + it.user_id) + " · " + it.source + (it.price ? " · " + it.price + " Di" : ""), "font-size:12px;margin-top:6px;");
+      row.appendChild(mk("Освободить", async () => { if (!confirm("Освободить " + it.text + "? У владельца номер пропадёт без возврата.")) return; try { await api("/api/admin/vnumbers/release", { method: "POST", body: JSON.stringify({ number: it.number }) }); loadAdminVnumbers(); } catch (e) { alert(e.message); } })); row.lastChild.style.marginLeft = "8px";
+      lc.appendChild(row);
+    }
+    box.appendChild(lc);
   } catch (e) { box.innerHTML = ""; const er = document.createElement("div"); er.className = "empty-state"; er.textContent = e.message; box.appendChild(er); }
 }
 async function loadAdminTgbot() {

@@ -71,6 +71,7 @@ import daily
 import tgbot
 import gaming
 import gold
+import vnumbers
 import tg_game
 import orgs
 
@@ -741,17 +742,26 @@ def api_login():
     data = json_body()
     email = str_field(data, "email").lower()
     password = str_field(data, "password", strip=False)
+    # Вход по почте или по виртуальному номеру (+999 XXXX XXXX): без «@» поле считается номером.
+    vnum = vnumbers.normalize(email) if email and "@" not in email else None
+    ident = ("num:" + vnum) if vnum else email
     # Лимит по аккаунту (в дополнение к лимиту по IP): подбор пароля с множества адресов упирается в него.
-    if email and not check_rate_limit(f"login_email_{email}", 20, 900): return jsonify({"error": "Слишком много попыток входа в этот аккаунт. Подожди 15 минут."}), 429
-    user = get_user_by_email(email)
+    if ident and not check_rate_limit(f"login_email_{ident}", 20, 900): return jsonify({"error": "Слишком много попыток входа в этот аккаунт. Подожди 15 минут."}), 429
+    user = None
+    if vnum:
+        try:
+            uid_by_num = vnumbers.user_id_by_number(vnum)
+            user = get_user_by_id(uid_by_num) if uid_by_num else None
+        except Exception as e: print(f"[vnumbers login] {e!r}")
+    elif email: user = get_user_by_email(email)
     if not user or not check_password(password, user["password_hash"]):
         if not check_rate_limit(f"loginfail_{ip}", 3, 600): captcha.flag("login", ip)   # после 3 неудачных входов с адреса (4-я попытка и далее) нужна капча
-        return jsonify({"error": "Неверный email или пароль"}), 401
+        return jsonify({"error": "Неверный email, номер или пароль"}), 401
     is_banned, ban_reason = check_banned(user)
     if is_banned: return banned_response(user, ban_reason)
     update_last_seen(user["id"])
     token = start_session(user["id"])
-    return jsonify({"ok": True, "token": token, "user": user_to_dict(user)})
+    return jsonify({"ok": True, "token": token, "user": {**user_to_dict(user), "vnumber": vnumbers.main_text(user["id"])}})
 
 @app.route("/api/me")
 def api_me():
@@ -763,7 +773,7 @@ def api_me():
     try:
         if check_rate_limit(f"refsettle_{user['id']}", 1, 120): gold.settle(user["id"])   # засчитать приглашение, если условия выполнены
     except Exception as e: print(f"[ref settle] {e!r}")
-    return jsonify({"user": user_to_dict(user)})
+    return jsonify({"user": {**user_to_dict(user), "vnumber": vnumbers.main_text(user["id"])}})
 
 @app.route("/api/heartbeat", methods=["POST"])
 def api_heartbeat():
@@ -1612,6 +1622,135 @@ def api_tgbot_promo_take():
     tg, d, err = _bot_call()
     if err: return err
     return _bot_safe(lambda: tgbot.promo_take(tg))
+
+# ==================== ВИРТУАЛЬНЫЕ НОМЕРА (+999) ====================
+def _vn_db_error(e):
+    print(f"[vnumbers] {e!r}"); return jsonify({"error": "Номера недоступны (миграция 20261130_vnumbers.sql применена?)"}), 503
+
+@app.route("/api/vnumber/me")
+def api_vnumber_me():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    try: return jsonify(vnumbers.info(user["id"]))
+    except Exception as e: return _vn_db_error(e)
+
+@app.route("/api/vnumber/main", methods=["POST"])
+@serialized_per_user
+def api_vnumber_main():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    try: ok, err = vnumbers.set_main(user["id"], str_field(json_body(), "number"))
+    except Exception as e: return _vn_db_error(e)
+    if not ok: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, **vnumbers.info(user["id"])})
+
+@app.route("/api/admin/vnumbers")
+def api_admin_vnumbers():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    try: return jsonify({"items": vnumbers.admin_list()})
+    except Exception as e: return _vn_db_error(e)
+
+@app.route("/api/admin/vnumbers/give", methods=["POST"])
+def api_admin_vnumbers_give():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    d = json_body()
+    uid = to_int(d.get("user_id"))
+    if not uid or not get_user_by_id(uid): return jsonify({"error": "Пользователь не найден"}), 404
+    raw = d.get("number")
+    try: number, err = vnumbers.give(uid, raw if isinstance(raw, str) and raw.strip() else None)
+    except Exception as e: return _vn_db_error(e)
+    if err: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "number": vnumbers.fmt(number)})
+
+@app.route("/api/admin/vnumbers/reserve", methods=["POST"])
+def api_admin_vnumbers_reserve():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    d = json_body()
+    raws = d.get("numbers")
+    if not isinstance(raws, list): raws = [str_field(d, "number")]
+    done, skipped = 0, []
+    try:
+        for r in raws[:500]:
+            ok, err = vnumbers.reserve(r)
+            if ok: done += 1
+            else: skipped.append({"number": str(r)[:20], "why": err})
+    except Exception as e: return _vn_db_error(e)
+    return jsonify({"added": done, "skipped": skipped})
+
+@app.route("/api/admin/vnumbers/release", methods=["POST"])
+def api_admin_vnumbers_release():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    try: ok = vnumbers.release(str_field(json_body(), "number"))
+    except Exception as e: return _vn_db_error(e)
+    return jsonify({"ok": ok})
+
+# Бот: покупка номеров за звёзды Telegram и админка запаса (только если Telegram привязан к аккаунту с ролью owner)
+def _bot_owner(tg):
+    try:
+        row = tgbot._state(tg) or {}
+        u = get_user_by_id(row.get("user_id")) if row.get("user_id") else None
+        return bool(u and u.get("role") == "owner" and not u.get("banned"))
+    except Exception as e:
+        print(f"[tgbot owner] {e!r}"); return False
+
+@app.route("/api/tgbot/vnumber/info", methods=["POST"])
+def api_tgbot_vnumber_info():
+    tg, d, err = _bot_call()
+    if err: return err
+    def go():
+        row = tgbot._state(tg) or {}
+        uid = row.get("user_id")
+        return {"linked": bool(uid), "is_owner": _bot_owner(tg), "numbers": vnumbers.mine(uid) if uid else [], "max": vnumbers.MAX_PER_USER,
+                "stars_random": vnumbers.STARS_RANDOM, "stars": vnumbers.STARS, "stock": vnumbers.stock_counts()}
+    return _bot_safe(go)
+
+@app.route("/api/tgbot/vnumber/quote", methods=["POST"])
+def api_tgbot_vnumber_quote():
+    tg, d, err = _bot_call()
+    if err: return err
+    def go():
+        row = tgbot._state(tg) or {}
+        uid = row.get("user_id")
+        if not uid: return {"error": "not_linked"}
+        if len(vnumbers.mine(uid)) >= vnumbers.MAX_PER_USER: return {"error": "limit", "max": vnumbers.MAX_PER_USER}
+        raw = d.get("number")
+        q, e = vnumbers.quote(raw if isinstance(raw, str) and raw.strip() else None)
+        return {"error": "unavailable", "message": e} if e else {"quote": q}
+    return _bot_safe(go)
+
+@app.route("/api/tgbot/vnumber/sell", methods=["POST"])
+def api_tgbot_vnumber_sell():
+    """Вызывается ботом после успешной оплаты. Не ok = бот должен вернуть звёзды (refund)."""
+    tg, d, err = _bot_call()
+    if err: return err
+    charge = str_field(d, "charge_id")
+    stars = to_int(d.get("stars"))
+    if not charge or len(charge) > 200 or not stars or stars < 1: return jsonify({"error": "Неверные данные платежа"}), 400
+    def go():
+        row = tgbot._state(tg) or {}
+        uid = row.get("user_id")
+        if not uid: return {"status": "not_linked", "refund": True}
+        raw = d.get("number")
+        st, number = vnumbers.sell(uid, tg, raw if isinstance(raw, str) and raw.strip() else None, stars, charge)
+        return {"status": st, "text": vnumbers.fmt(number) if number else None, "refund": st in ("limit", "empty")}
+    return _bot_safe(go)
+
+@app.route("/api/tgbot/vnumber/admin", methods=["POST"])
+def api_tgbot_vnumber_admin():
+    tg, d, err = _bot_call()
+    if err: return err
+    if not _bot_owner(tg): return jsonify({"error": "Нет доступа"}), 403
+    action = str_field(d, "action")
+    def go():
+        if action == "add":
+            text = d.get("text")
+            raws = [x for x in re.split(r"[\s,;]+", text) if x] if isinstance(text, str) else []
+            added, skipped = vnumbers.stock_add(raws)
+            return {"added": added, "skipped": [{"number": a, "why": w} for a, w in skipped[:30]], "stock": vnumbers.stock_counts()}
+        if action == "remove":
+            return {"ok": vnumbers.stock_remove(str_field(d, "number")), "stock": vnumbers.stock_counts()}
+        return {"stock": vnumbers.stock_counts(), "items": vnumbers.stock_list()}
+    return _bot_safe(go)
 
 @app.route("/api/admin/tgbot")
 def api_admin_tgbot():
