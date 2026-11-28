@@ -2824,14 +2824,14 @@ async function loadAdminOrgs() {
 }
 // ===== Виртуальные номера +999 =====
 const VN_TIER_COLOR = { common: "#9aa7b5", rare: "#4da3ff", epic: "#b16bff", legend: "#ffc83d" };
-document.getElementById("reg-by-number").onclick = () => alert("Регистрация по номеру пока недоступна: операторы берут большую плату за доставку СМС.\n\nЗарегистрируйся по почте, а потом получи коллекционный номер +999 в профиле. По нему можно входить в Diogram.");
+document.getElementById("reg-by-number").onclick = () => alert("Регистрация по номеру пока недоступна: операторы берут большую плату за доставку СМС.\n\nЗарегистрируйся по почте, а потом получи коллекционный номер +999 в профиле. По нему можно входить в Diogram.\n\nКоллекционные номера продаются в Telegram-боте @DiogramRobot.");
 document.getElementById("open-vnum").onclick = () => openVnumber();
 async function openVnumber() {
   const b = goldModal("📞 Мой номер"); b.appendChild(goldEl("div", "Загрузка…", "color:#7e8b99;"));
   let d; try { d = await api("/api/vnumber/me"); } catch (e) { b.innerHTML = ""; b.appendChild(goldEl("div", e.message, "color:#ff6b6b;")); return; }
   b.innerHTML = "";
   const refresh = async () => { try { const me = await api("/api/me"); currentUser = me.user; document.getElementById("profile-vnum-show").textContent = currentUser.vnumber || "Получить номер +999"; } catch (e) {} openVnumber(); };
-  b.appendChild(goldEl("div", "Коллекционный номер +999 XXXX XXXX. По нему можно войти в Diogram вместо почты (пароль тот же). Баланс: " + (parseFloat(d.balance) || 0).toFixed(1) + " Di.", "font-size:13px;color:#9fb0c0;"));
+  b.appendChild(goldEl("div", "Коллекционный номер +999 XXXX XXXX. По нему можно войти в Diogram вместо почты (пароль тот же).", "font-size:13px;color:#9fb0c0;"));
   if (!d.numbers.length) b.appendChild(goldEl("div", "У тебя пока нет номера.", "margin-top:10px;"));
   for (const n of d.numbers) {
     const row = goldEl("div", "", "margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;");
@@ -2841,23 +2841,10 @@ async function openVnumber() {
     else { const bt = goldEl("button", "Сделать основным"); bt.className = "admin-btn"; bt.onclick = async () => { try { await api("/api/vnumber/main", { method: "POST", body: JSON.stringify({ number: n.number }) }); refresh(); } catch (e) { alert(e.message); } }; row.appendChild(bt); }
     b.appendChild(row);
   }
-  const m = goldMsg(); 
   if (d.numbers.length < d.max) {
-    b.appendChild(goldEl("div", "Получить номер", "font-weight:600;margin-top:14px;"));
-    const rnd = goldEl("button", "🎲 Случайный номер за " + d.random_price + " Di"); rnd.className = "btn"; rnd.style.marginTop = "6px";
-    rnd.onclick = async () => { if (!confirm("Купить случайный номер за " + d.random_price + " Di?")) return; rnd.disabled = true; try { const r = await api("/api/vnumber/buy", { method: "POST", body: JSON.stringify({}) }); alert("Твой номер: " + r.number); refresh(); } catch (e) { m.setErr(e.message); rnd.disabled = false; } };
-    b.appendChild(rnd);
-    b.appendChild(goldEl("div", "Или выбери сам (цена зависит от красоты: обычный " + d.choose_price + " Di, редкий " + d.tier_prices.rare + ", эпический " + d.tier_prices.epic + ", легендарный " + d.tier_prices.legend + ").", "font-size:12px;color:#7e8b99;margin-top:12px;"));
-    const inp = goldInput("8 цифр, например 12345678", "text", 16); inp.inputMode = "numeric"; b.appendChild(inp);
-    const q = goldEl("div", "", "margin-top:6px;font-size:13px;min-height:18px;"); b.appendChild(q);
-    let quote = null, qt = null;
-    const pick = goldEl("button", "Купить"); pick.className = "btn"; pick.style.marginTop = "6px"; pick.disabled = true;
-    inp.oninput = () => { clearTimeout(qt); quote = null; pick.disabled = true; q.textContent = ""; m.textContent = ""; const digits = inp.value.replace(/\D/g, ""); if (digits.length < 8) return;
-      qt = setTimeout(async () => { try { const r = await api("/api/vnumber/quote?number=" + encodeURIComponent(inp.value)); quote = r; q.style.color = r.taken ? "#ff6b6b" : (VN_TIER_COLOR[r.tier] || "#fff"); q.textContent = r.text + " · " + r.tier_name + (r.taken ? " · занят" : " · " + r.price + " Di"); pick.disabled = !!r.taken; } catch (e) { q.style.color = "#ff6b6b"; q.textContent = e.message; } }, 300); };
-    pick.onclick = async () => { if (!quote || quote.taken) return; if (!confirm("Купить " + quote.text + " за " + quote.price + " Di?")) return; pick.disabled = true; try { await api("/api/vnumber/buy", { method: "POST", body: JSON.stringify({ number: quote.number }) }); alert("Готово! Твой номер: " + quote.text); refresh(); } catch (e) { m.setErr(e.message); pick.disabled = false; } };
-    b.appendChild(pick);
+    b.appendChild(goldEl("div", "Номера продаются за звёзды Telegram ⭐ в боте @DiogramRobot: случайный от " + d.stars_random + " ⭐, красивые на выбор от " + d.stars.rare + " ⭐. Сначала привяжи аккаунт в боте («Интеграция с Diogram»).", "font-size:13px;color:#9fb0c0;margin-top:14px;"));
+    const go = goldEl("a", "⭐ Купить номер в боте"); go.className = "btn"; go.href = "https://t.me/DiogramRobot"; go.target = "_blank"; go.rel = "noopener noreferrer"; go.style.cssText = "display:block;text-align:center;text-decoration:none;margin-top:8px;"; b.appendChild(go);
   } else b.appendChild(goldEl("div", "Максимум номеров на аккаунт: " + d.max + ".", "margin-top:12px;font-size:13px;color:#9fb0c0;"));
-  b.appendChild(m);
 }
 async function loadAdminVnumbers() {
   const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
@@ -2881,7 +2868,7 @@ async function loadAdminVnumbers() {
     lc.appendChild(goldEl("div", "Номера (" + d.items.length + ", последние)", "font-weight:600;"));
     for (const it of d.items) {
       const row = goldEl("div", it.text + " · " + (it.source === "reserve" ? "резерв" : "ID " + it.user_id) + " · " + it.source + (it.price ? " · " + it.price + " Di" : ""), "font-size:12px;margin-top:6px;");
-      row.appendChild(mk("Освободить", async () => { if (!confirm("Освободить " + it.text + "? У владельца номер пропадёт без возврата Di.")) return; try { await api("/api/admin/vnumbers/release", { method: "POST", body: JSON.stringify({ number: it.number }) }); loadAdminVnumbers(); } catch (e) { alert(e.message); } })); row.lastChild.style.marginLeft = "8px";
+      row.appendChild(mk("Освободить", async () => { if (!confirm("Освободить " + it.text + "? У владельца номер пропадёт без возврата.")) return; try { await api("/api/admin/vnumbers/release", { method: "POST", body: JSON.stringify({ number: it.number }) }); loadAdminVnumbers(); } catch (e) { alert(e.message); } })); row.lastChild.style.marginLeft = "8px";
       lc.appendChild(row);
     }
     box.appendChild(lc);

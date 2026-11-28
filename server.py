@@ -1631,31 +1631,8 @@ def _vn_db_error(e):
 def api_vnumber_me():
     user = get_current_user()
     if not user: return jsonify({"error": "Не авторизован"}), 401
-    try: return jsonify({**vnumbers.info(user["id"]), "balance": user.get("balance", 0) or 0})
+    try: return jsonify(vnumbers.info(user["id"]))
     except Exception as e: return _vn_db_error(e)
-
-@app.route("/api/vnumber/quote")
-def api_vnumber_quote():
-    user = get_current_user()
-    if not user: return jsonify({"error": "Не авторизован"}), 401
-    n = vnumbers.normalize(request.args.get("number", ""))
-    if not n: return jsonify({"error": "Номер: 8 цифр после +999"}), 400
-    try: taken = bool(vnumbers.holder(n))
-    except Exception as e: return _vn_db_error(e)
-    t = vnumbers.tier(n)
-    return jsonify({"number": n, "text": vnumbers.fmt(n), "tier": t, "tier_name": vnumbers.TIER_NAMES[t], "price": vnumbers.price(n), "taken": taken})
-
-@app.route("/api/vnumber/buy", methods=["POST"])
-@serialized_per_user
-def api_vnumber_buy():
-    user = get_current_user()
-    if not user: return jsonify({"error": "Не авторизован"}), 401
-    if not check_rate_limit(f"vnbuy_{user['id']}", 10, 60): return jsonify({"error": "Слишком часто. Подожди минуту."}), 429
-    raw = json_body().get("number")
-    try: number, err = vnumbers.buy(user["id"], raw if isinstance(raw, str) else None)
-    except Exception as e: return _vn_db_error(e)
-    if err: return jsonify({"error": err}), 400
-    return jsonify({"ok": True, "number": vnumbers.fmt(number), **vnumbers.info(user["id"])})
 
 @app.route("/api/vnumber/main", methods=["POST"])
 @serialized_per_user
@@ -1706,6 +1683,74 @@ def api_admin_vnumbers_release():
     try: ok = vnumbers.release(str_field(json_body(), "number"))
     except Exception as e: return _vn_db_error(e)
     return jsonify({"ok": ok})
+
+# Бот: покупка номеров за звёзды Telegram и админка запаса (только если Telegram привязан к аккаунту с ролью owner)
+def _bot_owner(tg):
+    try:
+        row = tgbot._state(tg) or {}
+        u = get_user_by_id(row.get("user_id")) if row.get("user_id") else None
+        return bool(u and u.get("role") == "owner" and not u.get("banned"))
+    except Exception as e:
+        print(f"[tgbot owner] {e!r}"); return False
+
+@app.route("/api/tgbot/vnumber/info", methods=["POST"])
+def api_tgbot_vnumber_info():
+    tg, d, err = _bot_call()
+    if err: return err
+    def go():
+        row = tgbot._state(tg) or {}
+        uid = row.get("user_id")
+        return {"linked": bool(uid), "is_owner": _bot_owner(tg), "numbers": vnumbers.mine(uid) if uid else [], "max": vnumbers.MAX_PER_USER,
+                "stars_random": vnumbers.STARS_RANDOM, "stars": vnumbers.STARS, "stock": vnumbers.stock_counts()}
+    return _bot_safe(go)
+
+@app.route("/api/tgbot/vnumber/quote", methods=["POST"])
+def api_tgbot_vnumber_quote():
+    tg, d, err = _bot_call()
+    if err: return err
+    def go():
+        row = tgbot._state(tg) or {}
+        uid = row.get("user_id")
+        if not uid: return {"error": "not_linked"}
+        if len(vnumbers.mine(uid)) >= vnumbers.MAX_PER_USER: return {"error": "limit", "max": vnumbers.MAX_PER_USER}
+        raw = d.get("number")
+        q, e = vnumbers.quote(raw if isinstance(raw, str) and raw.strip() else None)
+        return {"error": "unavailable", "message": e} if e else {"quote": q}
+    return _bot_safe(go)
+
+@app.route("/api/tgbot/vnumber/sell", methods=["POST"])
+def api_tgbot_vnumber_sell():
+    """Вызывается ботом после успешной оплаты. Не ok = бот должен вернуть звёзды (refund)."""
+    tg, d, err = _bot_call()
+    if err: return err
+    charge = str_field(d, "charge_id")
+    stars = to_int(d.get("stars"))
+    if not charge or len(charge) > 200 or not stars or stars < 1: return jsonify({"error": "Неверные данные платежа"}), 400
+    def go():
+        row = tgbot._state(tg) or {}
+        uid = row.get("user_id")
+        if not uid: return {"status": "not_linked", "refund": True}
+        raw = d.get("number")
+        st, number = vnumbers.sell(uid, tg, raw if isinstance(raw, str) and raw.strip() else None, stars, charge)
+        return {"status": st, "text": vnumbers.fmt(number) if number else None, "refund": st in ("limit", "empty")}
+    return _bot_safe(go)
+
+@app.route("/api/tgbot/vnumber/admin", methods=["POST"])
+def api_tgbot_vnumber_admin():
+    tg, d, err = _bot_call()
+    if err: return err
+    if not _bot_owner(tg): return jsonify({"error": "Нет доступа"}), 403
+    action = str_field(d, "action")
+    def go():
+        if action == "add":
+            text = d.get("text")
+            raws = [x for x in re.split(r"[\s,;]+", text) if x] if isinstance(text, str) else []
+            added, skipped = vnumbers.stock_add(raws)
+            return {"added": added, "skipped": [{"number": a, "why": w} for a, w in skipped[:30]], "stock": vnumbers.stock_counts()}
+        if action == "remove":
+            return {"ok": vnumbers.stock_remove(str_field(d, "number")), "stock": vnumbers.stock_counts()}
+        return {"stock": vnumbers.stock_counts(), "items": vnumbers.stock_list()}
+    return _bot_safe(go)
 
 @app.route("/api/admin/tgbot")
 def api_admin_tgbot():

@@ -1,16 +1,18 @@
 """Виртуальные номера Diogram: +999 XXXX XXXX (8 цифр). SQL: supabase/migrations/20261130_vnumbers.sql.
-Номер принадлежит аккаунту и годится для входа (вместо почты, пароль тот же). Покупка за Di или выдача владельцем.
-Редкость считается по рисунку цифр, цена зависит от неё (константы ниже). Резерв владельца (source=reserve) купить нельзя."""
+Номер принадлежит аккаунту и годится для входа (вместо почты, пароль тот же). Продаются за звёзды Telegram в боте @DiogramRobot
+из запаса `vnumber_stock`, который пополняет owner (в боте); случайный номер берётся из запаса. Редкость считается по рисунку цифр,
+цена в звёздах зависит от неё (константы ниже). Владелец может выдать номер бесплатно; резерв (source=reserve) купить нельзя."""
 import re
 import secrets
+from datetime import datetime, timezone
 
-from db import supabase, spend_balance, add_balance
+from db import supabase
 
 PREFIX = "+999"
 MAX_PER_USER = 3          # номеров на аккаунт (резерв не считается)
-RANDOM_PRICE = 20         # случайный обычный номер, Di
-CHOOSE_PRICE = 50         # выбрать обычный номер самому, Di
-TIER_PRICE = {"rare": 150, "epic": 500, "legend": 2000}   # красивые номера только на выбор
+# Цены в звёздах Telegram: случайный обычный номер из запаса и номера на выбор по редкости.
+STARS_RANDOM = 50
+STARS = {"common": 100, "rare": 300, "epic": 1000, "legend": 5000}
 TIER_NAMES = {"common": "Обычный", "rare": "Редкий", "epic": "Эпический", "legend": "Легендарный"}
 _RE = re.compile(r"^[0-9]{8}$")
 
@@ -49,9 +51,7 @@ def tier(n):
     return "common"
 
 
-def price(n):
-    t = tier(n)
-    return CHOOSE_PRICE if t == "common" else TIER_PRICE[t]
+def stars(n): return STARS[tier(n)]
 
 
 def _rows(q): return q.execute().data or []
@@ -82,8 +82,7 @@ def user_id_by_number(number):
 
 
 def info(uid):
-    return {"numbers": mine(uid), "max": MAX_PER_USER, "random_price": RANDOM_PRICE, "choose_price": CHOOSE_PRICE,
-            "tier_prices": TIER_PRICE, "prefix": PREFIX}
+    return {"numbers": mine(uid), "max": MAX_PER_USER, "prefix": PREFIX, "stars_random": STARS_RANDOM, "stars": STARS}
 
 
 def _take(uid, number, source, cost):
@@ -91,36 +90,63 @@ def _take(uid, number, source, cost):
     return r[0] if isinstance(r, list) and r else r
 
 
-def _random_free():
-    for _ in range(60):
-        n = "".join(secrets.choice("0123456789") for _ in range(8))
-        if tier(n) == "common" and not holder(n): return n
-    return None
+def stock_free(number):
+    rows = _rows(supabase.table("vnumber_stock").select("number,tier").eq("number", number).is_("sold_at", "null").limit(1))
+    return rows[0] if rows else None
 
 
-def buy(uid, raw):
-    """raw пусто → случайный обычный номер. Возвращает (номер | None, ошибка)."""
+def stock_counts():
+    rows = _rows(supabase.table("vnumber_stock").select("tier,sold_at").limit(5000))
+    out = {t: 0 for t in TIER_NAMES}
+    for r in rows:
+        if not r.get("sold_at"): out[r["tier"]] = out.get(r["tier"], 0) + 1
+    return out
+
+
+def stock_add(raws):
+    """Список строк → (добавлено, [(строка, причина)])."""
+    added, skipped, seen = 0, [], set()
+    for raw in raws[:1000]:
+        n = normalize(raw)
+        if not n: skipped.append((str(raw)[:20], "нужно 8 цифр")); continue
+        if n in seen: skipped.append((n, "повтор")); continue
+        seen.add(n)
+        if holder(n): skipped.append((n, "уже у кого-то или в резерве")); continue
+        if _rows(supabase.table("vnumber_stock").select("number").eq("number", n).limit(1)): skipped.append((n, "уже в запасе")); continue
+        supabase.table("vnumber_stock").insert({"number": n, "tier": tier(n)}).execute(); added += 1
+    return added, skipped
+
+
+def stock_remove(raw):
+    n = normalize(raw)
+    if not n: return False
+    supabase.table("vnumber_stock").delete().eq("number", n).is_("sold_at", "null").execute()
+    return True
+
+
+def stock_list(limit=60):
+    rows = _rows(supabase.table("vnumber_stock").select("number,tier").is_("sold_at", "null").order("created_at", desc=True).limit(limit))
+    return [{"number": r["number"], "text": fmt(r["number"]), "tier": r["tier"]} for r in rows]
+
+
+def quote(raw):
+    """Что можно купить: raw пусто = случайный обычный. Возвращает (данные | None, ошибка)."""
     if raw in (None, ""):
-        number, cost = _random_free(), RANDOM_PRICE
-        if not number: return None, "Не удалось подобрать номер, попробуй ещё раз."
-    else:
-        number = normalize(raw)
-        if not number: return None, "Номер: 8 цифр после +999"
-        cost = price(number)
-    if holder(number): return None, "Этот номер занят"
-    if len(mine(uid)) >= MAX_PER_USER: return None, f"Можно иметь не больше {MAX_PER_USER} номеров"
-    ok, err = spend_balance(uid, cost, f"Номер {fmt(number)}")
-    if not ok: return None, err or "Не хватает Di"
-    try:
-        res = _take(uid, number, "buy", cost)
-    except Exception as e:
-        print(f"[vnumbers] выдача не удалась ({e!r}), возвращаю Di пользователю {uid}")
-        if not add_balance(uid, cost, "Возврат: номер не выдан"): print(f"[vnumbers] !!! возврат Di не прошёл: user={uid} amount={cost}")
-        return None, "Не удалось выдать номер. Di возвращены."
-    if res != "ok":
-        if not add_balance(uid, cost, "Возврат: номер не выдан"): print(f"[vnumbers] !!! возврат Di не прошёл: user={uid} amount={cost}")
-        return None, "Этот номер уже занят" if res == "taken" else f"Можно иметь не больше {MAX_PER_USER} номеров"
-    return number, None
+        if not stock_counts().get("common"): return None, "Случайные номера закончились"
+        return {"number": None, "text": "случайный номер", "tier": "common", "tier_name": TIER_NAMES["common"], "stars": STARS_RANDOM}, None
+    n = normalize(raw)
+    if not n: return None, "Номер: 8 цифр после +999"
+    if not stock_free(n): return None, "Этого номера нет в продаже"
+    t = tier(n)
+    return {"number": n, "text": fmt(n), "tier": t, "tier_name": TIER_NAMES[t], "stars": STARS[t]}, None
+
+
+def sell(uid, tg, raw, paid_stars, charge_id):
+    """После оплаты звёздами. Возвращает (статус, номер): ok | dup | limit | empty."""
+    n = normalize(raw) if raw else None
+    r = supabase.rpc("vnumber_sell", {"p_tg": tg, "p_user": uid, "p_number": n, "p_stars": int(paid_stars), "p_charge": charge_id, "p_max": MAX_PER_USER}).execute().data
+    r = r[0] if isinstance(r, list) and r else (r or {})
+    return r.get("status", "empty"), r.get("number")
 
 
 def set_main(uid, raw):
@@ -134,12 +160,19 @@ def set_main(uid, raw):
 
 
 def give(uid, raw):
-    """Выдача владельцем бесплатно. raw пусто → случайный обычный. Возвращает (номер | None, ошибка)."""
-    number = normalize(raw) if raw else _random_free()
-    if not number: return None, "Номер: 8 цифр"
+    """Выдача владельцем бесплатно. raw пусто → случайный обычный из запаса. Возвращает (номер | None, ошибка)."""
+    if raw:
+        number = normalize(raw)
+        if not number: return None, "Номер: 8 цифр"
+    else:
+        rows = _rows(supabase.table("vnumber_stock").select("number").eq("tier", "common").is_("sold_at", "null").limit(200))
+        if not rows: return None, "В запасе нет обычных номеров"
+        number = secrets.choice(rows)["number"]
     res = _take(uid, number, "gift", 0)
     if res == "taken": return None, "Номер занят"
     if res != "ok": return None, f"У человека уже {MAX_PER_USER} номера"
+    try: supabase.table("vnumber_stock").update({"sold_at": datetime.now(timezone.utc).isoformat(), "sold_to": uid}).eq("number", number).is_("sold_at", "null").execute()
+    except Exception as e: print(f"[vnumbers] stock mark {e!r}")
     return number, None
 
 
