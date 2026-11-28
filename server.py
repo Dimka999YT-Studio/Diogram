@@ -71,6 +71,7 @@ import daily
 import tgbot
 import gaming
 import gold
+import vnumbers
 import tg_game
 import orgs
 
@@ -741,17 +742,26 @@ def api_login():
     data = json_body()
     email = str_field(data, "email").lower()
     password = str_field(data, "password", strip=False)
+    # Вход по почте или по виртуальному номеру (+999 XXXX XXXX): без «@» поле считается номером.
+    vnum = vnumbers.normalize(email) if email and "@" not in email else None
+    ident = ("num:" + vnum) if vnum else email
     # Лимит по аккаунту (в дополнение к лимиту по IP): подбор пароля с множества адресов упирается в него.
-    if email and not check_rate_limit(f"login_email_{email}", 20, 900): return jsonify({"error": "Слишком много попыток входа в этот аккаунт. Подожди 15 минут."}), 429
-    user = get_user_by_email(email)
+    if ident and not check_rate_limit(f"login_email_{ident}", 20, 900): return jsonify({"error": "Слишком много попыток входа в этот аккаунт. Подожди 15 минут."}), 429
+    user = None
+    if vnum:
+        try:
+            uid_by_num = vnumbers.user_id_by_number(vnum)
+            user = get_user_by_id(uid_by_num) if uid_by_num else None
+        except Exception as e: print(f"[vnumbers login] {e!r}")
+    elif email: user = get_user_by_email(email)
     if not user or not check_password(password, user["password_hash"]):
         if not check_rate_limit(f"loginfail_{ip}", 3, 600): captcha.flag("login", ip)   # после 3 неудачных входов с адреса (4-я попытка и далее) нужна капча
-        return jsonify({"error": "Неверный email или пароль"}), 401
+        return jsonify({"error": "Неверный email, номер или пароль"}), 401
     is_banned, ban_reason = check_banned(user)
     if is_banned: return banned_response(user, ban_reason)
     update_last_seen(user["id"])
     token = start_session(user["id"])
-    return jsonify({"ok": True, "token": token, "user": user_to_dict(user)})
+    return jsonify({"ok": True, "token": token, "user": {**user_to_dict(user), "vnumber": vnumbers.main_text(user["id"])}})
 
 @app.route("/api/me")
 def api_me():
@@ -763,7 +773,7 @@ def api_me():
     try:
         if check_rate_limit(f"refsettle_{user['id']}", 1, 120): gold.settle(user["id"])   # засчитать приглашение, если условия выполнены
     except Exception as e: print(f"[ref settle] {e!r}")
-    return jsonify({"user": user_to_dict(user)})
+    return jsonify({"user": {**user_to_dict(user), "vnumber": vnumbers.main_text(user["id"])}})
 
 @app.route("/api/heartbeat", methods=["POST"])
 def api_heartbeat():
@@ -1612,6 +1622,90 @@ def api_tgbot_promo_take():
     tg, d, err = _bot_call()
     if err: return err
     return _bot_safe(lambda: tgbot.promo_take(tg))
+
+# ==================== ВИРТУАЛЬНЫЕ НОМЕРА (+999) ====================
+def _vn_db_error(e):
+    print(f"[vnumbers] {e!r}"); return jsonify({"error": "Номера недоступны (миграция 20261130_vnumbers.sql применена?)"}), 503
+
+@app.route("/api/vnumber/me")
+def api_vnumber_me():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    try: return jsonify({**vnumbers.info(user["id"]), "balance": user.get("balance", 0) or 0})
+    except Exception as e: return _vn_db_error(e)
+
+@app.route("/api/vnumber/quote")
+def api_vnumber_quote():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    n = vnumbers.normalize(request.args.get("number", ""))
+    if not n: return jsonify({"error": "Номер: 8 цифр после +999"}), 400
+    try: taken = bool(vnumbers.holder(n))
+    except Exception as e: return _vn_db_error(e)
+    t = vnumbers.tier(n)
+    return jsonify({"number": n, "text": vnumbers.fmt(n), "tier": t, "tier_name": vnumbers.TIER_NAMES[t], "price": vnumbers.price(n), "taken": taken})
+
+@app.route("/api/vnumber/buy", methods=["POST"])
+@serialized_per_user
+def api_vnumber_buy():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    if not check_rate_limit(f"vnbuy_{user['id']}", 10, 60): return jsonify({"error": "Слишком часто. Подожди минуту."}), 429
+    raw = json_body().get("number")
+    try: number, err = vnumbers.buy(user["id"], raw if isinstance(raw, str) else None)
+    except Exception as e: return _vn_db_error(e)
+    if err: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "number": vnumbers.fmt(number), **vnumbers.info(user["id"])})
+
+@app.route("/api/vnumber/main", methods=["POST"])
+@serialized_per_user
+def api_vnumber_main():
+    user = get_current_user()
+    if not user: return jsonify({"error": "Не авторизован"}), 401
+    try: ok, err = vnumbers.set_main(user["id"], str_field(json_body(), "number"))
+    except Exception as e: return _vn_db_error(e)
+    if not ok: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, **vnumbers.info(user["id"])})
+
+@app.route("/api/admin/vnumbers")
+def api_admin_vnumbers():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    try: return jsonify({"items": vnumbers.admin_list()})
+    except Exception as e: return _vn_db_error(e)
+
+@app.route("/api/admin/vnumbers/give", methods=["POST"])
+def api_admin_vnumbers_give():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    d = json_body()
+    uid = to_int(d.get("user_id"))
+    if not uid or not get_user_by_id(uid): return jsonify({"error": "Пользователь не найден"}), 404
+    raw = d.get("number")
+    try: number, err = vnumbers.give(uid, raw if isinstance(raw, str) and raw.strip() else None)
+    except Exception as e: return _vn_db_error(e)
+    if err: return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "number": vnumbers.fmt(number)})
+
+@app.route("/api/admin/vnumbers/reserve", methods=["POST"])
+def api_admin_vnumbers_reserve():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    d = json_body()
+    raws = d.get("numbers")
+    if not isinstance(raws, list): raws = [str_field(d, "number")]
+    done, skipped = 0, []
+    try:
+        for r in raws[:500]:
+            ok, err = vnumbers.reserve(r)
+            if ok: done += 1
+            else: skipped.append({"number": str(r)[:20], "why": err})
+    except Exception as e: return _vn_db_error(e)
+    return jsonify({"added": done, "skipped": skipped})
+
+@app.route("/api/admin/vnumbers/release", methods=["POST"])
+def api_admin_vnumbers_release():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    try: ok = vnumbers.release(str_field(json_body(), "number"))
+    except Exception as e: return _vn_db_error(e)
+    return jsonify({"ok": ok})
 
 @app.route("/api/admin/tgbot")
 def api_admin_tgbot():
