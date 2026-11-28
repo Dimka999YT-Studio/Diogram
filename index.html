@@ -831,6 +831,7 @@
       <button class="admin-tab" data-tab="gaming" id="admin-tab-gaming" style="display:none;">🎰 Кейсы @Gaming</button>
       <button class="admin-tab" data-tab="gold" id="admin-tab-gold" style="display:none;">🪙 Голда</button>
       <button class="admin-tab" data-tab="tgame" id="admin-tab-tgame" style="display:none;">🎮 Игра</button>
+      <button class="admin-tab" data-tab="tgbot" id="admin-tab-tgbot" style="display:none;">🤖 Бот TG</button>
       <button class="admin-tab" data-tab="orgs" id="admin-tab-orgs" style="display:none;">🏢 Организации</button>
       <button class="admin-tab" data-tab="game" id="admin-tab-game" style="display:none;">🍂 Призы турнира</button>
     </div>
@@ -2585,6 +2586,7 @@ async function openAdmin() {
   document.getElementById("admin-tab-reserved").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-gold").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-tgame").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
+  document.getElementById("admin-tab-tgbot").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
 document.getElementById("admin-tab-orgs").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-gaming").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
   document.getElementById("admin-tab-game").style.display = currentUser && currentUser.role === "owner" ? "" : "none";
@@ -2595,7 +2597,7 @@ document.getElementById("admin-tab-orgs").style.display = currentUser && current
 document.querySelectorAll(".admin-tab").forEach(tab => { tab.onclick = () => { document.querySelectorAll(".admin-tab").forEach(t => t.classList.remove("active")); tab.classList.add("active"); currentAdminTab = tab.dataset.tab; adminShowTab(); }; });
 function adminShowTab() {
   document.querySelector("#screen-admin > .search-bar").style.display = currentAdminTab === "users" ? "" : "none";
-  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else if (currentAdminTab === "game") loadAdminGame(); else if (currentAdminTab === "promo") loadAdminPromo(); else if (currentAdminTab === "captcha") loadAdminCaptcha(); else if (currentAdminTab === "gaming") loadAdminGaming(); else if (currentAdminTab === "gold") loadAdminGold(); else if (currentAdminTab === "tgame") loadAdminTgame(); else if (currentAdminTab === "orgs") loadAdminOrgs(); else loadAdminReports();
+  if (currentAdminTab === "users") loadAdminUsers(); else if (currentAdminTab === "reserved") loadAdminReserved(); else if (currentAdminTab === "game") loadAdminGame(); else if (currentAdminTab === "promo") loadAdminPromo(); else if (currentAdminTab === "captcha") loadAdminCaptcha(); else if (currentAdminTab === "gaming") loadAdminGaming(); else if (currentAdminTab === "gold") loadAdminGold(); else if (currentAdminTab === "tgame") loadAdminTgame(); else if (currentAdminTab === "tgbot") loadAdminTgbot(); else if (currentAdminTab === "orgs") loadAdminOrgs(); else loadAdminReports();
 }
 
 async function loadAdminUsers() {
@@ -2813,6 +2815,34 @@ async function loadAdminOrgs() {
       card.appendChild(mk("Удалить организацию", () => { if (confirm("Удалить «" + o.name + "»? Значок пропадёт у всех, кого она верифицировала.")) post("/api/admin/orgs/delete", { id: o.id }); })); card.lastChild.style.marginTop = "6px";
       box.appendChild(card);
     }
+  } catch (e) { box.innerHTML = ""; const er = document.createElement("div"); er.className = "empty-state"; er.textContent = e.message; box.appendChild(er); }
+}
+async function loadAdminTgbot() {
+  const box = document.getElementById("admin-list"); box.innerHTML = '<div class="spinner"></div>';
+  try {
+    const d = await api("/api/admin/tgbot"); box.innerHTML = "";
+    const mk = (label, fn) => { const b = document.createElement("button"); b.className = "admin-btn"; b.style.marginRight = "6px"; b.textContent = label; b.onclick = fn; return b; };
+    const top = document.createElement("div"); top.className = "report-card";
+    top.appendChild(goldEl("div", "Telegram-бот @DiogramRobot", "font-weight:600;"));
+    top.appendChild(goldEl("div", "Промокод бот выдаёт после ожидания " + Math.round(d.delay / 3600) + " ч и за " + (d.cost / 1000) + " кристалла. Бот пишет сюда по ключу TG_BOT_KEY. Пользователей бота: " + d.total + ", привязано к Diogram: " + d.linked.length + (d.linked.length >= 30 ? "+" : "") + ".", "font-size:13px;margin-top:6px;color:#9aa7b5;"));
+    if (!d.sender_ok) top.appendChild(goldEl("div", "⚠ Аккаунта @Gifts нет: код привязки некому отправлять. Создай аккаунт с юзернеймом Gifts.", "font-size:13px;margin-top:6px;color:#ff6b6b;"));
+    box.appendChild(top);
+    const pc = document.createElement("div"); pc.className = "report-card";
+    pc.appendChild(goldEl("div", "Пул промокодов (свободно " + d.free + " из " + d.pool.length + ")", "font-weight:600;"));
+    pc.appendChild(goldEl("div", "Коды должны уже существовать во вкладке «Промокоды». Бот выдаёт их по порядку, каждый код один раз.", "font-size:12px;margin-top:4px;color:#7e8b99;"));
+    const ta = document.createElement("textarea"); ta.placeholder = "Коды, по одному в строке"; ta.rows = 4; ta.style.cssText = "width:100%;margin-top:8px;box-sizing:border-box;"; pc.appendChild(ta);
+    const msg = goldMsg(); pc.appendChild(msg);
+    pc.appendChild(mk("Добавить в пул", async () => { try { const r = await api("/api/admin/tgbot/pool", { method: "POST", body: JSON.stringify({ codes: ta.value }) }); if (r.skipped.length) alert("Добавлено: " + r.added + "\nПропущено:\n" + r.skipped.map(s => s.code + ": " + s.why).join("\n")); loadAdminTgbot(); } catch (e) { msg.setErr(e.message); } }));
+    for (const p of d.pool) {
+      const row = goldEl("div", p.code + (p.given_to_tg ? " · выдан Telegram " + p.given_to_tg : " · свободен") + " ", "font-size:12px;margin-top:6px;word-break:break-all;" + (p.given_to_tg ? "color:#7e8b99;" : ""));
+      if (!p.given_to_tg) row.appendChild(mk("Убрать", async () => { try { await api("/api/admin/tgbot/pool/delete", { method: "POST", body: JSON.stringify({ id: p.id }) }); loadAdminTgbot(); } catch (e) { alert(e.message); } }));
+      pc.appendChild(row);
+    }
+    box.appendChild(pc);
+    const lk = document.createElement("div"); lk.className = "report-card"; lk.appendChild(goldEl("div", "Последние привязки", "font-weight:600;"));
+    if (!d.linked.length) lk.appendChild(goldEl("div", "Пока нет", "font-size:13px;color:#7e8b99;"));
+    for (const l of d.linked) { const row = goldEl("div", (l.name || ("ID " + l.user_id)) + " ↔ Telegram " + l.tg_id + " · " + (l.crystals / 1000).toFixed(3) + " кр. ", "font-size:12px;margin-top:6px;"); row.appendChild(mk("Отвязать", async () => { if (!confirm("Отвязать этот Telegram от аккаунта?")) return; try { await api("/api/admin/tgbot/unlink", { method: "POST", body: JSON.stringify({ tg_id: l.tg_id }) }); loadAdminTgbot(); } catch (e) { alert(e.message); } })); lk.appendChild(row); }
+    box.appendChild(lk);
   } catch (e) { box.innerHTML = ""; const er = document.createElement("div"); er.className = "empty-state"; er.textContent = e.message; box.appendChild(er); }
 }
 async function loadAdminTgame() {

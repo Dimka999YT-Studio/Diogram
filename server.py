@@ -68,6 +68,7 @@ import game_world
 import game_chatlog
 import rainbow
 import daily
+import tgbot
 import gaming
 import gold
 import tg_game
@@ -86,6 +87,7 @@ JWT_SECRET = os.environ.get("JWT_SECRET", "").strip()
 JWT_ALGO = "HS256"
 JWT_EXP_DAYS = 30
 WORKER_KEY = os.environ.get("WORKER_KEY", "").strip()
+TG_BOT_KEY = os.environ.get("TG_BOT_KEY", "").strip()   # ключ Telegram-бота @DiogramRobot; пусто = маршруты /api/tgbot/* закрыты
 TG_GAME_KEY = os.environ.get("TG_GAME_KEY", "").strip()   # ключ сервера Telegram-игры (награды за задания); пусто = маршруты закрыты
 
 # ==================== AI (GROQ) ====================
@@ -1532,6 +1534,111 @@ def game_key_ok():
     """Заголовок X-Game-Key. Если TG_GAME_KEY не задан, доступ закрыт для всех."""
     if not TG_GAME_KEY: return False
     return hmac.compare_digest((request.headers.get("X-Game-Key") or "").encode("utf-8"), TG_GAME_KEY.encode("utf-8"))
+
+def bot_key_ok():
+    """Заголовок X-Bot-Key. Если TG_BOT_KEY не задан, доступ закрыт для всех."""
+    if not TG_BOT_KEY: return False
+    return hmac.compare_digest((request.headers.get("X-Bot-Key") or "").encode("utf-8"), TG_BOT_KEY.encode("utf-8"))
+
+def _bot_call(limit_key=None, limit=(120, 60)):
+    """Общая проверка маршрутов бота: ключ, tg_id, лимит. Возвращает (tg_id, данные, ответ_ошибки)."""
+    if not bot_key_ok(): return None, None, (jsonify({"error": "Нет доступа"}), 403)
+    d = json_body()
+    tg = tgbot.tg_id_of(d.get("tg_id"))
+    if not tg: return None, None, (jsonify({"error": "Нет tg_id"}), 400)
+    if not check_rate_limit(f"tgbot_{tg}", *limit): return None, None, (jsonify({"error": "Слишком часто"}), 429)
+    return tg, d, None
+
+def _bot_safe(fn):
+    try: return jsonify(fn())
+    except Exception as e:
+        print(f"[tgbot] {e!r}"); return jsonify({"error": "Сервис временно недоступен"}), 503
+
+@app.route("/api/tgbot/state", methods=["POST"])
+def api_tgbot_state():
+    tg, d, err = _bot_call()
+    if err: return err
+    return _bot_safe(lambda: tgbot.state(tg))
+
+@app.route("/api/tgbot/link/request", methods=["POST"])
+def api_tgbot_link_request():
+    tg, d, err = _bot_call()
+    if err: return err
+    uid = to_int(d.get("user_id"))
+    if not uid: return jsonify({"error": "bad_id"}), 400
+    if not check_rate_limit(f"tgbotreq_{tg}", 5, 3600): return jsonify({"error": "too_many"}), 429
+    if not check_rate_limit(f"tgbotusr_{uid}", 3, 3600): return jsonify({"error": "too_many_user"}), 429
+    try: ok, e = tgbot.request_link(tg, uid)
+    except Exception as ex:
+        print(f"[tgbot] link request: {ex!r}"); return jsonify({"error": "unavailable"}), 503
+    return jsonify({"ok": True}) if ok else (jsonify({"error": e}), 400)
+
+@app.route("/api/tgbot/link/confirm", methods=["POST"])
+def api_tgbot_link_confirm():
+    tg, d, err = _bot_call()
+    if err: return err
+    if not check_rate_limit(f"tgbotcf_{tg}", 12, 600): return jsonify({"error": "too_many"}), 429
+    try: ok, e = tgbot.confirm_link(tg, d.get("code"))
+    except Exception as ex:
+        print(f"[tgbot] link confirm: {ex!r}"); return jsonify({"error": "unavailable"}), 503
+    return jsonify({"ok": True}) if ok else (jsonify({"error": e}), 400)
+
+@app.route("/api/tgbot/profile", methods=["POST"])
+def api_tgbot_profile():
+    tg, d, err = _bot_call()
+    if err: return err
+    return _bot_safe(lambda: {"profile": tgbot.profile(tg)})
+
+@app.route("/api/tgbot/crystals/claim", methods=["POST"])
+def api_tgbot_claim():
+    tg, d, err = _bot_call()
+    if err: return err
+    return _bot_safe(lambda: tgbot.claim(tg))
+
+@app.route("/api/tgbot/crystals/double", methods=["POST"])
+def api_tgbot_double():
+    tg, d, err = _bot_call()
+    if err: return err
+    return _bot_safe(lambda: tgbot.double(tg))
+
+@app.route("/api/tgbot/promo/start", methods=["POST"])
+def api_tgbot_promo_start():
+    tg, d, err = _bot_call()
+    if err: return err
+    return _bot_safe(lambda: tgbot.promo_start(tg))
+
+@app.route("/api/tgbot/promo/take", methods=["POST"])
+def api_tgbot_promo_take():
+    tg, d, err = _bot_call()
+    if err: return err
+    return _bot_safe(lambda: tgbot.promo_take(tg))
+
+@app.route("/api/admin/tgbot")
+def api_admin_tgbot():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    try: return jsonify(tgbot.admin_overview())
+    except Exception as e:
+        print(f"[tgbot admin] {e!r}"); return jsonify({"error": "Таблицы бота недоступны (миграция 20261129_tgbot.sql применена?)"}), 503
+
+@app.route("/api/admin/tgbot/pool", methods=["POST"])
+def api_admin_tgbot_pool():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    added, skipped = tgbot.admin_pool_add(json_body().get("codes"))
+    return jsonify({"added": added, "skipped": [{"code": c, "why": w} for c, w in skipped]})
+
+@app.route("/api/admin/tgbot/pool/delete", methods=["POST"])
+def api_admin_tgbot_pool_delete():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    pid = to_int(json_body().get("id"))
+    if not pid: return jsonify({"error": "Нет id"}), 400
+    return jsonify({"ok": tgbot.admin_pool_delete(pid)})
+
+@app.route("/api/admin/tgbot/unlink", methods=["POST"])
+def api_admin_tgbot_unlink():
+    if not require_owner(): return jsonify({"error": "Нет доступа"}), 403
+    tg = tgbot.tg_id_of(to_int(json_body().get("tg_id")))
+    if not tg: return jsonify({"error": "Нет tg_id"}), 400
+    return jsonify({"ok": tgbot.admin_unlink(tg)})
 
 @app.route("/api/tg/game/link", methods=["POST"])
 def api_tg_game_link():
