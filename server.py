@@ -1623,6 +1623,31 @@ def api_tgbot_promo_take():
     if err: return err
     return _bot_safe(lambda: tgbot.promo_take(tg))
 
+@app.route("/api/tgbot/promo/info", methods=["POST"])
+def api_tgbot_promo_info():
+    tg, d, err = _bot_call()
+    if err: return err
+    return _bot_safe(lambda: tgbot.promo_info(tg))
+
+@app.route("/api/tgbot/promo/activate", methods=["POST"])
+def api_tgbot_promo_activate():
+    tg, d, err = _bot_call()
+    if err: return err
+    if not check_rate_limit(f"tgbot_act_{tg}", 10, 60): return jsonify({"error": "Слишком часто"}), 429
+    return _bot_safe(lambda: tgbot.promo_activate(tg, str_field(d, "code")))
+
+@app.route("/api/tgbot/daily/open", methods=["POST"])
+def api_tgbot_daily_open():
+    tg, d, err = _bot_call()
+    if err: return err
+    return _bot_safe(lambda: tgbot.daily_open(tg))
+
+@app.route("/api/tgbot/daily/claim", methods=["POST"])
+def api_tgbot_daily_claim():
+    tg, d, err = _bot_call()
+    if err: return err
+    return _bot_safe(lambda: tgbot.daily_claim(tg))
+
 # ==================== ВИРТУАЛЬНЫЕ НОМЕРА (+999) ====================
 def _vn_db_error(e):
     print(f"[vnumbers] {e!r}"); return jsonify({"error": "Номера недоступны (миграция 20261130_vnumbers.sql применена?)"}), 503

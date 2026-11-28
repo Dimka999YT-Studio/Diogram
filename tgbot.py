@@ -6,6 +6,9 @@ import re
 import secrets
 from datetime import datetime, timedelta, timezone
 
+import promo
+import rainbow
+import game
 from db import supabase, get_user_by_id, get_user_by_username, get_or_create_chat, save_message, get_user_usernames
 
 SENDER_USERNAME = "Gifts"          # от этого аккаунта приходит код привязки
@@ -20,6 +23,15 @@ MAX_ATTEMPTS = 5                   # попыток ввода кода
 _CODE_RE = re.compile(r"[Ii]\d{5}")
 _PROMO_RE = re.compile(r"[A-Za-z0-9_\-]{3,40}")
 
+
+# Активация промокодов в боте: первые FREE_ACTS бесплатно, дальше ACT_COST1 тысячных, после ACT_STEP активаций ACT_COST2
+FREE_ACTS, ACT_STEP, ACT_COST1, ACT_COST2 = 5, 40, 100, 1000
+# Ежедневные награды: ждать DAILY_DELAY после начала, новое ожидание не раньше чем через DAILY_PERIOD; 18 дней по кругу
+DAILY_DELAY, DAILY_PERIOD = 2 * 3600, 24 * 3600
+# день: (вид, количество). crystals — тысячные; promo — промокод на столько радужных кругов; rainbow/clouds — зачисляются сразу
+DAILY = {1: ("crystals", 10), 2: ("crystals", 90), 3: ("crystals", 300), 4: ("crystals", 100), 5: ("promo", 5), 6: (None, 0), 7: ("rainbow", 1),
+         8: ("clouds", 2), 9: ("clouds", 3), 10: ("promo", 1), 11: ("promo", 1), 12: ("crystals", 1000), 13: ("promo", 5), 14: ("promo", 5),
+         15: ("crystals", 2000), 16: ("crystals", 1), 17: ("crystals", 999), 18: ("crystals", 1000)}
 
 def tg_id_of(v):
     return v if isinstance(v, int) and not isinstance(v, bool) and 0 < v < 2 ** 53 else None
@@ -128,6 +140,83 @@ def promo_take(tg_id):
     r = _one(supabase.rpc("tgbot_promo_take", {"p_tg": tg_id, "p_cost": PROMO_COST}).execute())
     return {"status": r["status"], "code": r.get("code"), "crystals": int(r["crystals"]), "wait": int(r["wait_seconds"]), "cost": PROMO_COST}
 
+
+
+# ---- активация промокодов в боте ----
+def act_cost(acts):
+    return 0 if acts < FREE_ACTS else (ACT_COST1 if acts < ACT_STEP else ACT_COST2)
+
+
+def promo_info(tg_id):
+    s = _state(tg_id)
+    acts = int(s.get("promo_acts") or 0)
+    return {"linked": bool(s.get("user_id")), "acts": acts, "free_left": max(0, FREE_ACTS - acts), "cost": act_cost(acts), "crystals": int(s.get("crystals") or 0),
+            "free": FREE_ACTS, "step": ACT_STEP, "cost1": ACT_COST1, "cost2": ACT_COST2}
+
+
+def promo_activate(tg_id, code):
+    """Платит кристаллами только за успешную активацию. Возвращает {status: ok|not_linked|no_crystals|error, ...}."""
+    s = _state(tg_id)
+    uid = s.get("user_id")
+    if not uid: return {"status": "not_linked"}
+    acts = int(s.get("promo_acts") or 0)
+    cost = act_cost(acts)
+    if cost and int(s.get("crystals") or 0) < cost: return {"status": "no_crystals", "cost": cost, "crystals": int(s.get("crystals") or 0)}
+    if cost:
+        left = supabase.rpc("tgbot_spend", {"p_tg": tg_id, "p_cost": cost}).execute().data
+        if not isinstance(left, int) or left < 0: return {"status": "no_crystals", "cost": cost, "crystals": int(s.get("crystals") or 0)}
+    got, err = promo.claim(int(uid), code)
+    if got is None and not (err or "").startswith("Часть наград"):
+        if cost: supabase.rpc("tgbot_add", {"p_tg": tg_id, "p_amount": cost}).execute()     # код не сработал: возвращаем плату
+        return {"status": "error", "message": err or "Не удалось активировать"}
+    n = supabase.rpc("tgbot_act_done", {"p_tg": tg_id}).execute().data
+    left = int(_state(tg_id).get("crystals") or 0)
+    return {"status": "ok", "rewards": got or {}, "message": err, "cost": cost, "crystals": left, "acts": n}
+
+
+# ---- ежедневные награды ----
+def _cycle_day(day): return (int(day) - 1) % len(DAILY) + 1
+
+
+def _reward(day):
+    kind, amount = DAILY[_cycle_day(day)]
+    return {"kind": kind, "amount": amount}
+
+
+def daily_open(tg_id):
+    r = _one(supabase.rpc("tgbot_daily", {"p_tg": tg_id, "p_action": "open", "p_delay": DAILY_DELAY, "p_period": DAILY_PERIOD}).execute())
+    day = int(r["day"] or 1)
+    return {"status": r["status"], "day": _cycle_day(day), "total_days": len(DAILY), "wait": int(r["wait_seconds"]), "reward": _reward(day),
+            "schedule": {str(d): {"kind": k, "amount": a} for d, (k, a) in DAILY.items()}, "delay": DAILY_DELAY}
+
+
+def _grant_daily(tg_id, uid, day):
+    """Выдать награду дня. Возвращает {kind, amount, code?}. Бросает исключение при сбое."""
+    kind, amount = DAILY[_cycle_day(day)]
+    out = {"kind": kind, "amount": amount}
+    if kind == "crystals": supabase.rpc("tgbot_add", {"p_tg": tg_id, "p_amount": amount}).execute()
+    elif kind == "rainbow": rainbow.grant(uid, amount, "tgbot_daily")
+    elif kind == "clouds": game.credit_map_clouds(uid, amount)
+    elif kind == "promo":
+        for _ in range(5):
+            code = "Dly" + secrets.token_hex(7)
+            row, err = promo.create_code(1, code, "limited", {"rainbow": amount}, max_activations=1, note="Ежедневная награда бота")
+            if row: out["code"] = code; break
+        else: raise RuntimeError("promo create")
+    return out
+
+
+def daily_claim(tg_id):
+    r = _one(supabase.rpc("tgbot_daily", {"p_tg": tg_id, "p_action": "claim", "p_delay": DAILY_DELAY, "p_period": DAILY_PERIOD}).execute())
+    if r["status"] != "ok": return {"status": r["status"], "day": _cycle_day(int(r["day"] or 1)), "wait": int(r["wait_seconds"])}
+    day, uid = int(r["day"]), _state(tg_id).get("user_id")
+    try: reward = _grant_daily(tg_id, int(uid), day)
+    except Exception as e:
+        print(f"[tgbot daily] выдача не удалась ({e!r}), откат: tg={tg_id} day={day}")
+        try: supabase.rpc("tgbot_daily_release", {"p_tg": tg_id}).execute()
+        except Exception as e2: print(f"[tgbot daily] !!! откат не прошёл: tg={tg_id} {e2!r}")
+        return {"status": "error"}
+    return {"status": "ok", "day": _cycle_day(day), "reward": reward, "crystals": int(_state(tg_id).get("crystals") or 0), "total_days": len(DAILY)}
 
 # ---- админка (owner) ----
 def admin_overview():
